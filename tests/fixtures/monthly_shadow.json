@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "target_month": "2024-02",
+  "employees": [
+    {
+      "employee_id": "emp-dev-001",
+      "name": "Developer One",
+      "nrp": "SAN-DEV-001",
+      "role": "Developer"
+    },
+    {
+      "employee_id": "emp-iot-001",
+      "name": "Operator One",
+      "nrp": "SAN-IOT-001",
+      "role": "IoT Operations"
+    }
+  ],
+  "holidays": [
+    {
+      "date": "2024-02-29",
+      "description": "Synthetic National Holiday",
+      "day_type": "National Holiday"
+    }
+  ],
+  "attendance_source": [
+    {
+      "employee_id": "emp-dev-001",
+      "date": "02/01/2024",
+      "start_time": "08:00",
+      "end_time": "17:00"
+    },
+    {
+      "employee_id": "emp-dev-001",
+      "date": "02/01/2024",
+      "start_time": "08:15",
+      "end_time": "17:15"
+    },
+    {
+      "employee_id": "emp-dev-001",
+      "date": "02/29/2024",
+      "start_time": null,
+      "end_time": "12:00"
+    },
+    {
+      "employee_id": "emp-iot-001",
+      "date": "02/29/2024",
+      "start_time": "07:00",
+      "end_time": null
+    }
+  ],
+  "existing_attendance": [
+    {
+      "stable_key": "2024-02-01_emp-dev-001",
+      "start_time": "2024-02-01 07:30:00",
+      "end_time": "2024-02-01 16:30:00",
+      "modified_by": "operator@example.invalid",
+      "manual_lock": true
+    }
+  ],
+  "developer_tasks": [
+    {
+      "task_list": "Release: Alpha/1",
+      "requestor": "Synthetic Requestor",
+      "employee_id": "emp-dev-001",
+      "status": "Closed",
+      "start_date": "2024-02-01",
+      "end_date": "2024-02-01",
+      "tracker_name": "DIGI-SI",
+      "achievement": 100
+    },
+    {
+      "task_list": "Quality check #2",
+      "requestor": "Synthetic Requestor",
+      "employee_id": "emp-dev-001",
+      "status": "Closed",
+      "start_date": "2024-02-29",
+      "end_date": "2024-02-29",
+      "tracker_name": "DIGI-QA",
+      "achievement": 50
+    }
+  ],
+  "iot_tasks": [
+    {
+      "issue_description": "Sensor alert: zone/1",
+      "date": "2024-02-29",
+      "issue_type": "Incident",
+      "start_time": "2024-02-29 07:05:00",
+      "response_time": "2024-02-29 07:15:00",
+      "close_time": "2024-02-29 08:00:00",
+      "first_responder": "Operator One"
+    },
+    {
+      "issue_description": "Unassigned alert",
+      "date": "2024-02-29",
+      "issue_type": "Request",
+      "start_time": "2024-02-29 09:00:00",
+      "response_time": null,
+      "close_time": null,
+      "first_responder": null
+    }
+  ],
+  "manual_tasks": [
+    {
+      "record_id": "manual-task-001",
+      "task_list": "Manual: verification/entry",
+      "date": "2024-02-29",
+      "employee_id": "emp-dev-001",
+      "created_by": "operator@example.invalid",
+      "unique_key": null,
+      "manual_lock": true
+    },
+    {
+      "record_id": "system-task-001",
+      "task_list": "Generated task",
+      "date": "2024-02-29",
+      "employee_id": "emp-dev-001",
+      "created_by": "system@system.com",
+      "unique_key": null,
+      "manual_lock": false
+    },
+    {
+      "record_id": "incomplete-task-001",
+      "task_list": "Missing employee",
+      "date": "2024-02-29",
+      "employee_id": null,
+      "created_by": "operator@example.invalid",
+      "unique_key": null,
+      "manual_lock": true
+    }
+  ],
+  "schedule_shifts": [
+    {
+      "employee_id": "emp-iot-001",
+      "date": "2024-02-29",
+      "shift_name": "SHIFT PAGI"
+    }
+  ],
+  "existing_timesheets": [
+    {
+      "stable_key": "2024-02-29_emp-dev-001",
+      "remarks": "Manual holiday note",
+      "holiday": "H",
+      "modified_by": "operator@example.invalid",
+      "manual_lock": true,
+      "volatile_last_modified": "2024-03-01T01:02:03Z"
+    }
+  ],
+  "timesheet_options": {
+    "default_weekday_activity": "Synthetic weekday activity",
+    "default_weekend_activity": "Synthetic weekend activity",
+    "default_activity_iot": "Synthetic IoT activity",
+    "default_project": "Synthetic Project"
+  },
+  "step10": {
+    "target_hour": 1,
+    "before_target_hour": 0,
+    "after_target_hour": 2
+  }
+}

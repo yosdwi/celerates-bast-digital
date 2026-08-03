@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Report editor | Digital BAST{% endblock %}
+{% block body %}<main class="content narrow"><a href="/admin/">Back</a><header><p class="eyebrow">Report workspace</p><h1>Report editor</h1></header><section class="panel"><h2>{{ result.title or "Generated report" }}</h2><pre class="editor-content">{{ result.content }}</pre>{% if result.error %}<div class="alert">{{ result.error }}</div>{% endif %}</section></main>{% endblock %}

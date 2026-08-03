@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+cd "$PROJECT_DIR"
+
+for script in scripts/*.sh tests/ops/*.sh; do
+    sh -n "$script"
+done
+
+NOCODB_BASE_URL=https://invalid.local docker compose --profile blue --profile green config --quiet
+
+if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[[:alnum:]])' .; then
+    printf '%s\n' "possible embedded secret detected" >&2
+    exit 1
+fi
+
+grep -q '^USER 10001:10001$' Dockerfile
+grep -q 'read_only: true' compose.yaml
+grep -q 'no-new-privileges:true' compose.yaml
+grep -q 'internal: true' compose.yaml
+grep -q 'flock -n' scripts/deploy.sh
+grep -q 'migration gate failed; active slot preserved' scripts/deploy.sh
+grep -q 'proxy rolled back' scripts/deploy.sh
+printf '%s\n' "operations static checks passed"

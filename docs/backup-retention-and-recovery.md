@@ -1,0 +1,9 @@
+# Backup, retention, and recovery
+
+Run `scripts/backup.sh` daily from a restricted systemd timer. It creates a PostgreSQL custom-format dump, encrypts it with an age public recipient, verifies the off-host copy with rclone, retains only the latest encrypted local copy, and deletes off-host daily copies older than seven days. Keep the age identity off the application server and protect the rclone configuration. Monitor timer failures and storage capacity.
+
+Run `scripts/restore-test.sh` after every backup-system change and at least monthly. Set `BACKUP_FILE` and `AGE_IDENTITY_FILE`; the script decrypts through a pipe, restores into an isolated temporary database, requires at least one public table, and removes the test database. A failed decrypt, restore, schema validation, or cleanup is an incident. Preserve the failed artifact, stop retention deletion, repair the cause, and repeat a full restore test.
+
+Run `scripts/retention.sh` daily after backup completion. It removes `nocodb_audit_events` and `generation_plans` records older than 30 days in one transaction. The schema migrations must own those tables and indexes. Legal hold or incident preservation overrides deletion; disable the timer with an approved change and document the hold.
+
+For an incident, deny new Cloudflare Access sessions, preserve logs and current encrypted backup, classify credential exposure, and rotate affected credentials. For database loss, stop writers, restore the newest verified backup into a new PostgreSQL volume, run integrity checks and application smoke tests, then point the inactive slot at it and use the normal gated switch. For host loss, provision a server meeting preflight, restore secrets from the secret manager and data from off-host backup, deploy the immutable image, validate both health endpoints, and only then move the tunnel.

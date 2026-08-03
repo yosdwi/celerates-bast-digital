@@ -1,0 +1,92 @@
+[project]
+name = "celerates-bast-digital"
+version = "0.1.0"
+description = "Digital BAST operational platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.16,<2",
+    "fastapi>=0.116,<1",
+    "google-api-python-client>=2.179,<3",
+    "google-auth>=2.40,<3",
+    "holidays>=0.76,<1",
+    "httpx>=0.28,<1",
+    "jinja2>=3.1,<4",
+    "prefect[redis]>=3.4,<4",
+    "psycopg[binary]>=3.2,<4",
+    "pydantic-settings>=2.10,<3",
+    "pyodbc>=5.2,<6",
+    "python-multipart>=0.0.20,<1",
+    "redis>=6.4,<7",
+    "uvicorn[standard]>=0.35,<1",
+]
+
+[project.scripts]
+digital-bast = "digital_bast.cli:main"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31,<2",
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.1,<2",
+    "pytest-cov>=6.2,<7",
+    "respx>=0.22,<1",
+    "ruff>=0.12,<1",
+    "starlette[full]>=1.3,<2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/digital_bast"]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+pythonPlatform = "All"
+include = ["src"]
+exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+reportUnusedCallResult = "warning"
+reportUnusedVariable = "error"
+reportMissingParameterType = "error"
+reportPrivateUsage = "error"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "CPY001", "D", "FBT001", "FBT002", "FIX002", "ISC001", "TD002", "TD003"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"src/digital_bast/**/__init__.py" = ["D104"]
+"tests/**/*.py" = ["ARG", "D", "PLR2004", "S101", "SLF001"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Body", "fastapi.Cookie", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Path", "fastapi.Query"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+asyncio_mode = "auto"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError", "@(abc\\.)?abstractmethod"]

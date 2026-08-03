@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Admin Login | Digital BAST{% endblock %}
+{% block body %}
+<main class="login-shell">
+  <section class="login-card" aria-labelledby="login-title">
+    <div class="brand-mark" aria-hidden="true">DB</div>
+    <p class="eyebrow">Celerates</p>
+    <h1 id="login-title">Digital-BAST</h1>
+    <p class="muted">Administrative Portal</p>
+    {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+    <form action="/admin/auth/login" method="post" class="stack">
+      <label>Email address<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="security-note">Secure access for authorized owners only</p>
+  </section>
+</main>
+{% endblock %}

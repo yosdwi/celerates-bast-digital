@@ -1,0 +1,13 @@
+services:
+  postgres:
+    networks:
+      - backend
+      - edge
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+  prefect-server:
+    networks:
+      - backend
+      - edge
+    ports:
+      - "127.0.0.1:${PREFECT_PORT:-4200}:4200"

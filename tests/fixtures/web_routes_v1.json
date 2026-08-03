@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "routes": [
+    ["GET", "/"],
+    ["GET", "/admin"],
+    ["GET", "/admin/"],
+    ["POST", "/admin/attendance-celerates"],
+    ["POST", "/admin/attendance-celerates/employee-data"],
+    ["POST", "/admin/attendance-celerates/export-csv"],
+    ["GET", "/admin/attendance-celerates"],
+    ["POST", "/admin/auth/login"],
+    ["GET", "/admin/auth/logout"],
+    ["GET", "/admin/login"],
+    ["POST", "/admin/report-editor"],
+    ["GET", "/admin/report-editor"],
+    ["GET", "/admin/progressive-generator"],
+    ["POST", "/api/generate/bulk-data"],
+    ["POST", "/api/generate/plan"],
+    ["POST", "/api/generate/retry"],
+    ["POST", "/api/generate/section"],
+    ["POST", "/api/stream/section"],
+    ["POST", "/auth/login"],
+    ["GET", "/auth/logout"],
+    ["GET", "/health"],
+    ["GET", "/login"],
+    ["POST", "/report/all"],
+    ["POST", "/report/evidence"]
+  ],
+  "retired_routes": [
+    ["GET", "/testresponresolutiontime"]
+  ]
+}

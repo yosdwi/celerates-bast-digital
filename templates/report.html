@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}{{ report.title }} | Digital BAST{% endblock %}
+{% block body %}<main class="report-page"><a href="/admin/">Back to reports</a><header><p class="eyebrow">Digital BAST</p><h1>{{ report.title }}</h1></header><section class="report-list">{% for item in report.items %}<article><h2>{{ item.label }}</h2><p>{{ item.value }}</p></article>{% else %}<p>No records found.</p>{% endfor %}</section></main>{% endblock %}

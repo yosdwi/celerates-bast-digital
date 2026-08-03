@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/lib.sh"
+
+DRY_RUN=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1 ;;
+        *) die "unsupported argument: $1" 64 ;;
+    esac
+    shift
+done
+
+require_command docker
+docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
+
+available_min_gb=${AVAILABLE_MIN_GB:-20}
+root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')
+[ "$root_available_kb" -ge "$((available_min_gb * 1024 * 1024))" ] || die "root disk has less than ${available_min_gb}GB available" 70
+
+secrets_dir=${SECRETS_DIR:-./secrets}
+secrets_gid=${SECRETS_GID:?SECRETS_GID is required}
+for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token google_service_account.json sqlserver_connection_string; do
+    require_file "$secrets_dir/$name"
+    mode=$(stat -c '%a' "$secrets_dir/$name")
+    [ "$mode" = 640 ] || die "secret must have mode 0640: $secrets_dir/$name" 77
+    group=$(stat -c '%g' "$secrets_dir/$name")
+    [ "$group" = "$secrets_gid" ] || die "secret group does not match SECRETS_GID: $secrets_dir/$name" 77
+done
+
+docker info >/dev/null 2>&1 || die "Docker daemon is unavailable" 69
+SECRETS_GID=$secrets_gid NOCODB_BASE_URL=${NOCODB_BASE_URL:-https://invalid.local} docker compose config --quiet
+printf '%s\n' "preflight passed"
