@@ -16,7 +16,7 @@ Start the blue local stack:
 docker compose -f compose.yaml -f compose.local.yaml --profile blue up -d --build
 ```
 
-The web endpoint is `http://127.0.0.1:8080`; Prefect is `http://127.0.0.1:4200`. Prefect requires the `username:password` value from `secrets/prefect_api_auth` for Basic Auth.
+The web endpoint is `http://127.0.0.1:8080`; Prefect is `http://127.0.0.1:4200`. Set `PREFECT_SERVER_UI_API_URL` to the browser-visible Prefect `/api` URL. Prefect's login page has one field: enter the complete `username:password` value from `secrets/prefect_api_auth`, not only the password and not two separate fields.
 
 For a remote host, create an SSH tunnel using placeholders only:
 

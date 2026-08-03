@@ -72,6 +72,7 @@ x-prefect: &prefect
     PREFECT_HOME: /tmp/prefect
     PREFECT_UI_STATIC_DIRECTORY: /tmp/prefect-ui
     PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    PREFECT_SERVER_UI_API_URL: ${PREFECT_SERVER_UI_API_URL:-http://127.0.0.1:4200/api}
     PREFECT_API_URL: http://prefect-server:4200/api
     PREFECT_API_DATABASE_CONNECTION_URL_FILE: /run/secrets/prefect_database_dsn
     PREFECT_API_AUTH_STRING_FILE: /run/secrets/prefect_api_auth
