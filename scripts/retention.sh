@@ -16,14 +16,12 @@ done
 
 cd "$PROJECT_DIR"
 if [ "$DRY_RUN" = "1" ]; then
-    printf '%s\n' "DRY-RUN delete NocoDB audit snapshots older than 30 days"
     printf '%s\n' "DRY-RUN delete generation_plans older than 30 days"
     exit 0
 fi
 
-docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-digital_bast}" -d "${POSTGRES_DB:-digital_bast}" <<'SQL'
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-digital_bast}" -d digital_bast_app <<'SQL'
 begin;
-delete from nocodb_audit_events where created_at < now() - interval '30 days';
 delete from generation_plans where created_at < now() - interval '30 days';
 commit;
 SQL

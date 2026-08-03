@@ -53,11 +53,19 @@ trap cleanup_failed_target EXIT HUP INT TERM
 switched=0
 
 app_image=${APP_IMAGE:-digital-bast:local}
-if docker image inspect "$app_image" >/dev/null 2>&1; then
+if [ "${ALLOW_LOCAL_APP_IMAGE:-0}" = "1" ] && docker image inspect "$app_image" >/dev/null 2>&1; then
     printf '%s\n' "using local app image: $app_image"
     run compose pull postgres redis reverse-proxy
 else
-    run compose pull "web-$target" "worker-$target" "runner-$target" postgres redis prefect-server prefect-services reverse-proxy
+    digest=${app_image#*@sha256:}
+    if [ "$digest" = "$app_image" ] || [ "${#digest}" -ne 64 ]; then
+        die "APP_IMAGE must be an immutable digest reference" 64
+    fi
+    case "$digest" in
+        *[!0123456789abcdef]*) die "APP_IMAGE must be an immutable digest reference" 64 ;;
+    esac
+    run compose pull --policy always "web-$target" "worker-$target" "runner-$target" postgres redis prefect-server prefect-services reverse-proxy
+    run docker image inspect "$app_image" >/dev/null
 fi
 run compose up -d postgres redis prefect-server prefect-services reverse-proxy
 run compose up -d --no-deps "web-$target"

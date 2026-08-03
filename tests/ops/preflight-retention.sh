@@ -13,6 +13,7 @@ cat >"$fake_bin/docker" <<'FAKE_DOCKER'
 #!/bin/sh
 set -eu
 if [ "${1:-}" = compose ] && [ "${2:-}" = exec ]; then
+    printf '%s\n' "$*"
     cat >"$FAKE_PSQL_INPUT"
 fi
 exit 0
@@ -49,8 +50,10 @@ FAKE_PSQL_INPUT="$temporary_dir/retention.sql" PATH="$fake_bin:$PATH" \
     scripts/retention.sh >"$temporary_dir/retention.log"
 grep -q "delete from generation_plans where created_at < now() - interval '30 days';" "$temporary_dir/retention.sql"
 ! grep -q 'generated_plans' "$temporary_dir/retention.sql"
+! grep -q 'nocodb_audit_events' "$temporary_dir/retention.sql"
+grep -q -- '-d digital_bast_app' "$temporary_dir/retention.log"
 
-PATH="$fake_bin:$PATH" scripts/check-ops.sh >"$temporary_dir/check-ops.log"
+SECRETS_GID=0 PATH="$fake_bin:$PATH" scripts/check-ops.sh >"$temporary_dir/check-ops.log"
 grep -q 'operations static checks passed' "$temporary_dir/check-ops.log"
 
 printf '%s\n' "preflight and retention checks passed"

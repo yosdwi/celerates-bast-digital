@@ -26,6 +26,7 @@ mkdir -p "$run_deploy_copy"
 cp -R scripts config "$run_deploy_copy/"
 deploy_log="$temporary_dir/deploy.log"
 PATH="$fake_bin:$PATH" FAKE_DOCKER_LOG="$deploy_log" DEPLOY_LOCK_FILE="$temporary_dir/deploy.lock" \
+    APP_IMAGE="registry.example/digital-bast@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     "$run_deploy_copy/scripts/deploy.sh" --skip-preflight >"$temporary_dir/deploy.out"
 ! grep -Eq '(^| )stop web-blue worker-blue runner-blue( |$)' "$deploy_log"
 grep -q 'up -d --no-deps worker-green runner-green' "$deploy_log"

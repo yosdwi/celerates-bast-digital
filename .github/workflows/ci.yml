@@ -29,6 +29,8 @@ jobs:
       - run: uv run basedpyright
       - run: uv run pytest
       - run: scripts/check-ops.sh
+        env:
+          SECRETS_GID: "0"
 
   secrets:
     runs-on: ubuntu-24.04

@@ -18,7 +18,16 @@ cd "$PROJECT_DIR"
 require_command docker
 require_command age
 [ -n "${BACKUP_FILE:-}" ] || die "BACKUP_FILE is required" 78
+[ -n "${BACKUP_DATABASE:-}" ] || die "BACKUP_DATABASE is required" 78
 [ -n "${AGE_IDENTITY_FILE:-}" ] || die "AGE_IDENTITY_FILE is required" 78
+case "$BACKUP_DATABASE" in
+    digital_bast_app|digital_bast_prefect) ;;
+    *) die "BACKUP_DATABASE must be digital_bast_app or digital_bast_prefect" 64 ;;
+esac
+case "$(basename "$BACKUP_FILE")" in
+    "postgres-$BACKUP_DATABASE-"*.dump.age) ;;
+    *) die "BACKUP_FILE name does not match BACKUP_DATABASE" 64 ;;
+esac
 require_file "$BACKUP_FILE"
 require_file "$AGE_IDENTITY_FILE"
 
@@ -29,7 +38,7 @@ if [ "$DRY_RUN" = "1" ]; then
     exit 0
 fi
 
-test_database="restore_test_$(date -u +%Y%m%d%H%M%S)_$$"
+test_database="restore_test_${BACKUP_DATABASE}_$(date -u +%Y%m%d%H%M%S)_$$"
 cleanup() {
     docker compose exec -T postgres dropdb -U "${POSTGRES_USER:-digital_bast}" --if-exists "$test_database" >/dev/null 2>&1 || true
 }

@@ -22,7 +22,7 @@ concurrency:
 
 env:
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-  IMAGE: ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha || github.sha }}
+  IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   publish:
@@ -45,7 +45,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE }}
+          tags: ${{ env.IMAGE_TAG }}
           provenance: true
           sbom: true
       - uses: actions/attest-build-provenance@v2
@@ -63,6 +63,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
       - name: Configure SSH
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
@@ -72,12 +74,44 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Archive exact release deployment assets
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf > release-assets.tar
       - name: Automated staging migration, shadow, and health gates
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && APP_IMAGE='${IMAGE}' scripts/deploy.sh"
+          RELEASE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          asset_name=".release-assets-${RELEASE_SHA}.tar"
+          scp release-assets.tar "$DEPLOY_USER@$DEPLOY_HOST:${DEPLOY_PATH}/${asset_name}"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") RELEASE_SHA=$(printf '%q' "$RELEASE_SHA") APP_IMAGE=$(printf '%q' "$RELEASE_IMAGE") ASSET_NAME=$(printf '%q' "$asset_name") sh -s" <<'REMOTE'
+          set -eu
+          case "$RELEASE_SHA" in *[!0123456789abcdef]*|'') exit 64 ;; esac
+          test "${#RELEASE_SHA}" -eq 40 || exit 64
+          digest=${APP_IMAGE#*@sha256:}
+          case "$digest" in *[!0123456789abcdef]*|'') exit 64 ;; esac
+          test "${#digest}" -eq 64 || exit 64
+          stage_dir=$(mktemp -d "$DEPLOY_PATH/.release-stage.XXXXXX")
+          trap 'rm -rf "$stage_dir"' EXIT HUP INT TERM
+          tar -xf "$DEPLOY_PATH/$ASSET_NAME" -C "$stage_dir"
+          rm -f "$DEPLOY_PATH/$ASSET_NAME"
+          test -x "$stage_dir/scripts/deploy.sh"
+          test -f "$stage_dir/compose.yaml"
+          test -f "$stage_dir/config/nginx/nginx.conf"
+          mkdir -p "$DEPLOY_PATH/releases"
+          release_dir="$DEPLOY_PATH/releases/$RELEASE_SHA-$(date +%s)-$$"
+          mv "$stage_dir" "$release_dir"
+          trap - EXIT HUP INT TERM
+          if test -f "$DEPLOY_PATH/.env"; then ln -s "$DEPLOY_PATH/.env" "$release_dir/.env"; fi
+          ln -s "$DEPLOY_PATH/config/nginx/active-slot.conf" "$release_dir/config/nginx/active-slot.conf"
+          cd "$release_dir"
+          SECRETS_DIR="${SECRETS_DIR:-$DEPLOY_PATH/secrets}" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
+          REMOTE
 
   production:
     needs:
@@ -90,6 +124,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
       - name: Configure SSH
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
@@ -99,9 +135,41 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Archive exact release deployment assets
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf > release-assets.tar
       - name: Blue-green production deployment
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && APP_IMAGE='${IMAGE}' scripts/deploy.sh"
+          RELEASE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          asset_name=".release-assets-${RELEASE_SHA}.tar"
+          scp release-assets.tar "$DEPLOY_USER@$DEPLOY_HOST:${DEPLOY_PATH}/${asset_name}"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") RELEASE_SHA=$(printf '%q' "$RELEASE_SHA") APP_IMAGE=$(printf '%q' "$RELEASE_IMAGE") ASSET_NAME=$(printf '%q' "$asset_name") sh -s" <<'REMOTE'
+          set -eu
+          case "$RELEASE_SHA" in *[!0123456789abcdef]*|'') exit 64 ;; esac
+          test "${#RELEASE_SHA}" -eq 40 || exit 64
+          digest=${APP_IMAGE#*@sha256:}
+          case "$digest" in *[!0123456789abcdef]*|'') exit 64 ;; esac
+          test "${#digest}" -eq 64 || exit 64
+          stage_dir=$(mktemp -d "$DEPLOY_PATH/.release-stage.XXXXXX")
+          trap 'rm -rf "$stage_dir"' EXIT HUP INT TERM
+          tar -xf "$DEPLOY_PATH/$ASSET_NAME" -C "$stage_dir"
+          rm -f "$DEPLOY_PATH/$ASSET_NAME"
+          test -x "$stage_dir/scripts/deploy.sh"
+          test -f "$stage_dir/compose.yaml"
+          test -f "$stage_dir/config/nginx/nginx.conf"
+          mkdir -p "$DEPLOY_PATH/releases"
+          release_dir="$DEPLOY_PATH/releases/$RELEASE_SHA-$(date +%s)-$$"
+          mv "$stage_dir" "$release_dir"
+          trap - EXIT HUP INT TERM
+          if test -f "$DEPLOY_PATH/.env"; then ln -s "$DEPLOY_PATH/.env" "$release_dir/.env"; fi
+          ln -s "$DEPLOY_PATH/config/nginx/active-slot.conf" "$release_dir/config/nginx/active-slot.conf"
+          cd "$release_dir"
+          SECRETS_DIR="${SECRETS_DIR:-$DEPLOY_PATH/secrets}" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
+          REMOTE
