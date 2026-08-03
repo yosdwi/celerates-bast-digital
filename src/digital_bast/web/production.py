@@ -32,6 +32,7 @@ from digital_bast.web.security import CookieSettings
 from digital_bast.web.sessions import RedisSessionStore
 
 _SERVER_ERROR_STATUS: Final = 500
+_INVALID_CREDENTIAL_STATUS_CODES: Final = frozenset({400, 401, 403})
 
 
 class OfficialNocoDBOwnerAuthenticator:
@@ -43,12 +44,12 @@ class OfficialNocoDBOwnerAuthenticator:
             response = await self._client.post(
                 "/api/v1/auth/user/signin", json={"email": email, "password": password}
             )
-            if response.status_code in {401, 403}:
+            if response.status_code in _INVALID_CREDENTIAL_STATUS_CODES:
                 return None
             _ = response.raise_for_status()
             token = _TokenResponse.model_validate(response.json()).token
             me_response = await self._client.get("/api/v1/auth/user/me", headers={"xc-auth": token})
-            if me_response.status_code in {401, 403}:
+            if me_response.status_code in _INVALID_CREDENTIAL_STATUS_CODES:
                 return None
             _ = me_response.raise_for_status()
             user = _UserResponse.model_validate(me_response.json())
