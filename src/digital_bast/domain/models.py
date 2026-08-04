@@ -94,6 +94,7 @@ class Task:
     end_date: date | None
     achievement: int
     origin: RecordOrigin
+    issue_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

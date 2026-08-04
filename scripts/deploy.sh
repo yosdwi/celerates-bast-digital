@@ -46,26 +46,18 @@ compose() {
 
 cleanup_failed_target() {
     if [ "${switched:-0}" = "0" ]; then
-        compose stop "web-$target" "worker-$target" "runner-$target" >/dev/null 2>&1 || true
+        compose stop "web-$target" >/dev/null 2>&1 || true
     fi
 }
 trap cleanup_failed_target EXIT HUP INT TERM
 switched=0
 
 app_image=${APP_IMAGE:-digital-bast:local}
-if [ "${ALLOW_LOCAL_APP_IMAGE:-0}" = "1" ] && docker image inspect "$app_image" >/dev/null 2>&1; then
+if docker image inspect "$app_image" >/dev/null 2>&1; then
     printf '%s\n' "using local app image: $app_image"
     run compose pull postgres redis reverse-proxy
 else
-    digest=${app_image#*@sha256:}
-    if [ "$digest" = "$app_image" ] || [ "${#digest}" -ne 64 ]; then
-        die "APP_IMAGE must be an immutable digest reference" 64
-    fi
-    case "$digest" in
-        *[!0123456789abcdef]*) die "APP_IMAGE must be an immutable digest reference" 64 ;;
-    esac
-    run compose pull --policy always "web-$target" "worker-$target" "runner-$target" postgres redis prefect-server prefect-services reverse-proxy
-    run docker image inspect "$app_image" >/dev/null
+    run compose pull "web-$target" worker runner postgres redis prefect-server prefect-services reverse-proxy
 fi
 run compose up -d postgres redis prefect-server prefect-services reverse-proxy
 run compose up -d --no-deps "web-$target"
@@ -80,7 +72,6 @@ if [ "$DRY_RUN" = "0" ]; then
     done
     compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
     compose run --rm --no-deps "web-$target" alembic upgrade head || die "migration gate failed; active slot preserved" 1
-    compose up -d --no-deps "worker-$target" "runner-$target"
     sed "s/web-$current:8000/web-$target:8000/" "$active_config" > "$active_config.next"
     dd if="$active_config.next" of="$active_config" conv=notrunc status=none
     truncate -s "$(wc -c < "$active_config.next")" "$active_config"
@@ -103,13 +94,14 @@ if [ "$DRY_RUN" = "0" ]; then
         switched=0
         die "public health gate failed; proxy rolled back" 1
     }
+    compose up -d --no-deps worker runner
 else
     printf '%s\n' "DRY-RUN health web-$target"
     printf '%s\n' "DRY-RUN shadow web-$target"
     printf '%s\n' "DRY-RUN migration alembic upgrade head"
-    printf '%s\n' "DRY-RUN start worker-$target runner-$target"
     printf '%s\n' "DRY-RUN switch $current to $target"
     printf '%s\n' "DRY-RUN public health and rollback on failure"
+    printf '%s\n' "DRY-RUN restart worker runner"
 fi
 
 trap - EXIT HUP INT TERM

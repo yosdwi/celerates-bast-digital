@@ -133,4 +133,5 @@ def transform_iot_task(value: IoTTaskInput) -> Task:
         close_at.date() if close_at is not None else value.work_date,
         MAX_ACHIEVEMENT,
         RecordOrigin.PIPELINE,
+        value.issue_type.strip() or None,
     )

@@ -64,5 +64,5 @@ compose exec -T reverse-proxy wget -q -O /dev/null "http://127.0.0.1:8080${PUBLI
     compose exec -T reverse-proxy nginx -s reload
     die "rollback health gate failed; original slot restored" 1
 }
-compose stop "web-$current" "worker-$current" "runner-$current"
+compose stop "web-$current"
 printf '%s\n' "rollback complete: $target"

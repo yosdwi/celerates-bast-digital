@@ -27,12 +27,26 @@ from digital_bast.web.errors import (
     SessionUnavailableError,
     WebBackendUnavailableError,
 )
+from digital_bast.web.nocodb_postgres_auth import NocoDBPostgresOwnerAuthenticator
 from digital_bast.web.postgres_backend import PostgresWebBackend
 from digital_bast.web.security import CookieSettings
 from digital_bast.web.sessions import RedisSessionStore
 
 _SERVER_ERROR_STATUS: Final = 500
 _INVALID_CREDENTIAL_STATUS_CODES: Final = frozenset({400, 401, 403})
+_ADMIN_ROLES: Final = frozenset({"owner", "super", "org-level-creator"})
+type NocoDBRoles = str | list[str] | dict[str, bool]
+
+
+def _active_roles(value: NocoDBRoles) -> tuple[str, ...]:
+    match value:
+        case str():
+            roles = value.split(",")
+        case list():
+            roles = value
+        case dict():
+            roles = [role for role, active in value.items() if active]
+    return tuple(role.strip().casefold() for role in roles)
 
 
 class OfficialNocoDBOwnerAuthenticator:
@@ -55,9 +69,8 @@ class OfficialNocoDBOwnerAuthenticator:
             user = _UserResponse.model_validate(me_response.json())
         except (httpx.HTTPError, ValidationError) as error:
             raise AuthenticationUnavailableError from error
-        raw_roles = user.roles.split(",") if isinstance(user.roles, str) else user.roles
-        roles = tuple(role.strip().casefold() for role in raw_roles)
-        if "owner" not in roles:
+        roles = _active_roles(user.roles)
+        if _ADMIN_ROLES.isdisjoint(roles):
             return None
         return AuthenticatedUser(
             id=user.id,
@@ -158,7 +171,12 @@ def production_dependencies() -> WebDependencies:
         )
         sessions = RedisSessionStore(redis_client)
     authenticator: OwnerAuthenticator = UnavailableAuthenticator()
-    if settings.nocodb_base_url is not None:
+    if settings.nocodb_database_dsn is not None and settings.nocodb_base_id is not None:
+        authenticator = NocoDBPostgresOwnerAuthenticator(
+            settings.nocodb_database_dsn.get_secret_value(),
+            settings.nocodb_base_id,
+        )
+    elif settings.nocodb_base_url is not None:
         timeout = httpx.Timeout(
             connect=min(settings.outbound_timeout_seconds, 5.0),
             read=settings.outbound_timeout_seconds,
@@ -206,4 +224,4 @@ class _UserResponse(BaseModel):
 
     id: str
     email: str
-    roles: str | list[str] = Field(default_factory=list)
+    roles: NocoDBRoles = Field(default_factory=list)

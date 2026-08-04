@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol, final
 
+import psycopg
 from anyio.to_thread import run_sync
+from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from digital_bast.domain.identity import canonical_text
@@ -89,6 +91,46 @@ class NocoDBEmployeeSource:
         return parse_employees(records)
 
 
+_SELECT_EMPLOYEES = sql.SQL(
+    """
+    SELECT id, "Employee_ID", "Employee_Name", "Role", "Status"
+    FROM {schema}."Employee Data"
+    WHERE "Employee_Name" IS NOT NULL
+    """
+)
+
+
+@final
+class NocoDBPostgresEmployeeSource:
+    def __init__(self, dsn: str, base_id: str, connect_timeout_seconds: int = 5) -> None:
+        self._dsn = dsn
+        self._base_id = base_id
+        self._connect_timeout_seconds = connect_timeout_seconds
+
+    async def load(self) -> tuple[Employee, ...]:
+        records = await run_sync(self._load)
+        return parse_employees(records)
+
+    def _load(self) -> list[dict[str, JsonValue]]:
+        query = _SELECT_EMPLOYEES.format(schema=sql.Identifier(self._base_id))
+        with (
+            psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
+            connection.cursor() as cursor,
+        ):
+            _ = cursor.execute(query)
+            rows = cursor.fetchall()
+        return [
+            dict(
+                zip(
+                    ("Id", "Employee ID", "Employee Name", "Role", "Status"),
+                    row,
+                    strict=True,
+                )
+            )
+            for row in rows
+        ]
+
+
 _COLUMN_LETTERS: tuple[str, ...] = ("D", "E", "P", "F", "H", "K", "M")
 _DEFAULT_SHEET_NAME = "Master Support Ticket MS"
 _IOT_TEAM_ID = EmployeeId("IOT_TEAM")
@@ -159,6 +201,12 @@ def _parse_datetime(value: str, work_date: date) -> datetime | None:
     return None
 
 
+def _roll_forward(value: datetime | None, start_at: datetime | None) -> datetime | None:
+    if value is None or start_at is None or value >= start_at:
+        return value
+    return value + timedelta(days=1)
+
+
 def _first_column_value(value_range: _ValueRange, row_index: int) -> str:
     if not value_range.values or row_index >= len(value_range.values[0]):
         return ""
@@ -200,6 +248,7 @@ def parse_iot_sheet(
         if not values[6].strip():
             continue
         employee_id, responder = _responder(values[4], employees)
+        start_at = _parse_datetime(values[1], work_date)
         rows.append(
             IoTTaskInput(
                 source_id=(f"{work_date.isoformat()}_{employee_id}_{canonical_text(values[6])}"),
@@ -208,9 +257,9 @@ def parse_iot_sheet(
                 issue_type=values[5],
                 work_date=work_date,
                 first_responder=responder,
-                start_at=_parse_datetime(values[1], work_date),
-                response_at=_parse_datetime(values[3], work_date),
-                close_at=_parse_datetime(values[2], work_date),
+                start_at=start_at,
+                response_at=_roll_forward(_parse_datetime(values[3], work_date), start_at),
+                close_at=_roll_forward(_parse_datetime(values[2], work_date), start_at),
             )
         )
     return tuple(rows)

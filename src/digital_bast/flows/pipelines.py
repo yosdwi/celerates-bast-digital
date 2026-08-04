@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from prefect import flow, task
+from prefect.cache_policies import NO_CACHE
 
 from digital_bast.domain.time import JAKARTA
 from digital_bast.flows.models import Operation, Period, RunSummary, StepSummary
@@ -18,12 +19,13 @@ _OPERATIONAL: tuple[Operation, ...] = (
     Operation.IOT_TASK_IMPORT,
 )
 _REFERENCES: tuple[Operation, ...] = (Operation.HOLIDAY_SYNC, Operation.SCHEDULE_SYNC)
+_SYNC_LOOKBACK_MONTHS: Final = 1
 
 
 def current_period(context: RunContext | None = None) -> Period:
     now = context.now() if context is not None else datetime.now(JAKARTA)
     local = now.astimezone(JAKARTA)
-    return Period(year=local.year, month=local.month)
+    return Period(year=local.year, month=local.month, lookback_months=_SYNC_LOOKBACK_MONTHS)
 
 
 def resolve_period(value: str | None, context: RunContext) -> Period:
@@ -41,7 +43,12 @@ async def execute_pipeline(
     return RunSummary(flow=name, period=period, steps=steps)
 
 
-@task(name="idempotent-business-operation", retries=2, retry_delay_seconds=[5, 30])
+@task(
+    name="idempotent-business-operation",
+    retries=2,
+    retry_delay_seconds=[5, 30],
+    cache_policy=NO_CACHE,
+)
 async def idempotent_operation(
     context: RunContext,
     operation: Operation,
@@ -50,7 +57,7 @@ async def idempotent_operation(
     return await context.execute(operation, period)
 
 
-@task(name="single-attempt-business-operation", retries=0)
+@task(name="single-attempt-business-operation", retries=0, cache_policy=NO_CACHE)
 async def single_attempt_operation(
     context: RunContext,
     operation: Operation,

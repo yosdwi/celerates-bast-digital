@@ -61,3 +61,27 @@ def test_google_sheet_columns_are_parsed_and_matched_to_employee() -> None:
     assert rows[0].start_at is not None
     assert rows[0].start_at.isoformat() == "2026-08-03T01:02:00+07:00"
     assert rows[0].close_at is None
+
+
+def test_response_and_close_times_roll_forward_past_midnight() -> None:
+    payload = {
+        "valueRanges": [
+            {"values": [["Date", "2026/08/03"]]},
+            {"values": [["Start Time", "23:59"]]},
+            {"values": [["Close Time", "23:59"]]},
+            {"values": [["Response Time", "0:00"]]},
+            {"values": [["First Responder", "IOT_TEAM"]]},
+            {"values": [["Issue Type", "Request HO"]]},
+            {"values": [["Issue Description", "Pengecekan vlog Critical"]]},
+        ]
+    }
+
+    rows = parse_iot_sheet(payload, Period.parse("2026-08"), employees=())
+
+    assert len(rows) == 1
+    assert rows[0].start_at is not None
+    assert rows[0].start_at.isoformat() == "2026-08-03T23:59:00+07:00"
+    assert rows[0].response_at is not None
+    assert rows[0].response_at.isoformat() == "2026-08-04T00:00:00+07:00"
+    assert rows[0].close_at is not None
+    assert rows[0].close_at.isoformat() == "2026-08-03T23:59:00+07:00"

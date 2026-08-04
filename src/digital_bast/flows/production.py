@@ -21,14 +21,14 @@ from digital_bast.flows.production_operations import (
 from digital_bast.infrastructure.google_api import GoogleApiSheetBatchReader
 from digital_bast.infrastructure.healthcheck import PostgresHealthcheck
 from digital_bast.infrastructure.legacy_pic import LegacyIoTPicUpdater
-from digital_bast.infrastructure.nocodb import NocoDBClient, create_http_client
+from digital_bast.infrastructure.nocodb_repository import NocoDBDomainRepository
 from digital_bast.infrastructure.production_sources import (
+    EmployeeSource,
     GoogleIoTTaskSource,
-    NocoDBEmployeeSource,
+    NocoDBPostgresEmployeeSource,
 )
 from digital_bast.infrastructure.repositories import (
     PostgresCursorStore,
-    PostgresDomainRepository,
     PostgresStoredProcedureAdapter,
 )
 
@@ -150,18 +150,12 @@ def create_run_context() -> ProductionRunContext:
             Operation.HOLIDAY_SYNC,
             "APP_DATABASE_DSN",
         )
-    legacy_database_dsn = settings.legacy_database_dsn
-    if legacy_database_dsn is None:
+    nocodb_database_dsn = settings.nocodb_database_dsn
+    nocodb_base_id = settings.nocodb_base_id
+    if nocodb_database_dsn is None or nocodb_base_id is None:
         raise ProductionOperationUnavailableError(
-            Operation.IOT_PIC_UPDATE,
-            "LEGACY_DATABASE_DSN",
-        )
-    nocodb_base_url = settings.nocodb_base_url
-    nocodb_token = settings.nocodb_token
-    if nocodb_base_url is None or nocodb_token is None:
-        raise ProductionOperationUnavailableError(
-            Operation.IOT_TASK_IMPORT,
-            "NOCODB_BASE_URL and NOCODB_TOKEN",
+            Operation.HOLIDAY_SYNC,
+            "NOCODB_DATABASE_DSN and NOCODB_BASE_ID",
         )
     google_credentials = settings.google_application_credentials
     if google_credentials is None:
@@ -170,17 +164,19 @@ def create_run_context() -> ProductionRunContext:
             "GOOGLE_APPLICATION_CREDENTIALS",
         )
     dsn = database_dsn.get_secret_value()
-    repository = PostgresDomainRepository(dsn)
+    repository = NocoDBDomainRepository(
+        nocodb_database_dsn.get_secret_value(),
+        nocodb_base_id,
+    )
     pipeline = PipelineService(
         repository,
         PostgresCursorStore(dsn),
         PostgresStoredProcedureAdapter(PostgresHealthcheck(dsn)),
     )
-    nocodb = NocoDBClient(
-        create_http_client(str(nocodb_base_url), settings.outbound_timeout_seconds),
-        nocodb_token.get_secret_value(),
+    employees: EmployeeSource = NocoDBPostgresEmployeeSource(
+        nocodb_database_dsn.get_secret_value(),
+        nocodb_base_id,
     )
-    employees = NocoDBEmployeeSource(nocodb, settings.nocodb_employee_table_id)
     iot_source = GoogleIoTTaskSource(
         GoogleApiSheetBatchReader(google_credentials),
         settings.google_iot_spreadsheet_id,
@@ -203,7 +199,7 @@ def create_run_context() -> ProductionRunContext:
             ),
         ),
         Operation.IOT_PIC_UPDATE: IoTPicUpdateOperation(
-            LegacyIoTPicUpdater(legacy_database_dsn.get_secret_value()),
+            LegacyIoTPicUpdater(nocodb_database_dsn.get_secret_value()),
         ),
     }
     return ProductionRunContext(

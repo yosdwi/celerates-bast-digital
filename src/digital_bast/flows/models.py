@@ -24,6 +24,7 @@ class InvalidPeriodError(ValueError):
 class Period:
     year: int
     month: int
+    lookback_months: int = 0
 
     @classmethod
     def parse(cls, value: str) -> Self:
@@ -38,7 +39,11 @@ class Period:
 
     @property
     def start(self) -> date:
-        return date(self.year, self.month, 1)
+        year, month = self.year, self.month - self.lookback_months
+        while month < 1:
+            month += _MAX_MONTH
+            year -= 1
+        return date(year, month, 1)
 
     @property
     def end(self) -> date:

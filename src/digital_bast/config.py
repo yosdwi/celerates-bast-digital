@@ -13,7 +13,6 @@ _CREDENTIAL_FILE_PERMISSIONS: Final = "secret file permissions too broad"
 _CREDENTIAL_FILE_UNREADABLE: Final = "secret file unreadable"
 _CREDENTIAL_FILE_EMPTY: Final = "secret file empty"
 _MISSING_CREDENTIALS: Final = "missing production secrets"
-_INVALID_URL: Final = "invalid production URL"
 _MISSING_FILE: Final = "missing production file"
 _WEAK_SESSION_KEY: Final = "weak production secret"
 _MISSING_REDIS_AUTH: Final = "missing Redis authentication"
@@ -125,6 +124,15 @@ class Settings(BaseSettings):
         min_length=1,
         validation_alias="NOCODB_EMPLOYEE_TABLE_ID",
     )
+    nocodb_database_dsn: SecretStr | None = Field(
+        default=None,
+        validation_alias="NOCODB_DATABASE_DSN",
+    )
+    nocodb_database_dsn_file: FilePath | None = Field(
+        default=None,
+        validation_alias="NOCODB_DATABASE_DSN_FILE",
+    )
+    nocodb_base_id: str | None = Field(default=None, validation_alias="NOCODB_BASE_ID")
     google_application_credentials: FilePath | None = Field(
         default=None,
         validation_alias="GOOGLE_APPLICATION_CREDENTIALS",
@@ -199,6 +207,11 @@ class Settings(BaseSettings):
             "redis_password",
         )
         self.nocodb_token = _read_secret(self.nocodb_token, self.nocodb_token_file, "nocodb_token")
+        self.nocodb_database_dsn = _read_secret(
+            self.nocodb_database_dsn,
+            self.nocodb_database_dsn_file,
+            "nocodb_database_dsn",
+        )
         self.sqlserver_connection_string = _read_secret(
             self.sqlserver_connection_string,
             self.sqlserver_connection_string_file,
@@ -216,14 +229,14 @@ class Settings(BaseSettings):
             ("prefect_api_auth_string", self.prefect_api_auth_string),
             ("prefect_database_dsn", self.prefect_database_dsn),
             ("redis_url", self.redis_url),
-            ("nocodb_token", self.nocodb_token),
             ("sqlserver_connection_string", self.sqlserver_connection_string),
+            ("nocodb_database_dsn", self.nocodb_database_dsn),
         )
         missing = ", ".join(name for name, value in secrets if value is None)
         if missing:
             raise SettingsConfigurationError(_MISSING_CREDENTIALS, missing)
-        if self.nocodb_base_url is None or self.nocodb_base_url.scheme != "https":
-            raise SettingsConfigurationError(_INVALID_URL, "NOCODB_BASE_URL")
+        if self.nocodb_base_id is None:
+            raise SettingsConfigurationError(_MISSING_CREDENTIALS, "nocodb_base_id")
         credentials = self.google_application_credentials
         if credentials is None or not credentials.is_file():
             raise SettingsConfigurationError(
