@@ -1,0 +1,108 @@
+scenario=lean-verifier defect confirmation
+local_matches
+compose.yaml:25:    DIGITAL_BAST_RUN_CONTEXT_FACTORY: digital_bast.flows.production:create_run_context
+compose.yaml:26:    DIGITAL_BAST_DISABLED_OPERATIONS: attendance-import,redmine-import
+scripts/retention.sh:27:delete from generated_plans where created_at < now() - interval '30 days';
+migrations/versions/20260803_0001_durable_state.py:59:        CREATE TABLE generation_plans (
+migrations/versions/20260803_0001_durable_state.py:70:        CREATE INDEX ix_generation_plans_retention ON generation_plans (retention_until);
+migrations/versions/20260803_0001_durable_state.py:87:        DROP TABLE generation_plans;
+src/digital_bast/web/postgres_backend.py:231:                    "SELECT id, plan FROM generation_plans WHERE id = %s",
+src/digital_bast/web/postgres_sql.py:53:    INSERT INTO generation_plans (id, owner_id, status, plan, retention_until)
+src/digital_bast/web/postgres_sql.py:58:    UPDATE generation_plans
+src/digital_bast/infrastructure/postgres.py:181:                    INSERT INTO generation_plans (
+src/digital_bast/infrastructure/postgres.py:214:                    "DELETE FROM generation_plans WHERE retention_until <= %s",
+src/digital_bast/flows/__init__.py:21:    create_run_context,
+src/digital_bast/flows/__init__.py:43:    "create_run_context",
+src/digital_bast/flows/models.py:53:    ATTENDANCE_IMPORT = "attendance-import"
+src/digital_bast/flows/models.py:54:    REDMINE_IMPORT = "redmine-import"
+src/digital_bast/flows/production.py:145:def create_run_context() -> ProductionRunContext:
+src/digital_bast/flows/production.py:210:        disabled_operations(os.getenv("DIGITAL_BAST_DISABLED_OPERATIONS")),
+local_check_ops
+error while interpolating x-app.group_add.[]: required variable SECRETS_GID is missing a value: SECRETS_GID is required
+local_check_ops_exit=1
+remote_matches
+compose.yaml:25:    DIGITAL_BAST_RUN_CONTEXT_FACTORY: digital_bast.flows.production:create_run_context
+compose.yaml:26:    DIGITAL_BAST_DISABLED_OPERATIONS: attendance-import,redmine-import
+scripts/retention.sh:27:delete from generated_plans where created_at < now() - interval '30 days';
+src/digital_bast/infrastructure/postgres.py:181:                    INSERT INTO generation_plans (
+src/digital_bast/infrastructure/postgres.py:214:                    "DELETE FROM generation_plans WHERE retention_until <= %s",
+src/digital_bast/flows/__init__.py:21:    create_run_context,
+src/digital_bast/flows/__init__.py:43:    "create_run_context",
+src/digital_bast/flows/production.py:140:def create_run_context() -> ProductionRunContext:
+src/digital_bast/flows/production.py:155:        disabled_operations(os.getenv("DIGITAL_BAST_DISABLED_OPERATIONS")),
+src/digital_bast/flows/models.py:53:    ATTENDANCE_IMPORT = "attendance-import"
+src/digital_bast/flows/models.py:54:    REDMINE_IMPORT = "redmine-import"
+src/digital_bast/web/postgres_backend.py:231:                    "SELECT id, plan FROM generation_plans WHERE id = %s",
+src/digital_bast/web/postgres_sql.py:53:    INSERT INTO generation_plans (id, owner_id, status, plan, retention_until)
+src/digital_bast/web/postgres_sql.py:58:    UPDATE generation_plans
+migrations/versions/20260803_0001_durable_state.py:59:        CREATE TABLE generation_plans (
+migrations/versions/20260803_0001_durable_state.py:70:        CREATE INDEX ix_generation_plans_retention ON generation_plans (retention_until);
+migrations/versions/20260803_0001_durable_state.py:87:        DROP TABLE generation_plans;
+remote_check_ops
+operations static checks passed
+remote_check_ops_exit=0
+scripts/check-ops.sh: 14: rg: not found
+capture_exit_local=0 remote_transport=0
+local_check_ops_with_required_nonsecret_env
+./scripts/postgres-init.sh:8:    --set app_password="$app_password" --set prefect_password="$prefect_password" <<'SQL'
+possible embedded secret detected
+exit=1
+remote_production_context_excerpt
+                raise ProductionOperationUnavailableError(operation, _OPERATION_GAPS[operation])
+def disabled_operations(value: str | None) -> frozenset[Operation]:
+    if value is None or not value.strip():
+        return frozenset()
+    try:
+        return frozenset(Operation(item.strip()) for item in value.split(","))
+    except ValueError as error:
+        raise DisabledOperationsConfigurationError(value) from error
+
+
+def create_run_context() -> ProductionRunContext:
+    settings = get_settings()
+    database_dsn = settings.database_dsn
+    if database_dsn is None:
+        raise ProductionOperationUnavailableError(
+            Operation.HOLIDAY_SYNC,
+            "APP_DATABASE_DSN",
+        )
+    dsn = database_dsn.get_secret_value()
+    pipeline = PipelineService(
+        PostgresDomainRepository(dsn),
+        PostgresCursorStore(dsn),
+        PostgresStoredProcedureAdapter(PostgresHealthcheck(dsn)),
+    )
+    return ProductionRunContext(
+        disabled_operations(os.getenv("DIGITAL_BAST_DISABLED_OPERATIONS")),
+        HolidaySyncOperation(IndonesiaHolidaySource(), pipeline),
+    )
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+. "$SCRIPT_DIR/lib.sh"
+
+DRY_RUN=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --dry-run) DRY_RUN=1 ;;
+        *) die "unsupported argument: $1" 64 ;;
+    esac
+    shift
+done
+
+cd "$PROJECT_DIR"
+if [ "$DRY_RUN" = "1" ]; then
+    printf '%s\n' "DRY-RUN delete NocoDB audit snapshots older than 30 days"
+    printf '%s\n' "DRY-RUN delete generated plans older than 30 days"
+    exit 0
+fi
+
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-digital_bast}" -d "${POSTGRES_DB:-digital_bast}" <<'SQL'
+begin;
+delete from nocodb_audit_events where created_at < now() - interval '30 days';
+delete from generated_plans where created_at < now() - interval '30 days';
+commit;
+SQL
+printf '%s\n' "retention complete"

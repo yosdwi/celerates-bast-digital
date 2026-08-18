@@ -1,0 +1,31 @@
+SCENARIO shell syntax: sh -n all owned operational scripts
+RESULT PASS shell syntax
+SCENARIO Compose default config with dummy secret files and required env
+RESULT PASS Compose default config
+SCENARIO Compose structural assertions
+RESULT PASS runners, legacy DSN, loopback Prefect port, external network
+SCENARIO Compose custom port and local override
+RESULT PASS custom port/local override
+SCENARIO preflight dry-run with every required secret present mode 0640
+preflight passed
+RESULT PASS preflight dry-run
+SCENARIO entrypoint loads legacy DSN from file and unsets file variable
+RESULT PASS entrypoint secret load
+SCENARIO deployment dry-run with runner lifecycle
+DRY-RUN compose pull web-green worker-green runner-green
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+RESULT PASS deploy dry-run
+SCENARIO adversarial ops test with SECRETS_GID explicitly set
+adversarial checks passed
+RESULT PASS adversarial ops test
+SCENARIO static docs/env/source assertions
+RESULT PASS static docs/env/source assertions
+EVIDENCE_NONEMPTY=PASS

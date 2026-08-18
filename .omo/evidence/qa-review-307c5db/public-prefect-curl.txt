@@ -1,0 +1,144 @@
+=== curl -i root ===
+HTTP/2 200 
+date: Mon, 03 Aug 2026 08:03:19 GMT
+content-type: text/html; charset=utf-8
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=cUxTzljHY4%2FYXCDAn7O6a8aYP7wWP3WAVfEhgkaz1ZWS%2FmtM8nCmwLS3umiZ2sYsIdscXo894oWtsEgQ8q8opHE5%2BitA8ARGnLzilQhk7TeNGimhMuUkLH892HNQ0PzFt3t%2FKfIDbE8mrp6KbuR2hiqmUz4xNx6w"}]}
+last-modified: Mon, 03 Aug 2026 07:53:21 GMT
+server: cloudflare
+vary: Accept-Encoding
+cf-cache-status: DYNAMIC
+cf-ray: a253ce177b22c50c-SIN
+alt-svc: h3=":443"; ma=86400
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/v2/ico/apple-touch-icon.png"> 
+    <link rel="icon" id="favicon-32" type="image/png" sizes="32x32" href="/v2/ico/favicon-32x32.png" media="(prefers-color-scheme:light)">
+    <link rel="icon" id="favicon-16" type="image/png" sizes="16x16" href="/v2/ico/favicon-16x16.png" media="(prefers-color-scheme:light)">
+
+    <link rel="icon" id="favicon-32-dark" type="image/png" sizes="32x32" href="/v2/ico/favicon-32x32-dark.png" media="(prefers-color-scheme:dark)">
+    <link rel="icon" id="favicon-16-dark" type="image/png" sizes="16x16" href="/v2/ico/favicon-16x16-dark.png" media="(prefers-color-scheme:dark)">
+    
+    <link rel="icon" href="/favicon.ico" media="(prefers-color-scheme:no-preference)">
+    <link rel="icon" href="/favicon.ico" media="(prefers-color-scheme:light)">
+    <link rel="icon" href="/favicon-dark.ico" media="(prefers-color-scheme:dark)">
+
+    <link rel="manifest" href="/v2/ico/site.webmanifest">
+    <link rel="mask-icon" href="/v2/ico/safari-pinned-tab.svg" color="#5bbad5">
+    
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prefect Server</title>
+    <script type="module" crossorigin src="/v2/assets/index-ISQqwokJ.js"></script>
+    <link rel="modulepreload" crossorigin href="/v2/assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-codemirror-CMDsGve6.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-date-DgGZn0Sj.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-radix-D-HT64i6.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-react-Dt_ryG-s.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-mermaid-CPSBHl6F.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-pixi-B3Q6Cc3R.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-recharts-Bx-m4KIE.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-tanstack-CNLspteU.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/error-utils-CRZTwdQh.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/ui-settings-CJ2nhIH2.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/service-D2RTNHJv.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/admin-CTOx9Kxq.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/dist-BCIe-nwr.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/button-CktkJTd2.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/utils-BnzCgmVg.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/use-debounce-B30wRilm.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/input-D3b_84L4.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/skeleton-nKtc1hhN.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/tooltip-CRxab4tL.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/card-DJPJ4IPB.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/vendor-forms-BRYEVT_a.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/checkbox-CrXGImte.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/dialog-Bw29milh.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/label-BZtCC8L4.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/form-B4PbvkPm.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/textarea-uLV_Klvf.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/use-local-storage-DNkz4lhn.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/dist-DWRWlWKs.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/loading-C28shx_d.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/deployments-Bji6lGkc.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/flow-runs-BHg5ubnz.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/flows-CjU6DnU2.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/task-runs-0H71s3W3.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/work-pool-queues-DpfITA1n.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/work-pools-PnymAf82.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/work-pools-DQ9L89hP.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/badge-DzTiXDhN.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/state-badge-Kw10VIf-.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/tag-badge-BS8oIE-_.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/tag-badge-group-DRvmfcbU.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/select-v9JOmQ3I.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/humanize-duration-3NT83dy_.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/breadcrumb-T8GxNajP.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/json-input-lazy-BhSxPjmg.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/pagination-BsssknoG.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/popover-DbRRl4Zx.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/combobox-De-gSrxX.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/scroll-area-w17fZI-A.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/date-time-picker-CadrmGgq.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/date-range-select-9sGzTVnO.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/dropdown-menu-BQh6a3XE.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/delete-confirmation-dialog-DMMSlS19.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/flow-runs-list-Dmz64jAg.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/flow-icon-text-D9Peogzy.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/formatted-date-6eU85Og5.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/tabs-Dc-rL82N.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/switch-C-mDb66g.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/artifacts-BKTQ6i-6.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/automations-CiqGhQW9.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/automations-CQ50zTNJ.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/events-FxkXJF0g.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/events-BKa7Th0b.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/block-documents-Cj42kmpE.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/block-types-BLo4BuC7.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/task-run-concurrency-limits-BlDDbe6s.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/sort-filter.constants-BBQ2oQb-.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/task-runs-list-lP6cjIMl.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/task-run-sort-filter.constants-CK5fxEqo.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/variables-TbDTL7uH.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/work-queues-B7ZMMJKR.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/logs-CNNki8r1.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/flow-run._id-C8N9ez1Y.js">
+    <link rel="modulepreload" crossorigin href="/v2/assets/block-schemas-COwAqkAR.js">
+    <link rel="stylesheet" crossorigin href="/v2/assets/index-C-boUXjK.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
+=== curl -i health ===
+HTTP/2 200 
+date: Mon, 03 Aug 2026 08:03:20 GMT
+content-type: application/json
+content-length: 4
+server: cloudflare
+cf-cache-status: DYNAMIC
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=9jlUVfKUkNirsro3lGEhrjCRBw33%2Bi9zpkaI6auibHH%2FS1R1%2BXYIXXJrsuQYVDv4sj8ZsvrTRl0W4jRVWZnlPmksAGyrX1hGNk5O3h3wZ1GwqQXyZQTYZoxRZvHFKDUYigc8BIbJlgdzSxxf5F5UsjovSPegjIKN"}]}
+cf-ray: a253ce1db9767a47-SIN
+alt-svc: h3=":443"; ma=86400
+
+true
+=== curl -i protected deployment filter (unauthenticated POST) ===
+HTTP/2 401 
+date: Mon, 03 Aug 2026 08:03:21 GMT
+content-type: application/json
+content-length: 36
+server: cloudflare
+cf-cache-status: DYNAMIC
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=8T0Iag5pu0PMrsmgG7l5VK33I9%2BXLnbrGz2YyRyq%2BjuNnbblnIh%2F4lSbHPCZ7nH9SNpdR0lGgk3T1BaZ16S7sNcFFHpeOwtxIKWuJ88uUqLHgyz6r4iGLEX86g%2B3eeWOTWwtOI%2Fh8jzaOxnSPUZ%2BfF59%2Bf1SpZSs"}]}
+cf-ray: a253ce23fefe8998-SIN
+alt-svc: h3=":443"; ma=86400
+
+{"exception_message":"Unauthorized"}

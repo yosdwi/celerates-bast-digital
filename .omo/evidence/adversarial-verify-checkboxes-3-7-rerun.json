@@ -1,0 +1,74 @@
+{
+  "purpose": "Stop-hook independent rerun; read-only, no services/builds/full tests started",
+  "invocations_and_observables": {
+    "identity": {
+      "invocation": "git rev-parse HEAD; git status --porcelain=v2 --untracked-files=all | sed -n '1,12p'",
+      "output": "HEAD=f3741d18b009c3aae872a2986288cc439e01fbea; status begins ? .dockerignore, ? .env.example, ? .github/workflows/ci.yml, ? .omo/evidence/adversarial-verify-checkboxes-3-7.json",
+      "judgment": "dirty_worktree confirmed; product/evidence remain uncommitted"
+    },
+    "static_gap_probe": {
+      "invocation": "rg -n 'DIGITAL_BAST_DISABLED_OPERATIONS|class SqlServerAttendanceSource|class SqlServerRedmineSource|nocodb_audit_events|generated_plans|generation_plans' compose.yaml src/digital_bast/flows/production.py src/digital_bast/infrastructure/sqlserver.py scripts/retention.sh migrations/versions/20260803_0001_durable_state.py",
+      "output": "compose.yaml:26 DIGITAL_BAST_DISABLED_OPERATIONS: attendance-import,redmine-import; sqlserver.py:137/164 source classes; retention.sh:26/27 deletes nocodb_audit_events/generated_plans; migration creates generation_plans at 59",
+      "judgment": "SQL Server operations remain disabled/unwired and retention table names remain inconsistent"
+    },
+    "shell_syntax": {
+      "invocation": "for f in scripts/*.sh tests/ops/*.sh; do sh -n \"$f\"; done",
+      "output": "no output; all scripts parsed successfully",
+      "judgment": "confirmed"
+    },
+    "check_ops": {
+      "invocation": "SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local timeout 30s scripts/check-ops.sh",
+      "output": "./scripts/postgres-init.sh:8: --set app_password=\"$app_password\" --set prefect_password=\"$prefect_password\"; possible embedded secret detected; CHECK_OPS_STATUS=1",
+      "judgment": "CI-required check fails; no success claim accepted"
+    },
+    "image_and_services": {
+      "invocation": "docker image inspect digital-bast:v2-e2e-final --format 'IMAGE={{.Id}} CREATED={{.Created}} USER={{.Config.User}}'; SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local docker compose ps --all",
+      "output": "IMAGE=sha256:bdefadd5851b64a7ce3b4ce3c0c1f11126d2d0b3c0dcdfe87335b162089a3a1e CREATED=2026-08-03T12:28:29.798153119+07:00 USER=10001:10001; compose ps has header only and no rows",
+      "judgment": "alternate local image exists; local Compose project has no services"
+    },
+    "evidence_json": {
+      "invocation": ".venv/bin/python -m json.tool .omo/evidence/adversarial-verify-checkboxes-3-7.json",
+      "output": "JSON_STATUS=0",
+      "judgment": "prior evidence artifact is syntactically valid and nonempty"
+    }
+  },
+  "remote_artifact_crosscheck": {
+    "artifacts": [
+      ".omo/evidence/deployment/01-remote-inventory.txt",
+      ".omo/evidence/deployment/02-deployment-state.txt",
+      ".omo/evidence/deployment/03-preflight-exit.txt",
+      ".omo/evidence/deployment/03-preflight-output.txt",
+      ".omo/evidence/deployment/04-defect-confirmation.txt",
+      ".omo/evidence/deployment/05-live-health-prefect.txt"
+    ],
+    "observables": [
+      "Remote inventory reports v2-verify web/Prefect/Postgres/Redis/reverse-proxy containers healthy, but remote preflight exits 70 because root disk is below 150GB.",
+      "Remote live web checks report /health/live=200, /health/ready=200, /login=200, root=303; Prefect 127.0.0.1:4200 checks fail with curl exit 7.",
+      "Remote check-ops reports operations static checks passed only because rg is missing (explicit `scripts/check-ops.sh:14: rg: not found`); this is misleading_success_output, not a valid gate.",
+      "Remote files differ from the current checkout (for example compose 7863 bytes vs local 8374 and deploy 3840 vs local 3973), and remote production_context excerpt only wires HolidaySyncOperation."
+    ]
+  },
+  "verdicts": {
+    "3": {
+      "verdict": "needs-human-review",
+      "basis": "Static adapters/tests and fake Google artifacts exist, but no SQL Server test/live artifact, no persisted live Google/NocoDB row-count artifact, and no captured migration success transcript."
+    },
+    "4": {
+      "verdict": "confirmed",
+      "basis": "Source-focused web tests plus remote live /health/live, /health/ready, /login, and redirect observables corroborate implementation; Prefect failure is separate."
+    },
+    "5": {
+      "verdict": "needs-fix",
+      "basis": "Local Compose disables attendance/redmine and create_run_context lacks their operation wiring; remote excerpt confirms only HolidaySyncOperation is wired."
+    },
+    "6": {
+      "verdict": "needs-fix",
+      "basis": "check-ops exits 1 locally; remote pass is invalid because rg is unavailable; retention targets tables absent from migration; remote preflight exits 70."
+    },
+    "7": {
+      "verdict": "needs-human-review",
+      "basis": "Test tree and domain 18-pass artifact exist, but no persisted full '71 passed' transcript, integration DSN run, SQL Server tests, or valid external Prefect E2E artifact."
+    }
+  },
+  "delivery_gap": "HEAD is still the initial README commit and all product/evidence files are untracked; remote runtime is a different/stale tree and must not be treated as delivery of this checkout."
+}

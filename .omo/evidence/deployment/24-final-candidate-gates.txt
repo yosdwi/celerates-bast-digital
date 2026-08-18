@@ -1,0 +1,20 @@
+preflight passed
+preflight_exit=0
+operations static checks passed
+check_ops_exit=0
+preflight passed
+using local app image: digital-bast:v2-d75fcfc7f167
+DRY-RUN compose pull postgres redis reverse-proxy
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+deploy_dry_exit=0
+final_image_id=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637 size=119750874
+final_source_sha256=d75fcfc7f1676d6aa95c4e7f93fd96363e5a22dd17ceb6077b69098225df06d9
+transport_exit=0

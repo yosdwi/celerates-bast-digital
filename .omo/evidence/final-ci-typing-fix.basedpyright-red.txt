@@ -1,0 +1,26 @@
+/mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:6 - error: Stub file not found for "holidays" (reportMissingTypeStubs)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:22 - error: "country_holidays" is unknown import symbol (reportAttributeAccessIssue)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:22 - error: Type of "country_holidays" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:92:9 - error: Type of "calendar" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:35 - error: Argument type is unknown
+    Argument corresponds to parameter "work_date" in function "__init__" (reportUnknownArgumentType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:46 - error: Argument type is unknown
+    Argument corresponds to parameter "name" in function "__init__" (reportUnknownArgumentType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:56 - error: Type of "work_date" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:67 - error: Type of "name" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:75 - error: Type of "items" is unknown (reportUnknownMemberType)
+9 errors, 0 warnings, 0 notes
+/mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:6 - error: Stub file not found for "holidays" (reportMissingTypeStubs)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:22 - error: "country_holidays" is unknown import symbol (reportAttributeAccessIssue)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:7:22 - error: Type of "country_holidays" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:92:9 - error: Type of "calendar" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:35 - error: Argument type is unknown
+    Argument corresponds to parameter "work_date" in function "__init__" (reportUnknownArgumentType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:46 - error: Argument type is unknown
+    Argument corresponds to parameter "name" in function "__init__" (reportUnknownArgumentType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:56 - error: Type of "work_date" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:67 - error: Type of "name" is unknown (reportUnknownVariableType)
+  /mnt/d/Github/celerates/digital-bast/v2-prod/src/digital_bast/flows/production.py:93:75 - error: Type of "items" is unknown (reportUnknownMemberType)
+9 errors, 0 warnings, 0 notes

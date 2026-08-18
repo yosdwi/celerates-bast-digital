@@ -1,0 +1,17 @@
+postfix_public_api
+/ status=200 redirect=
+/api/health status=200 redirect=
+/api/deployments/filter noauth status=401
+/api/deployments/filter auth status=200
+deployment_count=5
+deployment=iot-pic-update active_schedules=1
+deployment=monthly-timesheets active_schedules=1
+deployment=nightly-reconciliation active_schedules=1
+deployment=operational-import active_schedules=1
+deployment=reference-data active_schedules=1
+exit=0
+runtime_ui_api_url=https://conform-v2-stagging.celeratesapps.com/api
+prefect_server_status=running health=healthy
+slot=blue status=running health=healthy image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+slot=green status=running health=healthy image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+remote_exit=0

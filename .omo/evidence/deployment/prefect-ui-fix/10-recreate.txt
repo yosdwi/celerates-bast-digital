@@ -1,0 +1,14 @@
+before blue=a5137c8c5c825af252bd5bdb066c9adda782a5c5640a741c19b9cc12d0aadb2d green=f3481f615f1886a466cb77d02a55e1b729ed0b8ee5a8f2dfd7013a6b10377c8a postgres=4fd1f93291b24998984e857d2bee2651670dd1ae73c7539acb3ef1ae2f771f5e
+ Container digital-bast-v2-prefect-server-1 Recreate 
+ Container digital-bast-v2-prefect-server-1 Recreated 
+ Container digital-bast-v2-prefect-server-1 Starting 
+ Container digital-bast-v2-prefect-server-1 Started 
+ Container digital-bast-v2-prefect-services-1 Recreate 
+ Container digital-bast-v2-prefect-services-1 Recreated 
+after blue=a5137c8c5c825af252bd5bdb066c9adda782a5c5640a741c19b9cc12d0aadb2d green=f3481f615f1886a466cb77d02a55e1b729ed0b8ee5a8f2dfd7013a6b10377c8a postgres=4fd1f93291b24998984e857d2bee2651670dd1ae73c7539acb3ef1ae2f771f5e
+ Container digital-bast-v2-prefect-services-1 Starting 
+ Container digital-bast-v2-prefect-services-1 Started 
+prefect_server=2ccef9b24db0a114f55c71ef257c13a9a067d905fe8283b15ab37853e9ac9d00 status=running health=healthy image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+prefect_services=a987ab3b7b48217b33312accc8f8d9535e5a1460362501b65045b408d80c9603 status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+unrelated_containers_unchanged=yes
+exit=0

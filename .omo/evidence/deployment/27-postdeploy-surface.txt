@@ -1,0 +1,28 @@
+active_slot
+web-green:8000
+slot_state
+slot=blue container=/digital-bast-v2-web-blue-1 status=running health=healthy image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+slot=green container=/digital-bast-v2-web-green-1 status=running health=healthy image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+service_state
+postgres|running|postgres:17.6-bookworm
+prefect-server|running|digital-bast:v2-d75fcfc7f167
+prefect-services|running|digital-bast:v2-d75fcfc7f167
+redis|running|redis:7.4.0-alpine
+reverse-proxy|running|nginx:1.27.1-alpine
+runner-green|running|digital-bast:v2-d75fcfc7f167
+web-blue|running|digital-bast:v2-verify
+web-green|running|digital-bast:v2-d75fcfc7f167
+worker-blue|running|digital-bast:v2-verify
+worker-green|running|digital-bast:v2-d75fcfc7f167
+web_checks
+GET /health/live status=200 type=application/json redirect=
+GET /health/ready status=200 type=application/json redirect=
+GET /login status=200 type=text/html; charset=utf-8 redirect=
+GET / status=303 type=application/json redirect=http://127.0.0.1:8080/admin/login
+POST /api/generate/plan unauth status=401 type=application/json
+prefect_host_checks
+noauth_api_health status=200
+auth_api_health status=200 type=application/json
+noauth_ui status=200
+auth_ui status=200 type=text/html; charset=utf-8
+exit=0

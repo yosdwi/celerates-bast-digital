@@ -1,0 +1,12 @@
+web_checks
+GET /health/live status=200 type=application/json redirect=
+GET /health/ready status=200 type=application/json redirect=
+GET /login status=200 type=text/html; charset=utf-8 redirect=
+GET / status=303 type=application/json redirect=http://127.0.0.1:8080/admin/login
+POST /api/generate/plan status=422 type=application/json redirect=
+prefect_checks
+noauth_api_health status=000
+curl: (7) Failed to connect to 127.0.0.1 port 4200 after 0 ms: Could not connect to server
+cauth_api_health status=000 type=
+url: (7) Failed to connect to 127.0.0.1 port 4200 after 0 ms: Could not connect to server
+exit=7

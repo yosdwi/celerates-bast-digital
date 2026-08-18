@@ -1,0 +1,79 @@
+PYI044 [*] `from __future__ import annotations` has no effect in stub files, since type checkers automatically treat stubs as having those semantics
+ --> typings/googleapiclient/discovery.pyi:1:1
+  |
+1 | from __future__ import annotations
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 |
+3 | from collections.abc import Sequence
+  |
+help: Remove `from __future__ import annotations`
+  |
+  - from __future__ import annotations
+1 |
+  |
+
+N802 Function name `batchGet` should be lowercase
+  --> typings/googleapiclient/discovery.pyi:18:9
+   |
+17 | class ValuesResource(Protocol):
+18 |     def batchGet(
+   |         ^^^^^^^^
+19 |         self,
+20 |         *,
+   |
+help: Consider adding `@typing.override` if this method overrides a method from a superclass
+
+N803 Argument name `spreadsheetId` should be lowercase
+  --> typings/googleapiclient/discovery.pyi:21:9
+   |
+19 |         self,
+20 |         *,
+21 |         spreadsheetId: str,
+   |         ^^^^^^^^^^^^^^^^^^
+22 |         ranges: Sequence[str],
+23 |         majorDimension: str,
+   |
+
+N803 Argument name `majorDimension` should be lowercase
+  --> typings/googleapiclient/discovery.pyi:23:9
+   |
+21 |         spreadsheetId: str,
+22 |         ranges: Sequence[str],
+23 |         majorDimension: str,
+   |         ^^^^^^^^^^^^^^^^^^^
+24 |         valueRenderOption: str,
+25 |     ) -> BatchGetRequest: ...
+   |
+
+N803 Argument name `valueRenderOption` should be lowercase
+  --> typings/googleapiclient/discovery.pyi:24:9
+   |
+22 |         ranges: Sequence[str],
+23 |         majorDimension: str,
+24 |         valueRenderOption: str,
+   |         ^^^^^^^^^^^^^^^^^^^^^^
+25 |     ) -> BatchGetRequest: ...
+   |
+
+N803 Argument name `serviceName` should be lowercase
+  --> typings/googleapiclient/discovery.pyi:37:5
+   |
+36 | def build(
+37 |     serviceName: str,
+   |     ^^^^^^^^^^^^^^^^
+38 |     version: str,
+39 |     *,
+   |
+
+ANN401 Dynamically typed expressions (typing.Any) are disallowed in `**kwargs`
+  --> typings/prefect_redis/messaging.pyi:16:19
+   |
+14 |         group: str | None = ...,
+15 |         use_consumer_group: bool = ...,
+16 |         **kwargs: Any,
+   |                   ^^^
+17 |     ) -> None: ...
+   |
+
+Found 7 errors.
+[*] 1 fixable with the `--fix` option.

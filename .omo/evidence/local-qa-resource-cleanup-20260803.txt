@@ -1,0 +1,71 @@
+Local QA resource cleanup receipt
+Captured: 2026-08-03T14:56:27+07:00
+Scope: disposable Docker Compose project resources whose Compose project label and names were dbastverify; unrelated resources were preserved.
+
+Before cleanup
+=============
+Invocation:
+  docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sed -n -e '/^dbastverify/p' -e '/mir-redisinsight/p'
+Output:
+  dbastverify-web-blue-1	7e51c9010089	Up 2 hours (healthy)
+  dbastverify-worker-blue-1	54f767421207	Up 2 hours
+  dbastverify-prefect-services-1	54f767421207	Up 2 hours
+  dbastverify-prefect-server-1	54f767421207	Up 2 hours (healthy)
+  dbastverify-postgres-1	postgres:17.6-bookworm	Up 2 hours (healthy)
+  dbastverify-reverse-proxy-1	nginx:1.27.1-alpine	Up 2 hours (healthy)
+  dbastverify-redis-1	redis:7.4.0-alpine	Up 2 hours
+  mir-redisinsight	redis/redisinsight:latest	Up 2 hours
+
+Invocation:
+  docker network ls --format '{{.Name}}\t{{.Driver}}' | grep '^dbastverify' || true
+Output:
+  dbastverify_backend	bridge
+  dbastverify_edge	bridge
+
+Invocation:
+  docker volume ls --format '{{.Name}}\t{{.Driver}}' | grep '^dbastverify' || true
+Output:
+  dbastverify_postgres-data	local
+  dbastverify_redis-data	local
+
+Validation before removal: docker inspect showed every dbastverify container, network, and volume had com.docker.compose.project=dbastverify and project working_dir/config files under /mnt/d/Github/celerates/digital-bast/v2-prod. No unrelated resource was selected.
+
+Cleanup commands
+================
+  docker rm -f dbastverify-web-blue-1 dbastverify-worker-blue-1 dbastverify-prefect-services-1 dbastverify-prefect-server-1 dbastverify-postgres-1 dbastverify-reverse-proxy-1 dbastverify-redis-1
+  docker network rm dbastverify_backend dbastverify_edge
+  docker volume rm dbastverify_postgres-data dbastverify_redis-data
+Removal output (each requested name echoed by Docker):
+  dbastverify-web-blue-1
+  dbastverify-worker-blue-1
+  dbastverify-prefect-services-1
+  dbastverify-prefect-server-1
+  dbastverify-postgres-1
+  dbastverify-reverse-proxy-1
+  dbastverify-redis-1
+  dbastverify_backend
+  dbastverify_edge
+  dbastverify_postgres-data
+  dbastverify_redis-data
+
+After cleanup
+=============
+Invocation:
+  docker ps -a --format '{{.Names}}' | grep '^dbastverify'
+Binary observable: exit status 1; output: (no dbastverify containers)
+
+Invocation:
+  docker network ls --format '{{.Name}}' | grep '^dbastverify'
+Binary observable: exit status 1; output: (no dbastverify networks)
+
+Invocation:
+  docker volume ls --format '{{.Name}}' | grep '^dbastverify'
+Binary observable: exit status 1; output: (no dbastverify volumes)
+
+Unrelated-container preservation check:
+  docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
+  mir-redisinsight	redis/redisinsight:latest	Up 2 hours
+
+Final inventory commands also run:
+  docker volume ls --format '{{.Name}}\t{{.Driver}}' (no dbastverify_* entries; unrelated volumes remain)
+  docker network ls --format '{{.Name}}\t{{.Driver}}' (no dbastverify_* entries; unrelated networks remain)

@@ -1,0 +1,3 @@
+exit=70
+scenario=remote documented preflight
+invocation=cd DEPLOY_PATH; source app env without output; timeout 45s scripts/preflight.sh

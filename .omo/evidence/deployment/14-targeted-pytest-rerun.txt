@@ -1,0 +1,55 @@
+targeted_pytest_clean_plugin_environment
+
+==================================== ERRORS ====================================
+____________ ERROR collecting tests/unit/flows/test_deployments.py _____________
+ImportError while importing test module '/mnt/d/Github/celerates/digital-bast/v2-prod/tests/unit/flows/test_deployments.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/yosdwi/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/unit/flows/test_deployments.py:3: in <module>
+    from digital_bast.flows.deployments import build_deployments, deployment_schedules
+src/digital_bast/flows/__init__.py:17: in <module>
+    from digital_bast.flows.production import (
+src/digital_bast/flows/production.py:7: in <module>
+    from holidays import country_holidays
+E   ImportError: cannot import name 'country_holidays' from 'holidays' (unknown location)
+_______ ERROR collecting tests/unit/flows/test_production_operations.py ________
+ImportError while importing test module '/mnt/d/Github/celerates/digital-bast/v2-prod/tests/unit/flows/test_production_operations.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/yosdwi/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/unit/flows/test_production_operations.py:20: in <module>
+    from digital_bast.flows.production_operations import (
+src/digital_bast/flows/__init__.py:17: in <module>
+    from digital_bast.flows.production import (
+src/digital_bast/flows/production.py:7: in <module>
+    from holidays import country_holidays
+E   ImportError: cannot import name 'country_holidays' from 'holidays' (unknown location)
+_________________ ERROR collecting tests/e2e/flows/test_cli.py _________________
+ImportError while importing test module '/mnt/d/Github/celerates/digital-bast/v2-prod/tests/e2e/flows/test_cli.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/home/yosdwi/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/e2e/flows/test_cli.py:6: in <module>
+    from digital_bast.cli import main
+src/digital_bast/cli.py:13: in <module>
+    from digital_bast.flows.deployments import build_deployments, deployment_schedules
+src/digital_bast/flows/__init__.py:17: in <module>
+    from digital_bast.flows.production import (
+src/digital_bast/flows/production.py:7: in <module>
+    from holidays import country_holidays
+E   ImportError: cannot import name 'country_holidays' from 'holidays' (unknown location)
+=========================== short test summary info ============================
+ERROR tests/unit/flows/test_deployments.py
+ERROR tests/unit/flows/test_production_operations.py
+ERROR tests/e2e/flows/test_cli.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 3 errors during collection !!!!!!!!!!!!!!!!!!!!
+3 errors in 87.09s (0:01:27)
+pytest_exit=2
+capture_exit=0

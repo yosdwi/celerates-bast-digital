@@ -1,0 +1,29 @@
+== shell syntax ==
+PASS: sh -n container-entrypoint.sh preflight.sh deploy.sh
+== compose default ==
+PASS: docker compose config --quiet
+== compose assertions ==
+PASS: runners, legacy secret, loopback Prefect port, external network
+== compose custom port/local override ==
+PASS: PREFECT_PORT override and compose.local override
+== preflight dry-run ==
+preflight passed
+PASS: preflight dry-run
+== entrypoint secret load ==
+PASS: LEGACY_DATABASE_DSN loaded and file variable unset
+== deploy dry-run ==
+DRY-RUN compose pull web-green worker-green runner-green
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+PASS: deploy dry-run
+== static documentation/env assertions ==
+PASS: env, docs, entrypoint, preflight, runner command
+adversarial checks passed
+PASS: tests/ops/adversarial.sh with SECRETS_GID

@@ -1,0 +1,5 @@
+public_root status=403 redirect= www_authenticate=
+public_health status=403 redirect= www_authenticate=
+public_deployments_noauth status=403 redirect= www_authenticate=
+public_deployments_auth status=403 redirect= www_authenticate=
+exit=0

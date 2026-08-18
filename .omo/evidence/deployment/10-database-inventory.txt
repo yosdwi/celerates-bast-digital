@@ -1,0 +1,4 @@
+digital_bast_app
+digital_bast_prefect
+postgres
+exit=0

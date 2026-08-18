@@ -1,0 +1,11 @@
+Scenario: ruff check owned flow and focused test.
+Invocation: .venv/bin/ruff check src/digital_bast/flows/production_operations.py tests/unit/flows/test_production_operations.py
+Observable: All checks passed!
+Artifact: .omo/evidence/production-operations-ruff.txt
+
+Targeted pytest invocation was started with -p no:cov, but the shared /mnt/d 9p filesystem stalled collection (pytest process remained in p9_client_rpc); no test result is claimed.
+
+Verification rerun:
+Invocation: direct async harness over the focused test module from a temporary local copy, using the same five test scenarios.
+Observable: five PASS lines and DIRECT_HARNESS_STATUS=0.
+Artifact: .omo/evidence/production-operations-direct-harness.txt

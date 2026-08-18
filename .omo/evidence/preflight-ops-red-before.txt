@@ -1,0 +1,5 @@
+Red phase captured before the preflight total-capacity fix.
+
+Command: tests/ops/preflight-retention.sh
+Controlled input: fake df reported 78643200 1024-blocks total (75 GB) and 23068672 available (22 GB); missing secrets directory.
+Result: exit 1. The shell trace reached the first assertion expecting `required file unavailable`, but the command had already failed on the obsolete `root disk must be expanded` total-capacity gate.

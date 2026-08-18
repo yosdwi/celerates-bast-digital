@@ -1,0 +1,7 @@
+scenario=source artifact creation and exclusion verification
+artifact=/tmp/digital-bast-v2-source-20260803.tar.gz mode=644 size=145627
+1e01664f4e57efa07a939982d96d08c81cd3cc625730b087bf3ea304d5973259  /tmp/digital-bast-v2-source-20260803.tar.gz
+entry_count=188
+forbidden_entries=0
+credential_name_matches=0
+scp_exit=0

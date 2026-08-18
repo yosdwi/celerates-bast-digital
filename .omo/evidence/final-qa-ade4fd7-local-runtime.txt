@@ -1,0 +1,21 @@
+Fresh local dbastverify runtime probes (2026-08-03 Asia/Jakarta)
+Repository HEAD before and after probes: ade4fd7aa9e5317bd78fde599c1e314be212364f
+
+Web exact invocations (curl -i --max-time 10):
+curl -i --max-time 10 http://127.0.0.1:8080/health/live -> HTTP/1.1 200 OK; {"status":"healthy","service":"digital-bast-admin"}
+curl -i --max-time 10 http://127.0.0.1:8080/health/ready -> HTTP/1.1 503 Service Unavailable; {"status":"not_ready"} (local external NocoDB dependency absent)
+curl -i --max-time 10 http://127.0.0.1:8080/login -> HTTP/1.1 200 OK; Digital-BAST login HTML
+curl -i --max-time 10 http://127.0.0.1:8080/ -> HTTP/1.1 303 See Other; Location: /admin/login
+curl -i --max-time 10 -X POST --data 'type=developer&month=8' http://127.0.0.1:8080/api/generate/plan -> HTTP/1.1 401 Unauthorized
+
+Prefect exact invocations:
+curl -i --max-time 10 http://127.0.0.1:4200/api/health -> HTTP/1.1 200 OK; true
+curl -i --max-time 10 http://127.0.0.1:4200/ -> HTTP/1.1 200 OK; Prefect Server UI HTML
+curl -i --max-time 10 -X POST -H 'Content-Type: application/json' --data '{"limit":100}' http://127.0.0.1:4200/api/deployments/filter -> HTTP/1.1 401 Unauthorized
+docker exec dbastverify-prefect-server-1 sh -c 'auth=$(cat /run/secrets/prefect_api_auth); token=$(printf '%s' "$auth" | base64 -w0); curl ... -H "Authorization: Basic $token" ... /api/deployments/filter' -> HTTP 200; [] local dataset
+same authenticated invocation for /api/flow_runs/filter -> HTTP 200; [] local dataset
+
+Runtime/container invocations:
+SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local docker compose -p dbastverify -f compose.yaml -f compose.local.yaml ps -> exit 0; seven services up; web/prefect/proxy/postgres/redis healthy
+docker exec dbastverify-web-blue-1 sh -c 'alembic current 2>&1 | tail -n 8' -> 20260803_0001 (head)
+docker inspect -f '{{.Name}} user=... readonly=... image=... health=...' <containers> -> app user 10001:10001 readonly=true; proxy user 101:101 readonly=true; healthy

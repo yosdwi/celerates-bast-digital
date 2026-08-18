@@ -1,0 +1,5 @@
+Exit request sent.
+ssh_master_exit=0
+local_transfer_artifacts_absent=0
+ssh_temp_dir_absent=yes
+exit=0

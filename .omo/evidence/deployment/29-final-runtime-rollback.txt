@@ -1,0 +1,27 @@
+final_preflight
+preflight passed
+rollback_dry_run
+DRY-RUN verify web-blue is healthy
+DRY-RUN switch green to blue
+rollback dry-run complete
+migration_state
+20260803_0001 (head)
+retention_dry_run
+DRY-RUN delete NocoDB audit snapshots older than 30 days
+DRY-RUN delete generation_plans older than 30 days
+health_bodies
+{"status":"healthy","service":"digital-bast-admin"}
+{"status":"ready"}
+rollback_candidate
+blue_status=running blue_health=healthy blue_image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+active_candidate
+green_status=running green_health=healthy green_image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+resource_state
+available_kb=22182904
+deploy_lock_available=yes
+runner_worker_state
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+service=runner-green status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+service=worker-green status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+exit=0

@@ -1,0 +1,25 @@
+Direct post-claim verification receipt
+Captured: 2026-08-03 (Docker state rechecked after cleanup)
+Working directory: /mnt/d/Github/celerates/digital-bast/v2-prod
+
+1) Invocation: docker ps -a --format '{{.Names}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (expected no-match result)
+
+2) Invocation: docker network ls --format '{{.Name}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (expected no-match result)
+
+3) Invocation: docker volume ls --format '{{.Name}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (expected no-match result)
+
+4) Invocation: docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk '$1=="mir-redisinsight"'
+Output: mir-redisinsight\tredis/redisinsight:latest\tUp 2 hours
+Exit status: 0 (unrelated container remains)
+
+5) Invocation: test -s .omo/evidence/local-qa-resource-cleanup-20260803.txt; wc -c .omo/evidence/local-qa-resource-cleanup-20260803.txt
+Output: 3017 bytes
+Exit status: 0
+
+Decision: PASS. Required dbastverify container/network/volume no-match checks all returned status 1 with empty output; unrelated mir-redisinsight remained running; prior cleanup evidence is non-empty.

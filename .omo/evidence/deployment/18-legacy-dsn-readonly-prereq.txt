@@ -1,0 +1,18 @@
+postgres_env_names
+PGADMIN_EMAIL
+PGADMIN_PASS
+POSTGRE_PASS
+POSTGRE_USER
+legacy_db_url_scheme=postgresql
+legacy_db_url_host=postgresql-local-postgre-1
+legacy_db_url_port=5432
+legacy_db_url_database=neondb
+legacy_db_url_user=celerates-admin
+legacy_db_url_password_present=yes
+admin_user=postgres database=postgres
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: FATAL:  role "postgres" does not exist
+exit=2
+admin_user=celerates-admin
+celerates-admin|neondb|t|t
+existing_ro_role_count=0
+second_probe_exit=0

@@ -1,0 +1,35 @@
+verified_at=2026-08-03T06:41:46Z
+user=debian
+deploy_path=/home/debian/script/digital-bast-v2
+preflight
+preflight passed
+active_slot=web-green:8000
+slots
+slot=blue status=running health=healthy image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+slot=green status=running health=healthy image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+image_tags
+green_tag_id=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637 size=119750874
+blue_tag_id=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9 size=119744777
+health_auth
+/health/live status=200 type=application/json redirect=
+/health/ready status=200 type=application/json redirect=
+/login status=200 type=text/html; charset=utf-8 redirect=
+/ status=303 type=application/json redirect=http://127.0.0.1:8080/admin/login
+/api/generate/plan unauth_status=401
+migration
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+20260803_0001 (head)
+rollback
+DRY-RUN verify web-blue is healthy
+DRY-RUN switch green to blue
+rollback dry-run complete
+processes
+service=runner-green status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+service=worker-green status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+service=prefect-server status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+service=prefect-services status=running restart_count=0 image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+resources
+available_kb=22188956
+deploy_lock_available=yes
+exit=0

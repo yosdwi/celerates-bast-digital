@@ -1,0 +1,8 @@
+incoming_sha256=1e01664f4e57efa07a939982d96d08c81cd3cc625730b087bf3ea304d5973259
+incoming_mode=644 incoming_size=145627
+source_backup=/home/debian/backups/digital-bast-v2-source-predeploy-20260803T062553Z.tar.gz
+source_backup_mode=600 source_backup_size=134348
+candidate=/home/debian/script/digital-bast-v2-candidate-1e01664f4e57
+candidate_forbidden_source_entries=0
+required file unavailable: ./secrets/legacy_database_dsn
+transport_exit=78

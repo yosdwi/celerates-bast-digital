@@ -1,0 +1,4 @@
+Scenario: focused operation tests from a temporary local copy.
+Invocation: pytest -p no:cov test_production_operations.py -q -s
+Observable: collection stalled on the shared /mnt/d 9p filesystem before output; process was stopped.
+Status: blocked (no test result claimed).

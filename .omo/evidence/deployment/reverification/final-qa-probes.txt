@@ -1,0 +1,52 @@
+Final commit-bound QA probes (2026-08-03 Asia/Jakarta)
+Repository: /mnt/d/Github/celerates/digital-bast/v2-prod
+HEAD: f010a7983107c6165916593cbb3dd44649d93f70
+Working tree: main...origin/main [ahead 1]; untracked .omo/ and diff.png only
+
+Local runtime precondition:
+  docker ps --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | sort
+  dbastverify-web-blue-1 Up ... (healthy) 7e51c9010089
+  dbastverify-prefect-server-1 Up ... (healthy) 54f767421207
+  dbastverify-prefect-services-1 Up ... 54f767421207
+  dbastverify-worker-blue-1 Up ... 54f767421207
+  dbastverify-reverse-proxy-1 Up ... (healthy) nginx:1.27.1-alpine
+  dbastverify-postgres-1 Up ... (healthy) postgres:17.6-bookworm
+  dbastverify-redis-1 Up ... (healthy) redis:7.4.0-alpine
+
+HTTP exact invocations and observables (curl -i):
+  curl -i --max-time 10 http://127.0.0.1:8080/health/live
+    HTTP/1.1 200 OK; {"status":"healthy","service":"digital-bast-admin"}
+  curl -i --max-time 10 http://127.0.0.1:8080/health/ready
+    HTTP/1.1 503 Service Unavailable; {"status":"not_ready"} (local dependency readiness limitation)
+  curl -i --max-time 10 http://127.0.0.1:8080/login
+    HTTP/1.1 200 OK; Digital-BAST Administrative Portal login HTML
+  curl -i --max-time 10 http://127.0.0.1:8080/
+    HTTP/1.1 303 See Other; location: /admin/login; Authentication required
+  curl -i --max-time 10 -X POST --data 'type=developer&month=8' http://127.0.0.1:8080/api/generate/plan
+    HTTP/1.1 401 Unauthorized; Authentication required
+  curl -i --max-time 10 http://127.0.0.1:4200/api/health
+    HTTP/1.1 200 OK; true
+  curl -i --max-time 10 http://127.0.0.1:4200/
+    HTTP/1.1 200 OK; Prefect Server UI HTML
+  curl -i --max-time 10 -X POST -H 'Content-Type: application/json' --data '{"limit":100}' http://127.0.0.1:4200/api/deployments/filter
+    HTTP/1.1 401 Unauthorized; {"exception_message":"Unauthorized"}
+  Authenticated Prefect requests were run inside dbastverify-prefect-server-1 using the mounted auth file (secret omitted from output): deployments/filter HTTP 200 with [] locally; flow_runs/filter HTTP 200 with [] locally.
+
+Runtime image/user/Compose exact invocations and observables:
+  SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local docker compose -p dbastverify -f compose.yaml -f compose.local.yaml ps
+    exit 0; all seven dbastverify services up; web/prefect-server/reverse-proxy/postgres/redis healthy.
+  docker inspect -f '{{.Name}} service=... image=... imageid=... status=... health=... user=... readonly=...' <containers>
+    app services user=10001:10001 readonly=true; reverse-proxy user=101:101 readonly=true; all running.
+  docker image inspect digital-bast:verify -f 'tag=... id=... user=... entrypoint=... cmd=...'
+    user=10001:10001; tini/container-entrypoint; uvicorn app command.
+
+Targeted ops shell gates exact invocations and observables:
+  timeout 30s bash -n scripts/*.sh tests/ops/*.sh                         -> exit 0
+  timeout 60s tests/ops/adversarial.sh                                    -> adversarial checks passed, exit 0
+  timeout 60s tests/ops/local-image-deploy.sh                             -> local-image deploy checks passed, exit 0
+  timeout 60s tests/ops/preflight-retention.sh                             -> preflight and retention checks passed, exit 0
+  timeout 60s tests/ops/rollback-slots.sh                                  -> rollback slot checks passed, exit 0
+  timeout 60s env SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local scripts/check-ops.sh
+    -> operations static checks passed, exit 0
+  docker exec dbastverify-web-blue-1 sh -c 'alembic current 2>&1 | tail -n 8'
+    -> 20260803_0001 (head), exit 0

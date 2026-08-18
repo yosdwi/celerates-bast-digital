@@ -1,0 +1,23 @@
+Second direct verification of production_operations.py.
+
+Scenario: static lint.
+Invocation: .venv/bin/ruff check src/digital_bast/flows/production_operations.py tests/unit/flows/test_production_operations.py
+Observable: All checks passed; RUFF_STATUS=0.
+Artifact: production-operations-reverify-ruff.txt
+
+Scenario: formatting.
+Invocation: .venv/bin/ruff format --check src/digital_bast/flows/production_operations.py
+Observable: 1 file already formatted; FORMAT_STATUS=0.
+Artifact: production-operations-reverify-format.txt
+
+Scenario: all five focused operation behaviors.
+Invocation: direct async harness invoking each test function from a temporary copy of the focused test module.
+Observable: five PASS lines and HARNESS_STATUS=0.
+Artifact: production-operations-reverify-harness.txt
+
+Scenario: native pytest command.
+Invocation: timeout 45 env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -p no:cov tests/unit/flows/test_production_operations.py -q -s
+Observable: process remained in p9_client_rpc on the shared /mnt/d filesystem; timeout returned PYTEST_STATUS=124. No native pytest pass is claimed.
+Artifact: production-operations-reverify-pytest.txt
+
+Judgment: implementation behavior is directly verified by the five-scenario harness; native pytest remains externally blocked by filesystem I/O.

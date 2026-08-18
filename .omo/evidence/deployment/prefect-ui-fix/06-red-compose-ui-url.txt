@@ -1,0 +1,3 @@
+scenario=compose publishes browser-visible Prefect API URL
+matching_service_count=0
+exit=1

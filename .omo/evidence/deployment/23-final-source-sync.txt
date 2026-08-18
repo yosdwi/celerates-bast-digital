@@ -1,0 +1,5 @@
+scenario=final patched source artifact
+sha256=d75fcfc7f1676d6aa95c4e7f93fd96363e5a22dd17ceb6077b69098225df06d9
+mode=644 size=145650
+forbidden_entries=0
+scp_exit=0

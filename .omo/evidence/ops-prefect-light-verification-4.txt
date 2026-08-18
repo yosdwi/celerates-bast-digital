@@ -1,0 +1,31 @@
+CHECK sh syntax
+PASS sh syntax
+CHECK docker compose default config
+PASS compose config
+CHECK rendered service/network invariants
+PASS runner/legacy/loopback/network invariants
+CHECK custom port and local override
+PASS custom port/local override
+CHECK preflight
+preflight passed
+PASS preflight
+CHECK entrypoint legacy secret resolution
+PASS entrypoint legacy secret resolution
+CHECK deploy dry-run runner lifecycle
+DRY-RUN compose pull web-green worker-green runner-green
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+PASS deploy dry-run runner lifecycle
+CHECK adversarial ops script
+adversarial checks passed
+PASS adversarial ops script
+CHECK static wiring/docs
+PASS static wiring/docs
+PASS evidence artifact nonempty

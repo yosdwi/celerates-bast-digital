@@ -1,0 +1,5 @@
+role=digital_bast_v2_legacy_ro
+transaction_read_only=on
+select_table=nc_api_tokens select_count=3
+write_denied=true
+exit=0

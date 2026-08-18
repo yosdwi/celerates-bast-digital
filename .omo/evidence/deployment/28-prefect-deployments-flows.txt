@@ -1,0 +1,20 @@
+noauth_deployments_filter status=401 type=application/json
+auth_deployments_filter status=200 type=application/json
+deployment_count=5
+deployment=iot-pic-update schedules=1 active=1
+deployment=monthly-timesheets schedules=1 active=1
+deployment=nightly-reconciliation schedules=1 active=1
+deployment=operational-import schedules=1 active=1
+deployment=reference-data schedules=1 active=1
+flow_runs_filter status=200 recent_count=20
+flow_run=little-hippo state=SCHEDULED start=None
+flow_run=unbiased-spider state=SCHEDULED start=None
+flow_run=abiding-donkey state=SCHEDULED start=None
+flow_run=myrtle-armadillo state=SCHEDULED start=None
+flow_run=outstanding-guillemot state=SCHEDULED start=None
+flow_run=gentle-orangutan state=SCHEDULED start=None
+flow_run=statuesque-bustard state=SCHEDULED start=None
+flow_run=tomato-phoenix state=SCHEDULED start=None
+flow_run=military-reindeer state=SCHEDULED start=None
+flow_run=married-cuscus state=SCHEDULED start=None
+exit=0

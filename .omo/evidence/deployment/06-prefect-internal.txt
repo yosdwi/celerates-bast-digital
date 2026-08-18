@@ -1,0 +1,15 @@
+prefect_container_port_state
+status=running health=healthy ports={"8000/tcp":null} image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+prefect_internal_checks
+noauth_api_health status=200 type=application/json
+auth_api_health status=200 type=application/json
+noauth_ui status=200 type=text/html; charset=utf-8
+auth_ui status=200 type=text/html; charset=utf-8
+deployments_filter status=200 type=application/json
+deployment_count=0
+flow_runs_filter status=200 type=application/json
+recent_flow_run_count=3
+Traceback (most recent call last):
+  File "<stdin>", line 34, in <module>
+NameError: name 'start_time' is not defined
+exit=1

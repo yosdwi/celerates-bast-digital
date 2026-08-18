@@ -1,0 +1,52 @@
+user=debian
+home=/home/debian
+root_df=77195840 23319144
+docker=Docker version 29.2.1, build a5c7197
+compose=Docker Compose version v5.0.2
+home_candidates
+/home/debian/1_docker/beszel-system-monitoring-agent/docker-compose.yml mode=664 size=621
+/home/debian/1_docker/nocodb_bast/.env mode=664 size=153
+/home/debian/1_docker/nocodb_bast/docker-compose.yml mode=664 size=764
+/home/debian/1_docker/postgresql/.env mode=644 size=133
+/home/debian/1_docker/postgresql/docker-compose.yml mode=644 size=973
+/home/debian/script/digital-bast-v2/.env mode=640 size=287
+/home/debian/script/digital-bast-v2/compose.yaml mode=775 size=7863
+/home/debian/script/digital-bast/.env mode=664 size=1389
+/home/debian/script/digital-bast/docker-compose.yml mode=644 size=976
+dirs
+/home/debian/.config
+/home/debian/.config/htop
+/home/debian/.config/procps
+/home/debian/.config/rclone
+/home/debian/.docker
+/home/debian/.docker/buildx
+/home/debian/.local
+/home/debian/.local/share
+/home/debian/.local/state
+/home/debian/.ssh
+/home/debian/1_docker
+/home/debian/1_docker/beszel-system-monitoring-agent
+/home/debian/1_docker/nocodb_bast
+/home/debian/1_docker/postgresql
+/home/debian/backups
+/home/debian/pg_backups
+/home/debian/script
+/home/debian/script/credentials
+/home/debian/script/digital-bast
+/home/debian/script/digital-bast-v2
+/home/debian/script/postgresql
+containers
+digital-bast-v2-web-blue-1|digital-bast:v2-verify|Up 2 hours (healthy)|8000/tcp
+digital-bast-v2-worker-blue-1|digital-bast:v2-verify|Up 2 hours|8000/tcp
+digital-bast-v2-prefect-services-1|digital-bast:v2-verify|Up 2 hours|8000/tcp
+digital-bast-v2-prefect-server-1|digital-bast:v2-verify|Up 2 hours (healthy)|8000/tcp
+digital-bast-v2-postgres-1|postgres:17.6-bookworm|Up 2 hours (healthy)|5432/tcp
+digital-bast-v2-redis-1|redis:7.4.0-alpine|Up 2 hours (healthy)|6379/tcp
+digital-bast-v2-reverse-proxy-1|nginx:1.27.1-alpine|Up 2 hours (healthy)|80/tcp, 127.0.0.1:8080->8080/tcp
+digital-bast-web|yosdwi/digital-bast:latest|Up 13 days|127.0.0.1:8082->8000/tcp
+digital-bast-app|yosdwi/digital-bast:latest|Up 13 days|8000/tcp
+postgresql-local-postgre-1|postgres:17|Up 13 days|0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+nocodb_bast-nocodb-1|nocodb/nocodb:latest|Up 3 weeks|127.0.0.1:8081->8080/tcp
+pgadmin4_container|dpage/pgadmin4|Up 3 weeks|443/tcp, 127.0.0.1:8888->80/tcp
+beszel-agent|henrygd/beszel-agent|Up 3 weeks|
+exit=0

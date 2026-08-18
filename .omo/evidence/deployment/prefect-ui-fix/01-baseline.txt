@@ -1,0 +1,24 @@
+container_env
+PREFECT_SERVER_API_AUTH_STRING_present=false
+PREFECT_SERVER_API_AUTH_STRING_length=0
+PREFECT_SERVER_API_AUTH_STRING_matches_secret=false
+PREFECT_API_AUTH_STRING_present=false
+PREFECT_API_AUTH_STRING_length=0
+PREFECT_API_AUTH_STRING_matches_secret=false
+PREFECT_SERVER_UI_API_URL_present=false
+PREFECT_SERVER_UI_API_URL_length=0
+PREFECT_SERVER_UI_API_URL_value=<unset>
+PREFECT_API_URL_present=true
+PREFECT_API_URL_length=29
+container_port
+status=running health=healthy ports={"4200/tcp":[{"HostIp":"127.0.0.1","HostPort":"4200"}],"8000/tcp":null} image=sha256:8c4b9bd97da0f0e373a8750ddfd20b95cc5470e8dd7642bf610dc686b8ca6637
+origin_public_probes
+origin_root status=200 redirect= www_authenticate=
+origin_health status=200 redirect= www_authenticate=
+origin_deployments_noauth status=401 redirect= www_authenticate=
+origin_deployments_auth status=200 redirect= www_authenticate=
+public_root status=403 redirect= www_authenticate=
+public_health status=403 redirect= www_authenticate=
+public_deployments_noauth status=403 redirect= www_authenticate=
+public_deployments_auth status=403 redirect= www_authenticate=
+exit=0

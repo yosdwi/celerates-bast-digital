@@ -1,0 +1,36 @@
+# Hermes Agent configuration for the Digital BAST WhatsApp group bot (V1).
+# Hermes only parses intent, calls an allowlisted command and posts the result.
+# All business rules live in `digital-bast`, never in the agent prompt.
+name: bast-bot
+description: Digital BAST WhatsApp group assistant
+channel:
+  transport: whatsapp-baileys
+  mode: group
+  respond_to: mention_only        # ignore every message that does not mention the bot
+  allowed_groups:                 # fill with the group JIDs that may use the bot
+    - "REPLACE_WITH_GROUP_JID@g.us"
+  allow_direct_messages: false
+runtime:
+  working_directory: /opt/digital-bast
+  timeout_seconds: 120
+  # Preferred integration: forward the raw message, receive the finished reply.
+  primary_command:
+    executable: digital-bast
+    arguments: ["bot-reply", "--text", "{{message}}"]
+# Direct commands, used only when the caller already knows the ISO date range.
+# Nothing outside this list may be executed; no shell, no docker mutation.
+allowlist:
+  - executable: digital-bast
+    arguments: ["completion-status", "--start-date", "{{start_date}}", "--end-date", "{{end_date}}", "--format", "text"]
+  - executable: digital-bast
+    arguments: ["export-attendance", "--start-date", "{{start_date}}", "--end-date", "{{end_date}}", "--label", "{{label}}", "--output", "{{output}}"]
+  - executable: digital-bast
+    arguments: ["generate-bast", "--start-date", "{{start_date}}", "--end-date", "{{end_date}}", "--output", "{{output}}"]
+  - executable: digital-bast
+    arguments: ["system-status", "--format", "text"]
+denied_intents:
+  - restart / stop / start container
+  - docker compose up / down / exec
+  - arbitrary shell execution
+  - individual direct messages
+reply_language: id-ID

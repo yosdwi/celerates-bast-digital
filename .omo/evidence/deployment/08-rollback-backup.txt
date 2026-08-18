@@ -1,0 +1,16 @@
+rollback_dry_run
+DRY-RUN verify web-green is healthy
+DRY-RUN switch blue to green
+rollback dry-run complete
+rollback_dry_exit=0
+independent_rollback_observable
+blue_present=yes green_present=no
+blue_status=running blue_health=healthy blue_image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9
+backup_prerequisites
+age=missing
+rclone=present
+AGE_RECIPIENT_configured=no
+BACKUP_REMOTE_configured=no
+backup_dry_exit=69
+required command unavailable: age
+transport_exit=0

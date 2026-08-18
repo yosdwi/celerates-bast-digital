@@ -1,0 +1,8 @@
+pre_state
+web-blue:8000
+blue_id=a5137c8c5c825af252bd5bdb066c9adda782a5c5640a741c19b9cc12d0aadb2d blue_image=sha256:c226d7e60e8f461cd6983380f924e0f977e79f3995a2c90e20723ae5bc2592b9 blue_health=healthy
+source_sha256=d75fcfc7f1676d6aa95c4e7f93fd96363e5a22dd17ceb6077b69098225df06d9
+app_image_selector=digital-bast:v2-d75fcfc7f167
+preflight passed
+active_preflight_exit=0
+transport_exit=0

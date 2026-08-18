@@ -1,0 +1,22 @@
+pid1_env
+PREFECT_SERVER_API_AUTH_STRING_present=false
+PREFECT_SERVER_API_AUTH_STRING_length=0
+PREFECT_SERVER_API_AUTH_STRING_matches_secret=false
+PREFECT_API_AUTH_STRING_present=false
+PREFECT_API_AUTH_STRING_length=0
+PREFECT_API_AUTH_STRING_matches_secret=false
+PREFECT_SERVER_UI_API_URL_present=false
+PREFECT_SERVER_UI_API_URL_length=0
+PREFECT_SERVER_UI_API_URL_value=<unset>
+PREFECT_API_URL_present=true
+PREFECT_API_URL_length=29
+cloudflared_process
+740 /usr/bin/cloudflared --no-autoupdate tunnel run --token <redacted>
+cloudflared_mapping
+exit=0
+local_public_headers
+HTTP/2 200 
+content-type: text/html; charset=utf-8
+server: cloudflare
+cf-ray: a253b3813efd5cb5-SIN
+body_title=Prefect Server

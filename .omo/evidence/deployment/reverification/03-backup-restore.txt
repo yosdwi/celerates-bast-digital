@@ -1,0 +1,12 @@
+database=digital_bast_app
+snapshot=/home/debian/backups/digital_bast_app-predeploy-20260803T061222Z.dump mode=600 owner=debian group=debian size=11773
+sha256=bc12c980084dedc1636e704654c5cc05d941853521d30ae901f9716c949031c1
+restored_database=reverify_digital_bast_app_20260803T064237Z_2694946 public_tables=7
+cleanup=dropped
+database=digital_bast_prefect
+snapshot=/home/debian/backups/digital_bast_prefect-predeploy-20260803T061222Z.dump mode=600 owner=debian group=debian size=263925
+sha256=d21f00c17ccd7e9a8b17aa106ad3177283e2e640dfbf3132f57bde6e1aeb9478
+restored_database=reverify_digital_bast_prefect_20260803T064237Z_2694946 public_tables=36
+cleanup=dropped
+remaining_reverify_databases=0
+exit=0

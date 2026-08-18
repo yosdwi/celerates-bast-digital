@@ -1,0 +1,45 @@
+Second direct post-claim verification receipt
+Working directory: /mnt/d/Github/celerates/digital-bast/v2-prod
+
+Required check 1
+Invocation: docker ps -a --format '{{.Names}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (no dbastverify containers)
+
+Required check 2
+Invocation: docker network ls --format '{{.Name}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (no dbastverify networks)
+
+Required check 3
+Invocation: docker volume ls --format '{{.Name}}' | grep '^dbastverify'
+Output: (empty)
+Exit status: 1 (no dbastverify volumes)
+
+Unrelated-resource check
+Invocation: docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk '$1=="mir-redisinsight"'
+Output: mir-redisinsight\tredis/redisinsight:latest\tUp 2 hours
+Exit status: 0 (unrelated container preserved)
+
+Complete container inventory (docker ps -a --format '{{.Names}}\t{{.Status}}'):
+  mir-dev-upload Exited (255) 2 weeks ago
+  gallant_tesla Exited (1) 3 weeks ago
+  mir-redis-server Exited (255) 7 hours ago
+  mir-redisinsight Up 2 hours
+  mir-redis-local Exited (255) 7 hours ago
+  mir-mssql Exited (255) 7 hours ago
+  mir-mqtt Exited (255) 3 weeks ago
+  mir-polygon-generator Exited (255) 7 weeks ago
+  mir-serverrtcm Exited (0) 3 weeks ago
+  mir-redis Exited (0) 2 months ago
+  mir-mosquitto Exited (0) 7 weeks ago
+  mir-testbed-device Exited (143) 2 months ago
+  mosquitto-mirror Exited (0) 2 months ago
+  cctv_mediamtx Exited (0) 2 months ago
+
+Complete network inventory had only bridge, cctv-iot_cctv_network, dev_default, host, mir-net, none, testbed_mir-net, and v1-prod_default; no dbastverify prefix.
+Filtered volume inventory: empty for /^dbastverify/.
+
+Prior evidence artifact stat: .omo/evidence/local-qa-resource-cleanup-verification-20260803.txt, 1149 bytes, mode 777.
+
+Decision: PASS. All required no-match checks and unrelated-resource preservation check passed in this run.

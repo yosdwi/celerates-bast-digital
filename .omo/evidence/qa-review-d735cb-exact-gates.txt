@@ -1,0 +1,39 @@
+Fresh exact-SHA QA probes (2026-08-03 Asia/Jakarta)
+Repository: /mnt/d/Github/celerates/digital-bast/v2-prod
+Requested SHA: d735cb092af1ece7292fa9d6b429c3ff82ee4bcd
+
+SHA and release asset mode
+$ git rev-parse HEAD
+d735cb092af1ece7292fa9d6b429c3ff82ee4bcd
+$ git ls-tree HEAD scripts/deploy.sh
+100755 blob ea44f817d0c7897c7dcd4f2c6375eafd246bc8cf scripts/deploy.sh
+$ git archive --format=tar d735cb092af1ece7292fa9d6b429c3ff82ee4bcd scripts/deploy.sh | tar -tvf -
+drwxrwxr-x root/root 0 ... scripts/
+-rwxrwxr-x root/root 4593 ... scripts/deploy.sh
+$ rg -n 'git archive --format=tar|test -x "\\$stage_dir/scripts/deploy.sh"' .github/workflows/release.yml
+80,141: git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf
+102,163: test -x "$stage_dir/scripts/deploy.sh"
+
+Exact checked-out SHA invocations and statuses
+$ timeout 60s sh tests/ops/release-trust.sh
+release trust checks passed (exit 0)
+$ timeout 60s sh tests/ops/adversarial.sh
+adversarial checks passed (exit 0)
+$ timeout 60s sh tests/ops/backup-restore.sh
+backup and restore checks passed (exit 0)
+$ timeout 60s sh tests/ops/preflight-retention.sh
+preflight and retention checks passed (exit 0)
+$ timeout 60s sh tests/ops/local-image-deploy.sh
+local-image deploy checks passed (exit 0)
+$ timeout 60s sh tests/ops/rollback-slots.sh
+rollback slot checks passed (exit 0)
+$ timeout 30s bash -n scripts/*.sh tests/ops/*.sh
+exit 0
+$ timeout 60s env SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local sh scripts/check-ops.sh
+operations static checks passed (exit 0)
+$ git diff-tree --check d735cb092af1ece7292fa9d6b429c3ff82ee4bcd^ d735cb092af1ece7292fa9d6b429c3ff82ee4bcd
+exit 0
+$ .venv/bin/ruff check .
+All checks passed! (exit 0)
+$ .venv/bin/ruff format --check .
+140 files already formatted (exit 0)

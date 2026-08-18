@@ -1,0 +1,10 @@
+scenario=local repository verification before commit
+targeted_invocation=sh tests/ops/prefect-ui-url.sh
+targeted_observable=Prefect UI API URL checks passed
+targeted_exit=0
+ops_suite_invocation=for script in tests/ops/*.sh; do SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local sh "$script"; done
+ops_suite_observable=all 7 scripts passed: adversarial, backup-restore, local-image-deploy, prefect-ui-url, preflight-retention, release-trust, rollback-slots
+ops_suite_exit=0
+check_ops_invocation=SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local sh scripts/check-ops.sh
+check_ops_observable=operations static checks passed
+check_ops_exit=0

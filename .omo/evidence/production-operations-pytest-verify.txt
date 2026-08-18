@@ -1,0 +1,4 @@
+Scenario: focused operation unit tests.
+Invocation: timeout 90 env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -p no:cov tests/unit/flows/test_production_operations.py -q -s
+Observable: pytest entered D state in p9_client_rpc during collection on the shared /mnt/d filesystem; no test output was produced before the run was stopped.
+PYTEST_STATUS: blocked (no pass claimed)

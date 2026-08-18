@@ -71,7 +71,7 @@ def generate_monthly_timesheets(request: TimesheetGeneration) -> tuple[Timesheet
             daily_tasks = tasks_by_day.get((employee.id, work_date), {})
             schedule = schedule_by_day.get((employee.id, work_date))
             holiday = holiday_by_day.get(work_date)
-            is_holiday, remarks = _day_status(employee.role, work_date.weekday(), holiday, schedule)
+            is_holiday, remarks = day_status(employee.role, work_date.weekday(), holiday, schedule)
             activity = _activity(employee.role, work_date.weekday(), is_holiday, request.options)
             rows.append(
                 Timesheet(
@@ -91,7 +91,7 @@ def generate_monthly_timesheets(request: TimesheetGeneration) -> tuple[Timesheet
     return tuple(rows)
 
 
-def _day_status(
+def day_status(
     role: EmployeeRole,
     weekday: int,
     holiday: Holiday | None,

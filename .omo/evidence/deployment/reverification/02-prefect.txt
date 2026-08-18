@@ -1,0 +1,13 @@
+api_health status=200 type=application/json
+ui status=200 type=text/html; charset=utf-8
+deployments_noauth status=401 type=application/json
+deployments_auth status=200 count=5
+deployment=iot-pic-update schedules=1 active=1
+deployment=monthly-timesheets schedules=1 active=1
+deployment=nightly-reconciliation schedules=1 active=1
+deployment=operational-import schedules=1 active=1
+deployment=reference-data schedules=1 active=1
+flow_runs status=200 count=20
+flow_state=COMPLETED count=3
+flow_state=SCHEDULED count=17
+exit=0

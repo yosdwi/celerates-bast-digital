@@ -133,6 +133,14 @@ class Settings(BaseSettings):
         validation_alias="NOCODB_DATABASE_DSN_FILE",
     )
     nocodb_base_id: str | None = Field(default=None, validation_alias="NOCODB_BASE_ID")
+    nocodb_attendance_mapping: str | None = Field(
+        default=None,
+        validation_alias="NOCODB_ATTENDANCE_MAPPING",
+    )
+    nocodb_task_evidence_column: str | None = Field(
+        default=None,
+        validation_alias="NOCODB_TASK_EVIDENCE_COLUMN",
+    )
     google_application_credentials: FilePath | None = Field(
         default=None,
         validation_alias="GOOGLE_APPLICATION_CREDENTIALS",

@@ -1,0 +1,7 @@
+curl_public_probes
+/ status=200 redirect= www_authenticate=%header{www-authenticate}
+/api/health status=200 redirect= www_authenticate=%header{www-authenticate}
+/api/deployments/filter noauth status=401 redirect= www_authenticate=%header{www-authenticate}
+/api/deployments/filter auth status=200 redirect= www_authenticate=%header{www-authenticate}
+deployment_count=5
+exit=0

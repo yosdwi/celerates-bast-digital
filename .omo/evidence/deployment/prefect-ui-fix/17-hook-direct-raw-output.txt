@@ -1,0 +1,65 @@
+scenario=hook-triggered direct verification
+
+command=git show --format=fuller --stat --no-renames 307c5db && git diff-tree --no-commit-id --name-status -r 307c5db
+output:
+commit 307c5dbf972990321d8f63c8d269910e76e3237f
+Author:     yosdwi <yosesdwi032@gmail.com>
+AuthorDate: Mon Aug 3 14:59:47 2026 +0700
+Commit:     yosdwi <yosesdwi032@gmail.com>
+CommitDate: Mon Aug 3 14:59:47 2026 +0700
+
+    Fix Prefect public UI API URL
+
+ .env.example                |  1 +
+ compose.yaml                |  1 +
+ docs/local-development.md   |  2 +-
+ tests/ops/prefect-ui-url.sh | 29 +++++++++++++++++++++++++++++
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+M\t.env.example
+M\tcompose.yaml
+M\tdocs/local-development.md
+A\ttests/ops/prefect-ui-url.sh
+judgment=commit contains exactly the four intended paths
+
+command=git status --short
+output:
+?? .debug-journal.md
+?? .omo/
+?? diff.png
+judgment=no tracked modifications; unrelated untracked artifacts preserved
+
+command=sh tests/ops/prefect-ui-url.sh
+output:
+Prefect UI API URL checks passed
+exit=0
+
+command=for script in tests/ops/*.sh; do SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local sh "$script"; done
+output:
+run=tests/ops/adversarial.sh
+adversarial checks passed
+exit=0
+run=tests/ops/backup-restore.sh
+backup and restore checks passed
+exit=0
+run=tests/ops/local-image-deploy.sh
+local-image deploy checks passed
+exit=0
+run=tests/ops/prefect-ui-url.sh
+Prefect UI API URL checks passed
+exit=0
+run=tests/ops/preflight-retention.sh
+preflight and retention checks passed
+exit=0
+run=tests/ops/release-trust.sh
+release trust checks passed
+exit=0
+run=tests/ops/rollback-slots.sh
+rollback slot checks passed
+exit=0
+judgment=all seven ops scripts passed
+
+command=SECRETS_GID=$(id -g) NOCODB_BASE_URL=https://invalid.local sh scripts/check-ops.sh
+output:
+operations static checks passed
+exit=0
+judgment=static operations checks passed

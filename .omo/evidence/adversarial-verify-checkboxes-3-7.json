@@ -1,0 +1,133 @@
+{
+  "repo": {
+    "head": "f3741d1 (main, origin/main)",
+    "worktree": "dirty: every product/docs/scripts/test path is untracked (git status --porcelain=v2)",
+    "production_state": "compose default resolves digital-bast:local; no secrets/ or backups/ directory; no compose services; digital-bast:v2-e2e-final exists as sha256:bdefadd5851b64a7ce3b4ce3c0c1f11126d2d0b3c0dcdfe87335b162089a3a1e (10001:10001)"
+  },
+  "adversarial_probes": {
+    "stale_state": "host-gate evidence (2026-08-03 13:02) checked the compose default digital-bast:local and found no services; current read-only inspect confirms the alternate v2-e2e-final tag only, so dry-run/host claims are not live deployment proof",
+    "dirty_worktree": "git status --porcelain=v2 --untracked-files=all lists every product/docs/scripts/tests/evidence path as untracked against HEAD f3741d1",
+    "misleading_success_output": "ops-prefect-light-validation.txt records DRY-RUN deployment complete despite no live services; the same artifact records check-ops static failure, so the success line is not accepted as a quality-gate pass"
+  },
+  "checkboxes": {
+    "3": {
+      "verdict": "needs-human-review",
+      "implementation": "Configuration, Postgres durable stores, Alembic migration, NocoDB, Google Sheets, SQL Server adapters, and Postgres health/procedure adapter are present.",
+      "artifacts": [
+        "src/digital_bast/config.py:59-241",
+        "migrations/versions/20260803_0001_durable_state.py:10-92",
+        "src/digital_bast/infrastructure/postgres.py:36-225",
+        "src/digital_bast/infrastructure/repositories.py:75-245",
+        "src/digital_bast/infrastructure/nocodb.py:40-220",
+        "src/digital_bast/infrastructure/sqlserver.py:44-182",
+        "src/digital_bast/infrastructure/google.py:1-100",
+        "src/digital_bast/infrastructure/google_api.py:1-100",
+        "src/digital_bast/infrastructure/healthcheck.py:12-67",
+        "tests/unit/infrastructure/test_config.py",
+        "tests/unit/infrastructure/test_google.py",
+        "tests/unit/infrastructure/test_nocodb.py",
+        "tests/unit/infrastructure/test_healthcheck.py",
+        ".omo/evidence/google-api-sheet-batch-reader.md",
+        ".omo/evidence/production-sources.md",
+        ".omo/evidence/legacy-pic.md"
+      ],
+      "gaps": [
+        "No SQL Server unit/contract test file exists despite SqlServerAttendanceSource/SqlServerRedmineSource; no live SQL Server artifact.",
+        "The prior live Google iot_rows=1257/NocoDB runtime claim is not captured in this checkout; available Google artifacts exercise fakes only.",
+        "Migration/integration tests are declared in .github/workflows/ci.yml but no captured successful migration output exists here."
+      ],
+      "delivery_gap": "All implementation and evidence files are uncommitted/unpushed; production credentials and host endpoint are absent."
+    },
+    "4": {
+      "verdict": "confirmed",
+      "implementation": "FastAPI app, owner auth/session rotation, Redis sessions, CSRF checks, reports, attendance/export routes, security headers, health/readiness, and v1-compatible aliases are implemented and directly exercised by focused route tests plus an owner journey.",
+      "artifacts": [
+        "src/digital_bast/web/app.py:18-99",
+        "src/digital_bast/web/auth_router.py:20-126",
+        "src/digital_bast/web/security.py:35-99",
+        "src/digital_bast/web/sessions.py:8-72",
+        "src/digital_bast/web/report_router.py:12-167",
+        "src/digital_bast/web/attendance_router.py:12-135",
+        "tests/unit/web/test_security_routes.py:107-222",
+        "tests/e2e/web/test_owner_journey.py:4-29",
+        "tests/characterization/test_web_route_inventory.py:54-86",
+        "tests/contract/test_nocodb_auth_contract.py:6-30",
+        ".omo/evidence/visual-smoke-login/final/login-desktop.png"
+      ],
+      "gaps": [
+        "No standalone web-route runtime transcript is stored in .omo/evidence; the reported 401/200 auth runtime claim is not independently file-backed here."
+      ],
+      "delivery_gap": "Source/tests/evidence are all untracked; this is an uncommitted delivery gap, not an implementation failure."
+    },
+    "5": {
+      "verdict": "needs-fix",
+      "implementation": "Five Prefect flows, five schedules/deployments, retry policy, runtime context, and CLI list/serve/run/backfill commands exist.",
+      "artifacts": [
+        "src/digital_bast/flows/pipelines.py:12-118",
+        "src/digital_bast/flows/deployments.py:12-69",
+        "src/digital_bast/flows/runtime.py:10-67",
+        "src/digital_bast/cli.py:35-164",
+        "tests/unit/flows/test_deployments.py",
+        "tests/unit/flows/test_pipelines.py",
+        "tests/unit/flows/test_production_context.py",
+        "tests/unit/flows/test_production_operations.py",
+        "tests/e2e/flows/test_cli.py",
+        ".omo/evidence/ops-prefect-light-verification-3.txt",
+        ".omo/evidence/ops-prefect-light-verification-4.txt"
+      ],
+      "gaps": [
+        "Attendance and Redmine operations are not implemented/wired: create_run_context() omits both, ProductionRunContext reports them unavailable, and compose.yaml:26 disables them by default (DIGITAL_BAST_DISABLED_OPERATIONS). Thus the operational flow cannot run the SQL Server operations claimed by the operation registry.",
+        "The prior live Prefect 5-deployment/two-pass output is not captured in a repository artifact; available ops files only prove static/dry-run wiring."
+      ],
+      "delivery_gap": "No running Prefect/worker state exists locally; all flow source and tests are uncommitted."
+    },
+    "6": {
+      "verdict": "needs-fix",
+      "implementation": "Dockerfile, Compose blue/green topology, health gates, CI/release workflows, secret-file entrypoint/preflight, backup/restore/retention/deploy/rollback/smoke scripts are present.",
+      "artifacts": [
+        "Dockerfile:1-39",
+        "compose.yaml:1-283",
+        ".github/workflows/ci.yml:1-133",
+        ".github/workflows/release.yml:1-114",
+        "scripts/preflight.sh:1-39",
+        "scripts/deploy.sh:1-105",
+        "scripts/rollback.sh:1-69",
+        "scripts/backup.sh:1-51",
+        "scripts/restore-test.sh:1-48",
+        "scripts/retention.sh:1-31",
+        "scripts/check-ops.sh:1-27",
+        ".omo/evidence/ops-prefect-light-verification-3.txt",
+        ".omo/evidence/ops-prefect-light-verification-4.txt",
+        ".omo/evidence/host-gate/host-gate-observables.md:13-20,79-126"
+      ],
+      "gaps": [
+        "scripts/check-ops.sh is a CI-required gate, but .omo/evidence/ops-prefect-light-validation.txt records it failing on a false-positive embedded-secret match at scripts/postgres-init.sh:8; no passing check-ops artifact exists.",
+        "scripts/retention.sh deletes nocodb_audit_events and generated_plans, while the only migration creates generation_plans and no nocodb_audit_events table (migrations/versions/20260803_0001_durable_state.py:59-70). A real retention run would fail.",
+        "Host gate confirms missing production secrets, missing age/backups, no running services, and no default digital-bast:local image; DRY-RUN output is not live deployment evidence."
+      ],
+      "delivery_gap": "The alternate digital-bast:v2-e2e-final image exists locally, but compose is not pinned to it and the entire product/ops tree remains uncommitted/unpushed."
+    },
+    "7": {
+      "verdict": "needs-human-review",
+      "implementation": "Characterization, unit, integration, contract, shadow, and E2E test trees are present with fixtures and focused tests covering domain, flows, infrastructure, web, CLI, and v1 route/key behavior.",
+      "artifacts": [
+        "tests/characterization/test_fixture_contracts.py",
+        "tests/characterization/test_web_route_inventory.py",
+        "tests/unit/",
+        "tests/integration/test_postgres.py:20-131",
+        "tests/contract/test_nocodb_auth_contract.py",
+        "tests/shadow/test_domain_parity.py",
+        "tests/shadow/test_v1_contract.py",
+        "tests/e2e/web/test_owner_journey.py",
+        "tests/e2e/flows/test_cli.py",
+        ".omo/evidence/domain-checkbox-runtime-qa.md:11-30"
+      ],
+      "gaps": [
+        "No repository artifact captures the claimed full Docker quality gate '71 passed'; the only persisted test transcript here is the domain lane (18 passed).",
+        "tests/integration/test_postgres.py skips when TEST_DATABASE_DSN is absent, and the focused production-operations pytest artifacts explicitly report timeout/no result (.omo/evidence/production-operations-reverification.txt:18-23).",
+        "No SQL Server-specific test module exists, and E2E tests use in-process TestClient rather than a running deployment."
+      ],
+      "delivery_gap": "Test source and evidence are untracked; clean-checkout/reproducible CI or production E2E completion remains for a human/CI run to attest."
+    }
+  }
+}

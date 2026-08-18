@@ -1,0 +1,26 @@
+=== git rev-parse HEAD ===
+307c5dbf972990321d8f63c8d269910e76e3237f
+=== git show --no-renames --format=fuller --stat ===
+commit 307c5dbf972990321d8f63c8d269910e76e3237f
+Author:     yosdwi <yosesdwi032@gmail.com>
+AuthorDate: Mon Aug 3 14:59:47 2026 +0700
+Commit:     yosdwi <yosesdwi032@gmail.com>
+CommitDate: Mon Aug 3 14:59:47 2026 +0700
+
+    Fix Prefect public UI API URL
+
+ .env.example                |  1 +
+ compose.yaml                |  1 +
+ docs/local-development.md   |  2 +-
+ tests/ops/prefect-ui-url.sh | 29 +++++++++++++++++++++++++++++
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+ create mode 100644 tests/ops/prefect-ui-url.sh
+=== git diff-tree name-status ===
+M	.env.example
+M	compose.yaml
+M	docs/local-development.md
+A	tests/ops/prefect-ui-url.sh
+=== git status --short (untracked only expected) ===
+?? .debug-journal.md
+?? .omo/
+?? diff.png

@@ -1,0 +1,6 @@
+active_secret_parsed=yes
+username_nonempty=yes
+password_nonempty=yes
+prefect_authenticated_status=200
+secret_values=redacted
+exit=0

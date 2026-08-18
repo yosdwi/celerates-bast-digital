@@ -1,0 +1,18 @@
+initial_url=https://conform-v2-stagging.celeratesapps.com/v2/dashboard?rangeType=span&seconds=-86400
+initial_title=Prefect Server
+login_input_count=0
+request_failed=https://sr-client-cfg.amplitude.com/config/c97dd2acbf306ab7bf54aca0aeb7ffa1?config_group=browser reason=net::ERR_ABORTED
+login_input_placeholder=admin:pass
+password_only_url=https://conform-v2-stagging.celeratesapps.com/v2/login?redirectTo=%2Fdashboard%3FrangeType%3Dspan%26seconds%3D-86400
+password_only_auth_failed=0
+combined_credential_url=https://conform-v2-stagging.celeratesapps.com/v2/dashboard?rangeType=span&seconds=-86400
+dashboard_heading_count=1
+network method=POST status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/count
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/settings
+network method=GET status=401 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/settings
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=200 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/health
+exit=0

@@ -1,0 +1,15 @@
+request_failed=http://prefect-server:4200/api/admin/settings reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/version reason=mixed-content
+request_failed=http://prefect-server:4200/api/flow_runs/count reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/settings reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/version reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/settings reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/version reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/settings reason=mixed-content
+request_failed=http://prefect-server:4200/api/admin/version reason=mixed-content
+page.goto: Timeout 30000ms exceeded.
+Call log:
+[2m  - navigating to "https://conform-v2-stagging.celeratesapps.com/", waiting until "networkidle"[22m
+
+    at /tmp/prefect-ui-debug-playwright/repro.js:27:14
+exit=1

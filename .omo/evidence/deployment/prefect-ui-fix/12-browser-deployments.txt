@@ -1,0 +1,41 @@
+initial_url=https://conform-v2-stagging.celeratesapps.com/v2/dashboard?rangeType=span&seconds=-86400
+initial_title=Prefect Server
+login_input_count=0
+login_input_placeholder=admin:pass
+password_only_url=https://conform-v2-stagging.celeratesapps.com/v2/login?redirectTo=%2Fdashboard%3FrangeType%3Dspan%26seconds%3D-86400
+password_only_auth_failed=0
+combined_credential_url=https://conform-v2-stagging.celeratesapps.com/v2/dashboard?rangeType=span&seconds=-86400
+dashboard_heading_count=1
+request_failed=https://conform-v2-stagging.celeratesapps.com/cdn-cgi/rum? reason=net::ERR_ABORTED
+request_failed=https://conform-v2-stagging.celeratesapps.com/api/work_pools/filter reason=net::ERR_ABORTED
+request_failed=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter reason=net::ERR_ABORTED
+deployments_url=https://conform-v2-stagging.celeratesapps.com/v2/deployments?page=1&sort=NAME_ASC&limit=10
+visible_deployment_count=5
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/settings
+network method=POST status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/count
+network method=GET status=401 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/settings
+network method=GET status=401 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=200 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/health
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/count
+network method=GET status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=GET status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/settings
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/deployments/count
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/deployments/paginate
+network method=GET status=200 authorization_present=false url=https://conform-v2-stagging.celeratesapps.com/api/health
+network method=GET status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/admin/version
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flows/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/deployments/paginate
+network method=POST status=200 authorization_present=true url=https://conform-v2-stagging.celeratesapps.com/api/flow_runs/filter
+exit=0

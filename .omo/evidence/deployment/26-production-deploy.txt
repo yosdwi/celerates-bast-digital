@@ -1,0 +1,46 @@
+preflight passed
+using local app image: digital-bast:v2-d75fcfc7f167
+ Image nginx:1.27.1-alpine Pulling 
+ Image postgres:17.6-bookworm Pulling 
+ Image redis:7.4.0-alpine Pulling 
+ Image redis:7.4.0-alpine Pulled 
+ Image postgres:17.6-bookworm Pulled 
+ Image nginx:1.27.1-alpine Pulled 
+ Container digital-bast-v2-postgres-1 Running 
+ Container digital-bast-v2-reverse-proxy-1 Running 
+ Container digital-bast-v2-redis-1 Running 
+ Container digital-bast-v2-prefect-server-1 Recreate 
+ Container digital-bast-v2-prefect-server-1 Recreated 
+ Container digital-bast-v2-prefect-services-1 Recreate 
+ Container digital-bast-v2-prefect-services-1 Recreated 
+ Container digital-bast-v2-redis-1 Waiting 
+ Container digital-bast-v2-postgres-1 Waiting 
+ Container digital-bast-v2-redis-1 Healthy 
+ Container digital-bast-v2-postgres-1 Healthy 
+ Container digital-bast-v2-prefect-server-1 Starting 
+ Container digital-bast-v2-prefect-server-1 Started 
+ Container digital-bast-v2-prefect-server-1 Waiting 
+ Container digital-bast-v2-prefect-server-1 Healthy 
+ Container digital-bast-v2-prefect-services-1 Starting 
+ Container digital-bast-v2-prefect-services-1 Started 
+ Container digital-bast-v2-web-green-1 Creating 
+ Container digital-bast-v2-web-green-1 Created 
+ Container digital-bast-v2-web-green-1 Starting 
+ Container digital-bast-v2-web-green-1 Started 
+ Container digital-bast-v2-web-green-run-7b82ba15ecee Creating 
+ Container digital-bast-v2-web-green-run-7b82ba15ecee Created 
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ Container digital-bast-v2-worker-green-1 Creating 
+ Container digital-bast-v2-runner-green-1 Creating 
+ Container digital-bast-v2-worker-green-1 Created 
+ Container digital-bast-v2-runner-green-1 Created 
+ Container digital-bast-v2-runner-green-1 Starting 
+ Container digital-bast-v2-worker-green-1 Starting 
+ Container digital-bast-v2-worker-green-1 Started 
+ Container digital-bast-v2-runner-green-1 Started 
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/08/03 06:35:54 [notice] 6076#6076: signal process started
+deployment complete: green
+transport_exit=0

@@ -1,0 +1,29 @@
+targeted_test_rerun
+Prefect UI API URL checks passed
+targeted_exit=0
+ops_suite_rerun
+run=tests/ops/adversarial.sh
+adversarial checks passed
+exit=0
+run=tests/ops/backup-restore.sh
+backup and restore checks passed
+exit=0
+run=tests/ops/local-image-deploy.sh
+local-image deploy checks passed
+exit=0
+run=tests/ops/prefect-ui-url.sh
+Prefect UI API URL checks passed
+exit=0
+run=tests/ops/preflight-retention.sh
+preflight and retention checks passed
+exit=0
+run=tests/ops/release-trust.sh
+release trust checks passed
+exit=0
+run=tests/ops/rollback-slots.sh
+rollback slot checks passed
+exit=0
+check_ops_rerun
+operations static checks passed
+check_ops_exit=0
+capture_exit=0

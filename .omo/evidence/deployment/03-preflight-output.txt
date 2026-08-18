@@ -1,0 +1,2 @@
+root disk must be expanded to at least 150GB
+exit=70

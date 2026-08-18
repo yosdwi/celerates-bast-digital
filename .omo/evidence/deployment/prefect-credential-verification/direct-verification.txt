@@ -1,0 +1,9 @@
+secret_path=/home/debian/script/digital-bast-v2/secrets/prefect_api_auth
+secret_mode=640
+credential_parts=2
+username_nonempty=yes
+password_nonempty=yes
+unauthenticated_status=401
+authenticated_status=200
+credential_values=redacted
+exit=0

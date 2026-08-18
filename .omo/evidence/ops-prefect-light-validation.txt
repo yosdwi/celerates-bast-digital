@@ -1,0 +1,55 @@
+== shell syntax ==
+shell syntax: PASS
+== compose config (default Prefect port) ==
+compose config (default): PASS
+== compose config (custom Prefect port) ==
+compose config (custom): PASS
+== local override config ==
+local override config: PASS
+== targeted compose assertions ==
+targeted compose assertions: PASS
+== static wiring assertions ==
+compose.yaml:29:    LEGACY_DATABASE_DSN_FILE: /run/secrets/legacy_database_dsn
+compose.yaml:41:    - legacy_database_dsn
+compose.yaml:185:  runner-blue:
+compose.yaml:205:  runner-green:
+compose.yaml:253:  legacy_database_dsn:
+scripts/container-entrypoint.sh:19:load_secret LEGACY_DATABASE_DSN
+docs/local-development.md:22:ssh -N -L 127.0.0.1:4200:127.0.0.1:4200 <ssh-user>@<server-host>
+static wiring assertions: PASS
+preflight passed
+preflight dry-run: PASS
+adversarial ops test (without required SECRETS_GID): FAIL before file checks (expected missing-environment precondition)
+adversarial checks passed
+adversarial ops test (SECRETS_GID set): PASS
+entrypoint legacy secret load: PASS
+./scripts/postgres-init.sh:8:    --set app_password="$app_password" --set prefect_password="$prefect_password" <<'SQL'
+possible embedded secret detected
+check-ops static suite: FAIL on pre-existing embedded-secret regex in scripts/postgres-init.sh (exit 1)
+8:LEGACY_DATABASE_DSN_FILE=/run/secrets/legacy_database_dsn
+10:PREFECT_PORT=4200
+18:NOCODB_EMPLOYEE_TABLE_ID=mhwyla9uh1ici8j
+20:GOOGLE_IOT_SPREADSHEET_ID=1bzAndOjRR-9GOrB8a2_FD5ayE5uPLLrg7gK4bKcmKbo
+25:TIMESHEET_DEFAULT_PROJECT=MTG/PR/202301/000100-Pamapersada Nusantara-Talent Force Jan-Dec 2026-for PAMA
+env example wiring assertions: PASS
+== expanded deploy lifecycle ==
+49:        compose stop "web-$target" "worker-$target" "runner-$target" >/dev/null 2>&1 || true
+55:run compose pull "web-$target" "worker-$target" "runner-$target"
+69:    compose up -d --no-deps "worker-$target" "runner-$target"
+92:    compose stop "web-$current" "worker-$current" "runner-$current"
+97:    printf '%s\n' "DRY-RUN start worker-$target runner-$target"
+deploy lifecycle shell/static assertions: PASS
+== external legacy network compose config ==
+external legacy network compose assertions: PASS
+Prefect messaging audit: server/services use messaging broker/cache settings; worker/serve processes use PREFECT_API_URL and do not require PREFECT_MESSAGING_* overrides (Context7 Prefect self-hosted docs).
+DRY-RUN compose pull web-green worker-green runner-green
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+deploy dry-run lifecycle: PASS

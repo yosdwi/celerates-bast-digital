@@ -1,0 +1,25 @@
+Fresh exact-SHA ops review (2026-08-03 Asia/Jakarta)
+Repository: /mnt/d/Github/celerates/digital-bast/v2-prod
+Requested SHA: ade4fd7aa9e5317bd78fde599c1e314be212364f
+Invocation: git rev-parse HEAD
+Observable: ade4fd7aa9e5317bd78fde599c1e314be212364f
+
+Invocation: git archive ade4fd7aa9e5317bd78fde599c1e314be212364f | tar -x -C <temporary-directory>; sh tests/ops/adversarial.sh
+Observable: adversarial checks passed (exit 0)
+Invocation: sh tests/ops/backup-restore.sh
+Observable: backup and restore checks passed (exit 0)
+Invocation: sh tests/ops/local-image-deploy.sh
+Observable: FAIL (exit 126): /tmp/<temporary-directory>/project/scripts/deploy.sh: Permission denied
+
+Exact release asset mode check:
+Invocation: git ls-tree ade4fd7aa9e5317bd78fde599c1e314be212364f scripts/deploy.sh
+Observable: 100644 blob ea44f817d0c7897c7dcd4f2c6375eafd246bc8cf scripts/deploy.sh
+Invocation: stat -c '%a %n' <archived-tree>/scripts/deploy.sh
+Observable: 644; release workflow at this SHA executes test -x "$stage_dir/scripts/deploy.sh" after git archive.
+
+Invocation: sh tests/ops/release-trust.sh (exact-SHA archive)
+Observable: release trust checks passed (exit 0), but the test does not assert executable mode; the executable-bit failure above remains release-blocking.
+
+Current worktree-only rerun (not used as exact-SHA proof):
+Invocation: sh tests/ops/release-trust.sh; sh tests/ops/backup-restore.sh; sh tests/ops/preflight-retention.sh; sh tests/ops/local-image-deploy.sh; sh tests/ops/rollback-slots.sh; sh tests/ops/adversarial.sh; SECRETS_GID=0 NOCODB_BASE_URL=https://invalid.local sh scripts/check-ops.sh
+Observable: all current-worktree gates exit 0; current index has scripts/deploy.sh mode 100755, unlike requested commit.

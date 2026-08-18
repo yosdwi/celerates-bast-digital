@@ -1,0 +1,21 @@
+df_available_kb=23315128
+preflight passed
+preflight_exit=0
+preflight passed
+using local app image: digital-bast:v2-verify
+DRY-RUN compose pull postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d postgres redis prefect-server prefect-services reverse-proxy
+DRY-RUN compose up -d --no-deps web-green
+DRY-RUN health web-green
+DRY-RUN shadow web-green
+DRY-RUN migration alembic upgrade head
+DRY-RUN start worker-green runner-green
+DRY-RUN switch blue to green
+DRY-RUN public health and rollback on failure
+deployment complete: green
+deploy_dry_run_exit=0
+DRY-RUN verify web-green is healthy
+DRY-RUN switch blue to green
+rollback dry-run complete
+rollback_dry_run_exit=0
+transport_exit=0
