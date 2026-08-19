@@ -40,6 +40,7 @@ ATTENDANCE = """
     FROM durable_records
     WHERE entity_kind = 'attendance'
       AND work_date BETWEEN %s AND %s
+      AND payload->>'employee_id' LIKE 'MTG-TF/%'
       AND (
           cardinality(%s::text[]) = 0
           OR COALESCE(
@@ -55,6 +56,12 @@ ATTENDANCE_LEGACY = """
     WHERE entity_kind = 'attendance'
       AND work_date BETWEEN %s AND %s
       AND payload->>'role' = %s
+      -- Real employee_id values are always "MTG-TF/...". Test fixtures
+      -- (tests/integration/test_postgres.py inserts a raw hex employee_id
+      -- named "Owner Test" against whatever database the test DSN points
+      -- at) must never leak into a real attendance export just because
+      -- they share a role.
+      AND payload->>'employee_id' LIKE 'MTG-TF/%'
     ORDER BY payload->>'full_name', work_date
 """
 

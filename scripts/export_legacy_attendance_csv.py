@@ -65,7 +65,7 @@ def main() -> int:
     parser.add_argument("--postgres-dsn", required=True)
     parser.add_argument("--start", type=date.fromisoformat, required=True)
     parser.add_argument("--end", type=date.fromisoformat, required=True)
-    parser.add_argument("--out-dir", type=Path, default=Path("."))
+    parser.add_argument("--out-dir", type=Path, default=Path())
     args = parser.parse_args()
 
     rows = fetch_rows(args.postgres_dsn, args.start, args.end)

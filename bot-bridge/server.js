@@ -43,6 +43,21 @@ function log(line) {
   console.log(entry);
 }
 
+// Baileys throws (not just rejects) from deep inside its own send/query
+// internals on a transient socket state -- e.g. "Connection Closed" while a
+// reconnect is in flight (see groupMetadata -> sendNode -> sendRawMessage).
+// Node's default behavior for an uncaught exception/rejection is to crash
+// the whole process, which took the bot offline outright. Log and keep
+// running instead -- a single failed send/query should not end the session;
+// Baileys' own reconnect logic (connection.update handler below) recovers
+// the socket on its own.
+process.on("uncaughtException", (error) => {
+  log(`uncaughtException (bot stays up): ${error && error.stack ? error.stack : error}`);
+});
+process.on("unhandledRejection", (reason) => {
+  log(`unhandledRejection (bot stays up): ${reason && reason.stack ? reason.stack : reason}`);
+});
+
 function readConfig() {
   try {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));

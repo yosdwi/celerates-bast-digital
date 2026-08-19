@@ -18,7 +18,8 @@ def upgrade() -> None:
             employee_id   text NOT NULL,
             work_date     date NOT NULL,
             caption       text NOT NULL DEFAULT '',
-            content_type  text NOT NULL CHECK (content_type IN ('image/png','image/jpeg','image/webp')),
+            content_type  text NOT NULL
+                CHECK (content_type IN ('image/png','image/jpeg','image/webp')),
             byte_size     integer NOT NULL CHECK (byte_size > 0 AND byte_size <= 5242880),
             sha256        text NOT NULL,
             image         bytea NOT NULL,
@@ -28,7 +29,8 @@ def upgrade() -> None:
         );
         CREATE INDEX ix_task_evidence_task ON task_evidence (task_source, task_key);
         CREATE INDEX ix_task_evidence_employee_date ON task_evidence (employee_id, work_date);
-        CREATE UNIQUE INDEX ux_task_evidence_dedupe ON task_evidence (task_source, task_key, sha256);
+        CREATE UNIQUE INDEX ux_task_evidence_dedupe
+            ON task_evidence (task_source, task_key, sha256);
 
         CREATE TABLE wa_identity (
             wa_jid       text PRIMARY KEY,
@@ -63,7 +65,8 @@ def upgrade() -> None:
             document      text NOT NULL,
             generated_at  timestamptz NOT NULL DEFAULT now()
         );
-        CREATE INDEX ix_bast_artifacts_scope ON bast_artifacts (report_type, year, month, generated_at DESC);
+        CREATE INDEX ix_bast_artifacts_scope
+            ON bast_artifacts (report_type, year, month, generated_at DESC);
         """
     )
 

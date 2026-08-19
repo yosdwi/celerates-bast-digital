@@ -31,14 +31,14 @@ from psycopg.types.json import Jsonb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from digital_bast.domain.models import (  # noqa: E402
+from digital_bast.domain.identity import daily_key, holiday_key
+from digital_bast.domain.models import (
     EmployeeRole,
     Holiday,
     RecordOrigin,
     Schedule,
 )
-from digital_bast.domain.identity import daily_key, holiday_key  # noqa: E402
-from digital_bast.domain.timesheets import day_status  # noqa: E402
+from digital_bast.domain.timesheets import day_status
 
 ATTENDANCE_QUERY = """
 DECLARE @NRP AS VARCHAR(20) = %s;
@@ -94,7 +94,11 @@ def load_employees(path: Path) -> tuple[EmployeeRecord, ...]:
             full_name=item["full_name"],
             employee_id=item["employee_id"],
             nrp=item["nrp"],
-            role=EmployeeRole.DEVELOPER if item["role"] == "Developer" else EmployeeRole.IOT_OPERATIONS,
+            role=(
+                EmployeeRole.DEVELOPER
+                if item["role"] == "Developer"
+                else EmployeeRole.IOT_OPERATIONS
+            ),
         )
         for item in raw
     )
@@ -115,7 +119,9 @@ def load_roster(path: Path, employees: tuple[EmployeeRecord, ...]) -> dict[tuple
     month_header = rows[10]
     month_columns = [index for index, value in enumerate(month_header) if value.strip()]
     day_row = rows[12]
-    names = {employee.full_name for employee in employees if employee.role is EmployeeRole.IOT_OPERATIONS}
+    names = {
+        employee.full_name for employee in employees if employee.role is EmployeeRole.IOT_OPERATIONS
+    }
     roster: dict[tuple[str, date], str] = {}
     for row in rows[13:]:
         if not row or not row[0].strip():
@@ -126,7 +132,9 @@ def load_roster(path: Path, employees: tuple[EmployeeRecord, ...]) -> dict[tuple
             continue
         if not any(value.strip() for value in row[1:]):
             continue
-        boundaries = list(zip(month_columns, month_columns[1:] + [len(row)]))
+        boundaries = list(
+            zip(month_columns, [*month_columns[1:], len(row)], strict=True)
+        )
         for block_index, (col_index, col_end) in enumerate(boundaries):
             total_month = (_ROSTER_START_MONTH - 1) + block_index
             year_num = _ROSTER_START_YEAR + total_month // 12
@@ -183,7 +191,7 @@ def build_rows(
             if code is None:
                 shift_name = None
             else:
-                label, sched_in, sched_out = SHIFT_LEGEND.get(code, (code, "", ""))
+                label, _sched_in, _sched_out = SHIFT_LEGEND.get(code, (code, "", ""))
                 shift_name = label
             schedule = Schedule(
                 daily_key("schedule", work_date, employee.employee_id),
@@ -193,7 +201,8 @@ def build_rows(
                 RecordOrigin.PIPELINE,
             )
             is_holiday, notes = day_status(employee.role, work_date.weekday(), None, schedule)
-            if code is not None and code in SHIFT_LEGEND and code not in ("L", "LS", "TS", "C", "I"):
+            has_schedule = code is not None and code in SHIFT_LEGEND
+            if has_schedule and code not in ("L", "LS", "TS", "C", "I"):
                 _, schedule_in, schedule_out = SHIFT_LEGEND[code]
             else:
                 schedule_in, schedule_out = "", ""

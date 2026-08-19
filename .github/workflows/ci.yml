@@ -112,7 +112,7 @@ jobs:
         run: uv run alembic upgrade head
       - name: Smoke and shadow gate
         run: |
-          uv run uvicorn digital_bast.web.app:app --host 127.0.0.1 --port 8000 > /tmp/web.log 2>&1 &
+          uv run uvicorn digital_bast.web.asgi:app --host 127.0.0.1 --port 8000 > /tmp/web.log 2>&1 &
           web_pid=$!
           uv run prefect server start --host 127.0.0.1 --port 4200 > /tmp/prefect.log 2>&1 &
           prefect_pid=$!
