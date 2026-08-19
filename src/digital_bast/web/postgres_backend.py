@@ -82,7 +82,7 @@ class PostgresWebBackend:
         try:
             with self._connect() as connection:
                 row = connection.execute(
-                    "SELECT to_regclass('public.durable_records') IS NOT NULL"
+                    "SELECT to_regclass('public.tasks') IS NOT NULL"
                 ).fetchone()
                 return row is not None and row[0] is True
         except psycopg.Error:
@@ -94,10 +94,7 @@ class PostgresWebBackend:
                 self._connect() as connection,
                 connection.cursor(row_factory=class_row(ReportRow)) as cursor,
             ):
-                _ = cursor.execute(
-                    REPORT,
-                    (year, month, report_type, report_type, evidence_only),
-                )
+                _ = cursor.execute(REPORT, (year, month, report_type, evidence_only))
                 rows = cursor.fetchall()
         except psycopg.Error as error:
             raise WebBackendUnavailableError(operation="report") from error

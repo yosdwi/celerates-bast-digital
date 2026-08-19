@@ -49,9 +49,7 @@ _INDEX_WORDS: Final = {
     "sepuluh": 10,
 }
 _INDEX_PATTERN: Final = re.compile(
-    r"(?:poin|point|nomor|no\.?|number|#)\s*(\d{1,2}|"
-    + "|".join(_INDEX_WORDS)
-    + r")\b"
+    r"(?:poin|point|nomor|no\.?|number|#)\s*(\d{1,2}|" + "|".join(_INDEX_WORDS) + r")\b"
 )
 _MUTATION_WORDS: Final = (
     "restart",
@@ -146,11 +144,32 @@ PERSONA_FALLBACK_REPLY: Final = (
     "Kalau butuh bantuan, tinggal tanya aja di sini secara natural ya 😄"
 )
 _CONVERSATION_WORDS: Final = (
-    "kenalin", "kenalan", "siapa kamu", "siapa nih", "siapa sih", "kamu siapa",
-    "halo", "hai conform", "hallo", "hi conform", "assalamualaikum",
-    "pagi conform", "siang conform", "sore conform", "malam conform",
-    "makasih", "terima kasih", "thanks", "thank you", "mantap", "keren",
-    "bisa ngapain", "bisa apa aja", "bantuin apa", "fungsi kamu", "tolong apa",
+    "kenalin",
+    "kenalan",
+    "siapa kamu",
+    "siapa nih",
+    "siapa sih",
+    "kamu siapa",
+    "halo",
+    "hai conform",
+    "hallo",
+    "hi conform",
+    "assalamualaikum",
+    "pagi conform",
+    "siang conform",
+    "sore conform",
+    "malam conform",
+    "makasih",
+    "terima kasih",
+    "thanks",
+    "thank you",
+    "mantap",
+    "keren",
+    "bisa ngapain",
+    "bisa apa aja",
+    "bantuin apa",
+    "fungsi kamu",
+    "tolong apa",
 )
 
 
@@ -329,8 +348,7 @@ def format_completion(report: CompletionReport) -> str:
     """
     if not report.employees:
         return (
-            f"*Status BAST — {report.period.label()}*\n\n"
-            "Tidak ada data karyawan pada periode ini."
+            f"*Status BAST — {report.period.label()}*\n\nTidak ada data karyawan pada periode ini."
         )
     complete = sum(1 for employee in report.employees if employee.state is CheckState.COMPLETE)
     total = len(report.employees)
@@ -475,7 +493,7 @@ def _badge(state: CheckState) -> str:
     color, glyph = _MATRIX_BADGE[state]
     return (
         f'<span style="display:inline-block;min-width:20px;padding:2px 6px;'
-        f'border-radius:10px;background:{color};color:#fff;font-weight:bold;'
+        f"border-radius:10px;background:{color};color:#fff;font-weight:bold;"
         f'font-size:11px;">{glyph}</span>'
     )
 

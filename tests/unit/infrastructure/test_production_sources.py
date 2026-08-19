@@ -1,47 +1,21 @@
 from __future__ import annotations
 
-from digital_bast.domain.models import EmployeeId, EmployeeRole
+from digital_bast.domain.models import Employee, EmployeeId, EmployeeRole
 from digital_bast.flows.models import Period
-from digital_bast.infrastructure.production_sources import parse_employees, parse_iot_sheet
+from digital_bast.infrastructure.production_sources import parse_iot_sheet
 
 
-def test_employee_payload_is_parsed_into_typed_active_inventory() -> None:
-    records = [
-        {
-            "Id": 7,
-            "Employee ID": "IOT-7",
-            "Employee Name": "Operator One",
-            "Role": "IoT Operations",
-            "Status": "Active",
-        },
-        {
-            "Id": 8,
-            "Employee ID": "DEV-8",
-            "Employee Name": "Developer One",
-            "Role": "Developer",
-            "Status": "Inactive",
-        },
-    ]
-
-    employees = parse_employees(records)
-
-    assert len(employees) == 1
-    assert employees[0].id == EmployeeId("7")
-    assert employees[0].role is EmployeeRole.IOT_OPERATIONS
+def _employee() -> Employee:
+    return Employee(
+        id=EmployeeId("7"),
+        external_id="IOT-7",
+        name="Operator One",
+        role=EmployeeRole.IOT_OPERATIONS,
+    )
 
 
 def test_google_sheet_columns_are_parsed_and_matched_to_employee() -> None:
-    employees = parse_employees(
-        [
-            {
-                "Id": 7,
-                "Employee ID": "IOT-7",
-                "Employee Name": "Operator One",
-                "Role": "IoT Operations",
-                "Status": "Active",
-            }
-        ]
-    )
+    employees = (_employee(),)
     payload = {
         "valueRanges": [
             {"values": [["Date", "2026/08/03"]]},

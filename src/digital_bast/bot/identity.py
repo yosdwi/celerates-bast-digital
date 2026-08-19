@@ -127,9 +127,9 @@ class ActivationService:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 for employee_id, code in codes.items():
-                    code_hash = bcrypt.hashpw(
-                        code.encode("utf-8"), bcrypt.gensalt()
-                    ).decode("utf-8")
+                    code_hash = bcrypt.hashpw(code.encode("utf-8"), bcrypt.gensalt()).decode(
+                        "utf-8"
+                    )
                     _ = cursor.execute(
                         """
                         INSERT INTO activation_codes (employee_id, code_hash)
@@ -188,9 +188,7 @@ class ActivationService:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(
-                service="postgres", operation="load_pending_claim"
-            ) from error
+            raise InfrastructureError(service="postgres", operation="load_pending_claim") from error
         return None if row is None or row[0] is None else str(row[0])
 
     def _clear_claim(self, wa_jid: str) -> None:
@@ -225,9 +223,7 @@ class ActivationService:
     def _unbind(self, employee_id: str) -> bool:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                _ = cursor.execute(
-                    "DELETE FROM wa_identity WHERE employee_id = %s", (employee_id,)
-                )
+                _ = cursor.execute("DELETE FROM wa_identity WHERE employee_id = %s", (employee_id,))
                 deleted = cursor.rowcount > 0
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="unbind_identity") from error

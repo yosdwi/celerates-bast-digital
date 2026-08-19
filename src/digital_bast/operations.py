@@ -10,14 +10,7 @@ from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
-from digital_bast.infrastructure.completion_source import (
-    NocoDBAttendanceReader,
-    NocoDBCompletionSource,
-    NocoDBTaskEvidenceReader,
-    parse_attendance_mapping,
-)
-from digital_bast.infrastructure.nocodb_repository import NocoDBDomainRepository
-from digital_bast.infrastructure.production_sources import NocoDBPostgresEmployeeSource
+from digital_bast.infrastructure.completion_source import CompletionSource
 
 if TYPE_CHECKING:
     from digital_bast.domain.completion import DateRange
@@ -27,10 +20,8 @@ if TYPE_CHECKING:
     from digital_bast.web.postgres_backend import PostgresWebBackend
 
 _EXPORTS_DIRECTORY: Final = Path(__file__).resolve().parents[2] / "bot-bridge" / "data" / "exports"
-_LOCAL_EMPLOYEE_FILE: Final = Path(__file__).resolve().parents[2] / "employee_data.json"
 _REPORT_TYPE_ROLE: Final = {"developer": "Developer", "shifting": "IoT Operations"}
 _REPORT_TYPE_SUFFIX: Final = {"developer": "DEVELOPER", "shifting": "SHIFTING"}
-_MISSING_NOCODB: Final = "NOCODB_DATABASE_DSN, NOCODB_BASE_ID"
 _MISSING_APP_DSN: Final = "APP_DATABASE_DSN"
 _INVALID_SETTINGS: Final = "application settings are invalid; check .env and the secret files"
 
@@ -52,32 +43,19 @@ class OperationConfigurationError(RuntimeError):
         return f"missing configuration for this command: {self.missing}"
 
 
-def create_completion_source() -> NocoDBCompletionSource:
-    settings = _settings()
-    dsn = settings.nocodb_database_dsn
-    base_id = settings.nocodb_base_id
-    if dsn is None or base_id is None:
-        raise OperationConfigurationError(_MISSING_NOCODB)
-    secret = dsn.get_secret_value()
-    mapping = parse_attendance_mapping(settings.nocodb_attendance_mapping)
-    evidence_column = settings.nocodb_task_evidence_column
-    return NocoDBCompletionSource(
-        NocoDBPostgresEmployeeSource(secret, base_id),
-        NocoDBDomainRepository(secret, base_id),
-        NocoDBAttendanceReader(secret, base_id, mapping) if mapping is not None else None,
-        NocoDBTaskEvidenceReader(secret, base_id, evidence_column) if evidence_column else None,
-    )
+def create_completion_source() -> CompletionSource:
+    """Completion facts from the single store: the typed tables in app Postgres.
 
-
-def create_local_completion_source() -> NocoDBCompletionSource:
-    # local: NocoDB is unreachable; fall back to durable_records + the flat
-    # attendance rows scripts/load_pama_attendance.py already writes there.
-    # Evidence comes from task_evidence (talent uploads over WhatsApp DM,
-    # see bot/evidence.py) -- per-task, unlike the old NocoDB aggregate.
+    Roster, records, attendance and per-task evidence all come from the same
+    database NocoDB edits, so a NocoDB edit is visible here immediately with no
+    sync step.
+    """
     from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
-        LocalEmployeeSource,
         PostgresAttendanceFactReader,
         PostgresTaskEvidenceReader,
+    )
+    from digital_bast.infrastructure.postgres_employees import (  # noqa: PLC0415
+        PostgresEmployeeSource,
     )
     from digital_bast.infrastructure.repositories import PostgresDomainRepository  # noqa: PLC0415
 
@@ -86,8 +64,8 @@ def create_local_completion_source() -> NocoDBCompletionSource:
     if dsn is None:
         raise OperationConfigurationError(_MISSING_APP_DSN)
     secret = dsn.get_secret_value()
-    return NocoDBCompletionSource(
-        LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE),
+    return CompletionSource(
+        PostgresEmployeeSource(secret),
         PostgresDomainRepository(secret),
         PostgresAttendanceFactReader(secret),
         PostgresTaskEvidenceReader(secret),
@@ -130,11 +108,15 @@ def create_llm_interpreter() -> LlmInterpreter | None:
 
 
 async def load_roster() -> tuple[Employee, ...]:
-    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
-        LocalEmployeeSource,
+    from digital_bast.infrastructure.postgres_employees import (  # noqa: PLC0415
+        PostgresEmployeeSource,
     )
 
-    return await LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE).load()
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return await PostgresEmployeeSource(dsn.get_secret_value()).load()
 
 
 async def issue_activation_codes(service: ActivationService | None = None) -> dict[str, str]:
@@ -143,19 +125,12 @@ async def issue_activation_codes(service: ActivationService | None = None) -> di
     return await active.issue_codes(tuple(str(employee.id) for employee in employees))
 
 
-def _default_completion_source() -> NocoDBCompletionSource:
-    try:
-        return create_completion_source()
-    except OperationConfigurationError:
-        return create_local_completion_source()
-
-
 async def completion_status(
     period: DateRange,
     employee: str | None = None,
-    source: NocoDBCompletionSource | None = None,
+    source: CompletionSource | None = None,
 ) -> CompletionReport:
-    active = source if source is not None else _default_completion_source()
+    active = source if source is not None else create_completion_source()
     return evaluate_completion(period, await active.load(period, employee))
 
 

@@ -53,9 +53,30 @@ def outstanding(candidates: tuple[EvidenceCandidate, ...]) -> tuple[EvidenceCand
 
 _CAPTION_STOPWORDS: Final = frozenset(
     {
-        "ini", "itu", "yang", "buat", "untuk", "dulu", "dong", "nih", "ya",
-        "aku", "saya", "mau", "upload", "kirim", "foto", "gambar", "dokumen",
-        "evidence", "task", "tasklist", "poin", "point", "nomor", "no",
+        "ini",
+        "itu",
+        "yang",
+        "buat",
+        "untuk",
+        "dulu",
+        "dong",
+        "nih",
+        "ya",
+        "aku",
+        "saya",
+        "mau",
+        "upload",
+        "kirim",
+        "foto",
+        "gambar",
+        "dokumen",
+        "evidence",
+        "task",
+        "tasklist",
+        "poin",
+        "point",
+        "nomor",
+        "no",
     }
 )
 _KEYWORD_PATTERN: Final = re.compile(r"[a-z0-9]+")
@@ -146,9 +167,12 @@ class _PendingRow:
 
 
 class _TaskRow:
-    __slots__ = ("employee_id", "status", "work_date")
+    __slots__ = ("employee_id", "status", "task_id", "work_date")
 
-    def __init__(self, employee_id: str | None, status: str | None, work_date: date) -> None:
+    def __init__(
+        self, task_id: int, employee_id: str | None, status: str | None, work_date: date
+    ) -> None:
+        self.task_id = task_id
         self.employee_id = employee_id
         self.status = status
         self.work_date = work_date
@@ -191,15 +215,13 @@ class EvidenceService:
     async def pending_task(self, wa_jid: str) -> tuple[str, str] | None:
         return await run_sync(self._pending_task, wa_jid)
 
-    async def set_pending(self, wa_jid: str, task_source: str, task_key: str) -> None:
-        await run_sync(self._set_pending, wa_jid, task_source, task_key)
+    async def set_pending(self, wa_jid: str, task_key: str) -> None:
+        await run_sync(self._set_pending, wa_jid, task_key)
 
     async def clear_pending(self, wa_jid: str) -> None:
         await run_sync(self._clear_pending, wa_jid)
 
-    async def stash_image(
-        self, wa_jid: str, image: bytes, content_type: str, caption: str
-    ) -> None:
+    async def stash_image(self, wa_jid: str, image: bytes, content_type: str, caption: str) -> None:
         await run_sync(self._stash_image, wa_jid, image, content_type, caption)
 
     async def stashed_image(self, wa_jid: str) -> tuple[bytes, str, str] | None:
@@ -211,12 +233,11 @@ class EvidenceService:
     async def upload(
         self,
         employee_id: str,
-        task_source: str,
         task_key: str,
         image: bytes,
         caption: str,
     ) -> UploadResult:
-        return await run_sync(self._upload, employee_id, task_source, task_key, image, caption)
+        return await run_sync(self._upload, employee_id, task_key, image, caption)
 
     def _list_candidates(self, employee_id: str) -> tuple[EvidenceCandidate, ...]:
         try:
@@ -226,17 +247,15 @@ class EvidenceService:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT d.source AS task_source, d.external_id AS task_key,
-                           d.payload->>'title' AS title, d.work_date,
+                    SELECT t.task_source, t.record_key AS task_key,
+                           t.title, t.work_date,
                            COUNT(e.id) AS evidence_count
-                    FROM durable_records d
-                    LEFT JOIN task_evidence e
-                        ON e.task_source = d.source AND e.task_key = d.external_id
-                    WHERE d.entity_kind = 'task'
-                      AND d.payload->>'employee_id' = %s
-                      AND lower(d.payload->>'status') = %s
-                    GROUP BY d.source, d.external_id, d.payload->>'title', d.work_date
-                    ORDER BY d.work_date, d.external_id
+                    FROM tasks t
+                    LEFT JOIN task_evidence e ON e.task_id = t.id
+                    WHERE t.employee_id = %s
+                      AND lower(t.status) = %s
+                    GROUP BY t.id, t.task_source, t.record_key, t.title, t.work_date
+                    ORDER BY t.work_date, t.record_key
                     """,
                     (employee_id, CLOSED_STATUS),
                 )
@@ -260,9 +279,12 @@ class EvidenceService:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT pending_task_source, pending_task_key
-                    FROM bot_conversations
-                    WHERE wa_jid = %s AND updated_at > now() - interval '15 minutes'
+                    SELECT t.task_source AS pending_task_source,
+                           t.record_key AS pending_task_key
+                    FROM bot_conversations c
+                    LEFT JOIN tasks t ON t.id = c.pending_task_id
+                    WHERE c.wa_jid = %s
+                      AND c.updated_at > now() - interval '15 minutes'
                     """,
                     (wa_jid,),
                 )
@@ -273,19 +295,18 @@ class EvidenceService:
             return None
         return row.pending_task_source, row.pending_task_key
 
-    def _set_pending(self, wa_jid: str, task_source: str, task_key: str) -> None:
+    def _set_pending(self, wa_jid: str, task_key: str) -> None:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
                     """
-                    INSERT INTO bot_conversations (wa_jid, pending_task_source, pending_task_key)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO bot_conversations (wa_jid, pending_task_id)
+                    SELECT %s, id FROM tasks WHERE record_key = %s
                     ON CONFLICT (wa_jid) DO UPDATE SET
-                        pending_task_source = EXCLUDED.pending_task_source,
-                        pending_task_key = EXCLUDED.pending_task_key,
+                        pending_task_id = EXCLUDED.pending_task_id,
                         updated_at = now()
                     """,
-                    (wa_jid, task_source, task_key),
+                    (wa_jid, task_key),
                 )
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="set_pending_task") from error
@@ -299,7 +320,7 @@ class EvidenceService:
                 _ = cursor.execute(
                     """
                     UPDATE bot_conversations
-                    SET pending_task_source = NULL, pending_task_key = NULL
+                    SET pending_task_id = NULL
                     WHERE wa_jid = %s
                     """,
                     (wa_jid,),
@@ -368,7 +389,6 @@ class EvidenceService:
     def _upload(
         self,
         employee_id: str,
-        task_source: str,
         task_key: str,
         image: bytes,
         caption: str,
@@ -386,13 +406,12 @@ class EvidenceService:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT payload->>'employee_id' AS employee_id, payload->>'status' AS status,
-                           work_date
-                    FROM durable_records
-                    WHERE source = %s AND external_id = %s AND entity_kind = 'task'
+                    SELECT id AS task_id, employee_id, status, work_date
+                    FROM tasks
+                    WHERE record_key = %s
                     FOR UPDATE
                     """,
-                    (task_source, task_key),
+                    (task_key,),
                 )
                 row = cursor.fetchone()
                 if row is None:
@@ -404,13 +423,12 @@ class EvidenceService:
                     _ = cursor.execute(
                         """
                         INSERT INTO task_evidence (
-                            task_source, task_key, employee_id, work_date,
+                            task_id, employee_id, work_date,
                             caption, content_type, byte_size, sha256, image
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
-                            task_source,
-                            task_key,
+                            row.task_id,
                             employee_id,
                             row.work_date,
                             caption,

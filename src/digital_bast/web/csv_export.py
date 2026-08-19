@@ -19,11 +19,26 @@ CSV_HEADERS = (
 )
 
 LEGACY_CSV_HEADERS = (
-    "Employee ID", "Full Name", "Date", "Shift", "Shift Code", "Shift Label",
-    "Schedule In", "Schedule Out", "Attendance Code", "Check In", "Check Out",
-    "Keterangan", "Overtime Check In", "Overtime Check Out", "Overtime Before",
-    "Overtime After", "TimeOff Check Out", "TimeOff Break Before",
-    "TimeOff Break After", "Holiday Code",
+    "Employee ID",
+    "Full Name",
+    "Date",
+    "Shift",
+    "Shift Code",
+    "Shift Label",
+    "Schedule In",
+    "Schedule Out",
+    "Attendance Code",
+    "Check In",
+    "Check Out",
+    "Keterangan",
+    "Overtime Check In",
+    "Overtime Check Out",
+    "Overtime Before",
+    "Overtime After",
+    "TimeOff Check Out",
+    "TimeOff Break Before",
+    "TimeOff Break After",
+    "Holiday Code",
 )
 
 
@@ -71,11 +86,26 @@ def legacy_attendance_csv(rows: tuple[Mapping[str, object], ...]) -> str:
         writer.writerow(
             neutralize_csv_formula(str(value))
             for value in (
-                row.get("employee_id", ""), row.get("full_name", ""), work_date_display,
-                row.get("shift", ""), "", "", row.get("schedule_in", ""),
-                row.get("schedule_out", ""), row.get("attendance_code", ""),
-                row.get("check_in", ""), row.get("check_out", ""), row.get("notes", ""),
-                "", "", "", "", "", "", "", "",
+                row.get("employee_id", ""),
+                row.get("full_name", ""),
+                work_date_display,
+                row.get("shift", ""),
+                "",
+                "",
+                row.get("schedule_in", ""),
+                row.get("schedule_out", ""),
+                row.get("attendance_code", ""),
+                row.get("check_in", ""),
+                row.get("check_out", ""),
+                row.get("notes", ""),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
             )
         )
     return output.getvalue()

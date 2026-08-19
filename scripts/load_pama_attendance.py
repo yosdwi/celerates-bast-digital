@@ -27,7 +27,6 @@ from pathlib import Path
 import holidays
 import psycopg
 import pymssql
-from psycopg.types.json import Jsonb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -39,6 +38,7 @@ from digital_bast.domain.models import (
     Schedule,
 )
 from digital_bast.domain.timesheets import day_status
+from digital_bast.infrastructure.pama_attendance import parse_clock
 
 ATTENDANCE_QUERY = """
 DECLARE @NRP AS VARCHAR(20) = %s;
@@ -132,9 +132,7 @@ def load_roster(path: Path, employees: tuple[EmployeeRecord, ...]) -> dict[tuple
             continue
         if not any(value.strip() for value in row[1:]):
             continue
-        boundaries = list(
-            zip(month_columns, [*month_columns[1:], len(row)], strict=True)
-        )
+        boundaries = list(zip(month_columns, [*month_columns[1:], len(row)], strict=True))
         for block_index, (col_index, col_end) in enumerate(boundaries):
             total_month = (_ROSTER_START_MONTH - 1) + block_index
             year_num = _ROSTER_START_YEAR + total_month // 12
@@ -239,18 +237,40 @@ def build_rows(
 
 
 def upsert(connection: psycopg.Connection, row: dict[str, object]) -> None:
-    external_id = f"{row['employee_id']}:{row['work_date']}"
+    """Same target and guard as the ingest endpoint (web/sync_router.py).
+
+    This script is the fallback for a direct run from inside the PAMA network;
+    the normal path is bridge/pama_bridge.py posting to /internal/sync.
+    """
+    work_date = date.fromisoformat(str(row["work_date"]))
     connection.execute(
         """
-        INSERT INTO durable_records (source, external_id, entity_kind, work_date, payload)
-        VALUES (%s, %s, 'attendance', %s, %s)
-        ON CONFLICT (source, external_id) DO UPDATE SET
-            payload = EXCLUDED.payload,
-            work_date = EXCLUDED.work_date,
-            version = durable_records.version + 1,
-            updated_at = now()
+        INSERT INTO attendance (
+            record_key, employee_id, work_date, shift, schedule_in,
+            schedule_out, attendance_code, check_in, check_out, notes
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (record_key) DO UPDATE SET
+            shift = EXCLUDED.shift,
+            schedule_in = EXCLUDED.schedule_in,
+            schedule_out = EXCLUDED.schedule_out,
+            attendance_code = EXCLUDED.attendance_code,
+            check_in = EXCLUDED.check_in,
+            check_out = EXCLUDED.check_out,
+            notes = EXCLUDED.notes
+        WHERE attendance.origin <> 'manual'
         """,
-        ("pama-direct", external_id, row["work_date"], Jsonb(row)),
+        (
+            str(daily_key("attendance", work_date, str(row["employee_id"]))),
+            row["employee_id"],
+            work_date,
+            row["shift"],
+            row["schedule_in"],
+            row["schedule_out"],
+            row["attendance_code"],
+            parse_clock(str(row["check_in"])),
+            parse_clock(str(row["check_out"])),
+            row["notes"],
+        ),
     )
 
 

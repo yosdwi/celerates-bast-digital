@@ -133,6 +133,14 @@ class Settings(BaseSettings):
         validation_alias="NOCODB_DATABASE_DSN_FILE",
     )
     nocodb_base_id: str | None = Field(default=None, validation_alias="NOCODB_BASE_ID")
+    sync_ingest_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="SYNC_INGEST_TOKEN",
+    )
+    sync_ingest_token_file: FilePath | None = Field(
+        default=None,
+        validation_alias="SYNC_INGEST_TOKEN_FILE",
+    )
     nocodb_attendance_mapping: str | None = Field(
         default=None,
         validation_alias="NOCODB_ATTENDANCE_MAPPING",
@@ -251,11 +259,22 @@ class Settings(BaseSettings):
             self.redmine_db_password_file,
             "redmine_db_password",
         )
+        self.sync_ingest_token = _read_secret(
+            self.sync_ingest_token,
+            self.sync_ingest_token_file,
+            "sync_ingest_token",
+        )
         if self.environment.casefold() == "production":
             self._validate_production()
         return self
 
     def _validate_production(self) -> None:
+        # SQLSERVER_CONNECTION_STRING and GOOGLE_APPLICATION_CREDENTIALS are
+        # deliberately not required any more: the VPS cannot reach the PAMA SQL
+        # Servers at all, and Google Sheets is read by bridge/pama_bridge.py on
+        # the PAMA Windows PC, which posts to /internal/sync/*. Those
+        # credentials belong on the bridge host now, not here.
+        # NOCODB_* stays required because it is still the admin login backend.
         secrets = (
             ("session_secret", self.session_secret),
             ("database_dsn", self.database_dsn),
@@ -263,20 +282,14 @@ class Settings(BaseSettings):
             ("prefect_api_auth_string", self.prefect_api_auth_string),
             ("prefect_database_dsn", self.prefect_database_dsn),
             ("redis_url", self.redis_url),
-            ("sqlserver_connection_string", self.sqlserver_connection_string),
             ("nocodb_database_dsn", self.nocodb_database_dsn),
+            ("sync_ingest_token", self.sync_ingest_token),
         )
         missing = ", ".join(name for name, value in secrets if value is None)
         if missing:
             raise SettingsConfigurationError(_MISSING_CREDENTIALS, missing)
         if self.nocodb_base_id is None:
             raise SettingsConfigurationError(_MISSING_CREDENTIALS, "nocodb_base_id")
-        credentials = self.google_application_credentials
-        if credentials is None or not credentials.is_file():
-            raise SettingsConfigurationError(
-                _MISSING_FILE,
-                "GOOGLE_APPLICATION_CREDENTIALS",
-            )
         if (
             self.session_secret is not None
             and len(self.session_secret.get_secret_value()) < _MINIMUM_SESSION_SECRET_LENGTH

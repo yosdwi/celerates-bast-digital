@@ -12,7 +12,7 @@ from digital_bast.infrastructure.errors import InfrastructureError
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from digital_bast.infrastructure.nocodb import JsonValue
+    from digital_bast.infrastructure.json_types import JsonValue
 
 
 @dataclass(frozen=True, slots=True)

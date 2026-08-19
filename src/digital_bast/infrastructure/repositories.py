@@ -1,81 +1,301 @@
+"""Domain repository over the typed business tables.
+
+Replaces the durable_records jsonb blob (see migration 20260820_0004). Each
+entity kind has its own table with a surrogate `id` primary key so NocoDB can
+edit the same rows the pipeline writes -- one store, no sync.
+
+`record_key` carries the RecordKey strings from domain/identity.py unchanged,
+so identity semantics are exactly what they were.
+
+Manual-edit protection is now a database trigger (`mark_manual_edit`) plus the
+`WHERE origin <> 'manual'` guard on every upsert, replacing the old
+`payload->>'origin' <> 'manual'` test. `version` and `updated_at` are owned by
+the trigger, so no upsert touches them.
+"""
+
 from __future__ import annotations
 
-from datetime import UTC
-from typing import TYPE_CHECKING, assert_never, final
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Final, LiteralString, assert_never, final
 
 import psycopg
 from anyio.to_thread import run_sync
-from psycopg.rows import class_row
-from psycopg.types.json import Jsonb
-from pydantic import TypeAdapter, ValidationError
+from psycopg.rows import class_row, dict_row
 
 from digital_bast.application.ports import SyncCursor
 from digital_bast.domain.errors import CursorRegressionError
 from digital_bast.domain.models import (
     Attendance,
     DomainRecord,
+    EmployeeId,
     EntityKind,
     Holiday,
     Month,
     RecordKey,
+    RecordOrigin,
     Schedule,
     Task,
+    TaskCategory,
+    TaskSource,
     Timesheet,
 )
+from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.errors import InfrastructureError
-from digital_bast.infrastructure.repository_models import (
-    DOMAIN_RECORD_ADAPTER,
-    CursorRow,
-    DomainRecordRow,
-    PayloadRow,
-)
+from digital_bast.infrastructure.repository_models import CursorRow
 
 if TYPE_CHECKING:
+    from datetime import date, time
+
     from digital_bast.domain.scheduling import ProcedureName
     from digital_bast.infrastructure.healthcheck import PostgresHealthcheck
-    from digital_bast.infrastructure.nocodb import JsonValue
 
-_HOLIDAY = TypeAdapter(Holiday)
-_ATTENDANCE = TypeAdapter(Attendance)
-_TASK = TypeAdapter(Task)
-_SCHEDULE = TypeAdapter(Schedule)
-_TIMESHEET = TypeAdapter(Timesheet)
 _PROCEDURE_PART_COUNT = 2
 
+_SELECT: dict[EntityKind, LiteralString] = {
+    EntityKind.HOLIDAY: "SELECT record_key, work_date, name, origin FROM holidays",
+    EntityKind.ATTENDANCE: (
+        "SELECT record_key, employee_id, work_date, check_in, check_out, origin FROM attendance"
+    ),
+    EntityKind.TASK: (
+        "SELECT record_key, employee_id, work_date, title, requestor, status,"
+        " category, task_source, source_id, assignee, start_at, response_at,"
+        " close_at, end_date, achievement, issue_type, origin FROM tasks"
+    ),
+    EntityKind.SCHEDULE: (
+        "SELECT record_key, employee_id, work_date, shift_name, origin FROM schedules"
+    ),
+    EntityKind.TIMESHEET: (
+        "SELECT record_key, employee_id, work_date, calendar_month, activity,"
+        " project, is_holiday, remarks, origin FROM timesheets"
+    ),
+}
 
-def _entity_kind(record: DomainRecord) -> EntityKind:
+
+_BY_KEY_SUFFIX: Final = " WHERE record_key = %s"
+_MONTH_SUFFIX: Final = (
+    " WHERE work_date >= make_date(%s, %s, 1)"
+    "   AND work_date < make_date(%s, %s, 1) + interval '1 month'"
+    " ORDER BY work_date, record_key"
+)
+# Built once so psycopg receives LiteralString rather than a runtime f-string.
+_SELECT_BY_KEY: dict[EntityKind, LiteralString] = {
+    kind: statement + _BY_KEY_SUFFIX for kind, statement in _SELECT.items()
+}
+_SELECT_MONTH: dict[EntityKind, LiteralString] = {
+    kind: statement + _MONTH_SUFFIX for kind, statement in _SELECT.items()
+}
+
+
+def _kind_of_key(key: RecordKey) -> EntityKind | None:
+    """RecordKey values are `<kind>:<...>` (domain/identity.py), so the prefix
+    names the table to look in without probing all five.
+    """
+    prefix = str(key).split(":", 1)[0]
+    try:
+        return EntityKind(prefix)
+    except ValueError:
+        return None
+
+
+def _clock(work_date: date, value: time | None) -> datetime | None:
+    return None if value is None else datetime.combine(work_date, value, JAKARTA)
+
+
+def _upsert_statement(record: DomainRecord) -> tuple[LiteralString, tuple[Any, ...]]:
     match record:
         case Holiday():
-            return EntityKind.HOLIDAY
+            return (
+                """
+                INSERT INTO holidays (record_key, work_date, name, origin)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (record_key) DO UPDATE SET
+                    work_date = EXCLUDED.work_date,
+                    name = EXCLUDED.name
+                WHERE holidays.origin <> 'manual'
+                """,
+                (str(record.key), record.work_date, record.name, record.origin.value),
+            )
         case Attendance():
-            return EntityKind.ATTENDANCE
+            return (
+                """
+                INSERT INTO attendance (
+                    record_key, employee_id, work_date, check_in, check_out, origin
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (record_key) DO UPDATE SET
+                    work_date = EXCLUDED.work_date,
+                    check_in = EXCLUDED.check_in,
+                    check_out = EXCLUDED.check_out
+                WHERE attendance.origin <> 'manual'
+                """,
+                (
+                    str(record.key),
+                    str(record.employee_id),
+                    record.work_date,
+                    record.start_at.timetz() if record.start_at is not None else None,
+                    record.end_at.timetz() if record.end_at is not None else None,
+                    record.origin.value,
+                ),
+            )
         case Task():
-            return EntityKind.TASK
+            return (
+                """
+                INSERT INTO tasks (
+                    record_key, employee_id, work_date, title, requestor, status,
+                    category, task_source, source_id, assignee, start_at,
+                    response_at, close_at, end_date, achievement, issue_type, origin
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (record_key) DO UPDATE SET
+                    work_date = EXCLUDED.work_date,
+                    title = EXCLUDED.title,
+                    requestor = EXCLUDED.requestor,
+                    status = EXCLUDED.status,
+                    category = EXCLUDED.category,
+                    task_source = EXCLUDED.task_source,
+                    source_id = EXCLUDED.source_id,
+                    assignee = EXCLUDED.assignee,
+                    start_at = EXCLUDED.start_at,
+                    response_at = EXCLUDED.response_at,
+                    close_at = EXCLUDED.close_at,
+                    end_date = EXCLUDED.end_date,
+                    achievement = EXCLUDED.achievement,
+                    issue_type = EXCLUDED.issue_type
+                WHERE tasks.origin <> 'manual'
+                """,
+                (
+                    str(record.key),
+                    str(record.employee_id),
+                    record.work_date,
+                    record.title,
+                    record.requestor,
+                    record.status,
+                    record.category.value,
+                    record.source.value,
+                    record.source_id,
+                    record.assignee or "",
+                    record.start_at,
+                    record.response_at,
+                    record.close_at,
+                    record.end_date,
+                    record.achievement,
+                    record.issue_type or "",
+                    record.origin.value,
+                ),
+            )
         case Schedule():
-            return EntityKind.SCHEDULE
+            return (
+                """
+                INSERT INTO schedules (
+                    record_key, employee_id, work_date, shift_name, origin
+                ) VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (record_key) DO UPDATE SET
+                    work_date = EXCLUDED.work_date,
+                    shift_name = EXCLUDED.shift_name
+                WHERE schedules.origin <> 'manual'
+                """,
+                (
+                    str(record.key),
+                    str(record.employee_id),
+                    record.work_date,
+                    record.shift_name or "",
+                    record.origin.value,
+                ),
+            )
         case Timesheet():
-            return EntityKind.TIMESHEET
+            # attendance_key/task_keys are intentionally not persisted: nothing
+            # reads them back (the NocoDB repository dropped them too), and
+            # storing them would reintroduce the key-string sprawl the typed
+            # tables exist to remove.
+            return (
+                """
+                INSERT INTO timesheets (
+                    record_key, employee_id, work_date, calendar_month, activity,
+                    project, is_holiday, remarks, origin
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (record_key) DO UPDATE SET
+                    work_date = EXCLUDED.work_date,
+                    calendar_month = EXCLUDED.calendar_month,
+                    activity = EXCLUDED.activity,
+                    project = EXCLUDED.project,
+                    is_holiday = EXCLUDED.is_holiday,
+                    remarks = EXCLUDED.remarks
+                WHERE timesheets.origin <> 'manual'
+                """,
+                (
+                    str(record.key),
+                    str(record.employee_id),
+                    record.work_date,
+                    record.calendar_month,
+                    record.activity,
+                    record.project,
+                    record.is_holiday,
+                    record.remarks,
+                    record.origin.value,
+                ),
+            )
         case _:
             assert_never(record)
 
 
-def _parse_record(kind: EntityKind, payload: dict[str, JsonValue]) -> DomainRecord:
-    try:
-        match kind:
-            case EntityKind.HOLIDAY:
-                return _HOLIDAY.validate_python(payload)
-            case EntityKind.ATTENDANCE:
-                return _ATTENDANCE.validate_python(payload)
-            case EntityKind.TASK:
-                return _TASK.validate_python(payload)
-            case EntityKind.SCHEDULE:
-                return _SCHEDULE.validate_python(payload)
-            case EntityKind.TIMESHEET:
-                return _TIMESHEET.validate_python(payload)
-            case _:
-                assert_never(kind)
-    except ValidationError as error:
-        raise InfrastructureError(service="postgres", operation="parse_domain_record") from error
+def _row_to_record(kind: EntityKind, row: dict[str, Any]) -> DomainRecord:
+    origin = RecordOrigin(row["origin"])
+    key = RecordKey(row["record_key"])
+    match kind:
+        case EntityKind.HOLIDAY:
+            return Holiday(key, row["work_date"], row["name"], origin)
+        case EntityKind.ATTENDANCE:
+            work_date = row["work_date"]
+            return Attendance(
+                key,
+                EmployeeId(row["employee_id"]),
+                work_date,
+                _clock(work_date, row["check_in"]),
+                _clock(work_date, row["check_out"]),
+                origin,
+            )
+        case EntityKind.TASK:
+            return Task(
+                key,
+                EmployeeId(row["employee_id"]),
+                row["work_date"],
+                row["title"],
+                row["requestor"],
+                row["status"],
+                TaskCategory(row["category"]),
+                TaskSource(row["task_source"]),
+                row["source_id"],
+                row["assignee"] or None,
+                row["start_at"],
+                row["response_at"],
+                row["close_at"],
+                row["end_date"],
+                row["achievement"],
+                origin,
+                row["issue_type"] or None,
+            )
+        case EntityKind.SCHEDULE:
+            return Schedule(
+                key,
+                EmployeeId(row["employee_id"]),
+                row["work_date"],
+                row["shift_name"] or None,
+                origin,
+            )
+        case EntityKind.TIMESHEET:
+            return Timesheet(
+                key,
+                EmployeeId(row["employee_id"]),
+                row["work_date"],
+                row["calendar_month"],
+                row["activity"],
+                row["project"],
+                row["is_holiday"],
+                row["remarks"],
+                None,
+                (),
+                origin,
+            )
+        case _:
+            assert_never(kind)
 
 
 @final
@@ -94,29 +314,25 @@ class PostgresDomainRepository:
         return await run_sync(self._list_month, kind, period)
 
     def _get(self, key: RecordKey) -> DomainRecord | None:
+        kind = _kind_of_key(key)
+        if kind is None:
+            return None
         try:
             with (
                 psycopg.connect(
                     self._dsn,
                     connect_timeout=self._connect_timeout_seconds,
                 ) as connection,
-                connection.cursor(row_factory=class_row(DomainRecordRow)) as cursor,
+                connection.cursor(row_factory=dict_row) as cursor,
             ):
-                _ = cursor.execute(
-                    "SELECT entity_kind, payload FROM durable_records"
-                    " WHERE source = 'domain' AND external_id = %s",
-                    (str(key),),
-                )
+                _ = cursor.execute(_SELECT_BY_KEY[kind], (str(key),))
                 row = cursor.fetchone()
-            if row is None:
-                return None
-            return _parse_record(row.entity_kind, row.payload)
+            return None if row is None else _row_to_record(kind, row)
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="get_domain_record") from error
 
     def _upsert(self, record: DomainRecord) -> None:
-        kind = _entity_kind(record)
-        payload = DOMAIN_RECORD_ADAPTER.dump_python(record, mode="json")
+        statement, parameters = _upsert_statement(record)
         try:
             with (
                 psycopg.connect(
@@ -125,21 +341,7 @@ class PostgresDomainRepository:
                 ) as connection,
                 connection.cursor() as cursor,
             ):
-                _ = cursor.execute(
-                    """
-                    INSERT INTO durable_records (
-                        source, external_id, entity_kind, work_date, payload
-                    ) VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (source, external_id) DO UPDATE SET
-                        entity_kind = EXCLUDED.entity_kind,
-                        work_date = EXCLUDED.work_date,
-                        payload = EXCLUDED.payload,
-                        version = durable_records.version + 1,
-                        updated_at = now()
-                    WHERE durable_records.payload->>'origin' <> 'manual'
-                    """,
-                    ("domain", str(record.key), kind.value, record.work_date, Jsonb(payload)),
-                )
+                _ = cursor.execute(statement, parameters)
         except psycopg.Error as error:
             raise InfrastructureError(
                 service="postgres",
@@ -153,21 +355,14 @@ class PostgresDomainRepository:
                     self._dsn,
                     connect_timeout=self._connect_timeout_seconds,
                 ) as connection,
-                connection.cursor(row_factory=class_row(PayloadRow)) as cursor,
+                connection.cursor(row_factory=dict_row) as cursor,
             ):
                 _ = cursor.execute(
-                    """
-                    SELECT payload FROM durable_records
-                    WHERE source = 'domain'
-                      AND entity_kind = %s
-                      AND work_date >= make_date(%s, %s, 1)
-                      AND work_date < make_date(%s, %s, 1) + interval '1 month'
-                    ORDER BY work_date, external_id
-                    """,
-                    (kind.value, period.year, period.month, period.year, period.month),
+                    _SELECT_MONTH[kind],
+                    (period.year, period.month, period.year, period.month),
                 )
                 rows = cursor.fetchall()
-            return tuple(_parse_record(kind, row.payload) for row in rows)
+            return tuple(_row_to_record(kind, row) for row in rows)
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="list_month") from error
 

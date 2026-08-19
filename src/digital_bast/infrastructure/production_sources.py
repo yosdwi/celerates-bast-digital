@@ -1,40 +1,27 @@
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol, final
 
-import psycopg
 import pymssql
 from anyio.to_thread import run_sync
-from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from digital_bast.domain.identity import canonical_text
-from digital_bast.domain.models import Employee, EmployeeId, EmployeeRole
+from digital_bast.domain.models import Employee, EmployeeId
 from digital_bast.domain.time import JAKARTA
 from digital_bast.domain.transforms import IoTTaskInput, RedmineTaskInput
 from digital_bast.infrastructure.errors import InfrastructureError, UpstreamTimeoutError
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from digital_bast.flows.models import Period
     from digital_bast.infrastructure.google import GooglePayload
-    from digital_bast.infrastructure.nocodb import JsonValue, NocoDBClient
-
-
-class _EmployeePayload(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(
-        extra="ignore",
-        frozen=True,
-        populate_by_name=True,
-    )
-
-    record_id: str | int = Field(alias="Id")
-    external_id: str = Field(alias="Employee ID")
-    name: str = Field(alias="Employee Name")
-    role: str = Field(alias="Role")
-    status: str = Field(alias="Status")
 
 
 class _ValueRange(BaseModel):
@@ -57,80 +44,19 @@ class EmployeeSource(Protocol):
     async def load(self) -> tuple[Employee, ...]: ...
 
 
+class DateWindow(Protocol):
+    """Just the bounds the parsers need. `Period` satisfies it, and so does the
+    arbitrary start/end range the ingest endpoints receive from the bridge."""
+
+    @property
+    def start(self) -> date: ...
+
+    @property
+    def end(self) -> date: ...
+
+
 class SheetBatchReader(Protocol):
     def batch_get(self, spreadsheet_id: str, ranges: tuple[str, ...]) -> GooglePayload: ...
-
-
-def parse_employees(records: Sequence[dict[str, JsonValue]]) -> tuple[Employee, ...]:
-    employees: list[Employee] = []
-    for record in records:
-        try:
-            payload = _EmployeePayload.model_validate(record)
-            role = EmployeeRole(payload.role.strip())
-        except (ValidationError, ValueError):
-            continue
-        if canonical_text(payload.status) != "active":
-            continue
-        employees.append(
-            Employee(
-                EmployeeId(str(payload.record_id)),
-                payload.external_id.strip(),
-                payload.name.strip(),
-                role,
-            )
-        )
-    return tuple(employees)
-
-
-@final
-class NocoDBEmployeeSource:
-    def __init__(self, client: NocoDBClient, table_id: str) -> None:
-        self._client = client
-        self._table_id = table_id
-
-    async def load(self) -> tuple[Employee, ...]:
-        records = await run_sync(self._client.list_records, self._table_id)
-        return parse_employees(records)
-
-
-_SELECT_EMPLOYEES = sql.SQL(
-    """
-    SELECT id, "Employee_ID", "Employee_Name", "Role", "Status"
-    FROM {schema}."Employee Data"
-    WHERE "Employee_Name" IS NOT NULL
-    """
-)
-
-
-@final
-class NocoDBPostgresEmployeeSource:
-    def __init__(self, dsn: str, base_id: str, connect_timeout_seconds: int = 5) -> None:
-        self._dsn = dsn
-        self._base_id = base_id
-        self._connect_timeout_seconds = connect_timeout_seconds
-
-    async def load(self) -> tuple[Employee, ...]:
-        records = await run_sync(self._load)
-        return parse_employees(records)
-
-    def _load(self) -> list[dict[str, JsonValue]]:
-        query = _SELECT_EMPLOYEES.format(schema=sql.Identifier(self._base_id))
-        with (
-            psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
-            connection.cursor() as cursor,
-        ):
-            _ = cursor.execute(query)
-            rows = cursor.fetchall()
-        return [
-            dict(
-                zip(
-                    ("Id", "Employee ID", "Employee Name", "Role", "Status"),
-                    row,
-                    strict=True,
-                )
-            )
-            for row in rows
-        ]
 
 
 _COLUMN_LETTERS: tuple[str, ...] = ("D", "E", "P", "F", "H", "K", "M")
@@ -228,7 +154,7 @@ def _responder(
 
 def parse_iot_sheet(
     payload: GooglePayload,
-    period: Period,
+    period: DateWindow,
     employees: Sequence[Employee],
 ) -> tuple[IoTTaskInput, ...]:
     try:
@@ -313,17 +239,34 @@ def _as_date(value: object) -> date | None:
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class RedmineParseResult:
+    """Parsed rows plus the NRPs that matched no employee.
+
+    The unmatched set is not decoration: both importers join purely on NRP, and
+    a silent `continue` here is what let a leading-"L" typo in three roster NRPs
+    destroy 100% of those people's tasks and attendance without any error,
+    counter, or log entry. Callers surface this.
+    """
+
+    rows: tuple[RedmineTaskInput, ...]
+    unmatched_nrps: tuple[str, ...]
+
+
 def parse_redmine_rows(
     rows: Sequence[RedmineRow],
     employees: Sequence[Employee],
-    period: Period,
-) -> tuple[RedmineTaskInput, ...]:
+    period: DateWindow,
+) -> RedmineParseResult:
     nrp_to_employee = {employee.external_id: employee.id for employee in employees}
     results: list[RedmineTaskInput] = []
+    unmatched: set[str] = set()
     for row in rows:
         nrp = row.get("nrp")
         employee_id = nrp_to_employee.get(str(nrp)) if nrp else None
         if employee_id is None:
+            if nrp:
+                unmatched.add(str(nrp))
             continue
         start_date = _as_date(row.get("start_date"))
         if start_date is None or not (period.start <= start_date <= period.end):
@@ -346,7 +289,7 @@ def parse_redmine_rows(
                 achievement=achievement,
             )
         )
-    return tuple(results)
+    return RedmineParseResult(tuple(results), tuple(sorted(unmatched)))
 
 
 @final
@@ -363,7 +306,14 @@ class SqlServerRedmineTaskSource:
         employees: tuple[Employee, ...],
     ) -> tuple[RedmineTaskInput, ...]:
         rows = await run_sync(self._fetch, period)
-        return parse_redmine_rows(rows, employees, period)
+        parsed = parse_redmine_rows(rows, employees, period)
+        if parsed.unmatched_nrps:
+            _LOGGER.warning(
+                "redmine rows dropped: %d NRPs matched no employee: %s",
+                len(parsed.unmatched_nrps),
+                ", ".join(parsed.unmatched_nrps),
+            )
+        return parsed.rows
 
     def _fetch(self, period: Period) -> list[RedmineRow]:
         parameters = (period.start, period.end, period.start, period.end)

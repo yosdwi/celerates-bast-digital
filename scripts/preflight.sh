@@ -22,7 +22,7 @@ root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')
 
 secrets_dir=${SECRETS_DIR:-./secrets}
 secrets_gid=${SECRETS_GID:?SECRETS_GID is required}
-for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token google_service_account.json sqlserver_connection_string; do
+for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string; do
     require_file "$secrets_dir/$name"
     mode=$(stat -c '%a' "$secrets_dir/$name")
     [ "$mode" = 640 ] || die "secret must have mode 0640: $secrets_dir/$name" 77
@@ -31,5 +31,6 @@ for name in postgres_password app_database_password prefect_database_password se
 done
 
 docker info >/dev/null 2>&1 || die "Docker daemon is unavailable" 69
-SECRETS_GID=$secrets_gid NOCODB_BASE_URL=${NOCODB_BASE_URL:-https://invalid.local} docker compose config --quiet
+SECRETS_GID=$secrets_gid NOCODB_BASE_URL=${NOCODB_BASE_URL:-https://invalid.local} \
+    NOCODB_V2_DB_PASSWORD=${NOCODB_V2_DB_PASSWORD:-preflight} docker compose config --quiet
 printf '%s\n' "preflight passed"

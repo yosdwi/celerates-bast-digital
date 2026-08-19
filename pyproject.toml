@@ -74,6 +74,9 @@ unfixable = []
 # Standalone one-off CLI scripts, never imported as a package -- prints are
 # their entire user-facing output, not something to route through logging.
 "scripts/*.py" = ["INP001", "T201"]
+# bridge/pama_bridge.py ships standalone to a Windows PC outside this package,
+# so it cannot import digital_bast and its console output is the whole UI.
+"bridge/*.py" = ["INP001", "T201", "TRY003", "EM101", "EM102"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Body", "fastapi.Cookie", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Path", "fastapi.Query"]

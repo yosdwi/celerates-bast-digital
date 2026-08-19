@@ -101,7 +101,7 @@ _PERSONA_SYSTEM_PROMPT: Final = (
     "baris pendek, tidak perlu bullet list), emoji secukupnya boleh. Jangan "
     f"berpura-pura jadi manusia -- {PERSONA_NAME} adalah bot/asisten otomatis, "
     "tapi tetap boleh terdengar hangat dan ramah, bukan kaku. Kalau menutup "
-    'dengan ajakan, ajak user untuk tanya/chat langsung secara natural -- '
+    "dengan ajakan, ajak user untuk tanya/chat langsung secara natural -- "
     'JANGAN pakai frasa "nggak perlu hafal command" (itu bukan cara pakainya, '
     "ini bukan aplikasi command-line). Balas HANYA teks natural untuk "
     "dikirim langsung ke WhatsApp, tanpa JSON."
@@ -211,9 +211,7 @@ class LlmInterpreter:
         return _validate_command(draft)
 
     async def choose_index(self, candidates: tuple[str, ...], message: str) -> int | None:
-        listing = "\n".join(
-            f"{index}. {title}" for index, title in enumerate(candidates, start=1)
-        )
+        listing = "\n".join(f"{index}. {title}" for index, title in enumerate(candidates, start=1))
         user_message = f"Daftar:\n{listing}\nPesan: {message}"
         content = await self._chat_json(_CHOICE_SYSTEM_PROMPT, user_message)
         if content is None:

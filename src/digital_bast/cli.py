@@ -557,9 +557,7 @@ async def _complete_upload(  # noqa: PLR0913, PLR0917
     image: bytes,
     caption: str,
 ) -> str:
-    result = await evidence.upload(
-        employee_id, target.task_source, target.task_key, image, caption
-    )
+    result = await evidence.upload(employee_id, target.task_key, image, caption)
     if result.outcome is not UploadOutcome.STORED:
         return _UPLOAD_OUTCOME_REPLY[result.outcome]
     await evidence.clear_pending(jid)
@@ -613,7 +611,7 @@ async def _pick_task(
         image, _content_type, caption = stashed
         await evidence.clear_stashed_image(jid)
         return await _complete_upload(evidence, employee_id, jid, picked, image, caption)
-    await evidence.set_pending(jid, picked.task_source, picked.task_key)
+    await evidence.set_pending(jid, picked.task_key)
     return f'Oke, dipilih: "{picked.title}". Kirim foto/dokumen evidence-nya sekarang.'
 
 
@@ -645,9 +643,7 @@ async def _dm_reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 -- a res
         return _DM_HELP_REPLY
     if any(word in lowered for word in _SUMMARY_WORDS):
         today = datetime.now(JAKARTA).date()
-        period = parse_period(normalized, today) or DateRange(
-            today.replace(day=1), today
-        )
+        period = parse_period(normalized, today) or DateRange(today.replace(day=1), today)
         return await _format_personal_summary(employee_id, period, evidence)
     index = extract_index(normalized)
     if index is not None:
@@ -862,8 +858,7 @@ def _business_reply(
                     "path": str(path),
                     "filename": path.name,
                     "caption": (
-                        f"{echo}\nExport attendance {period.label()} "
-                        f"({report_type}): {rows} baris."
+                        f"{echo}\nExport attendance {period.label()} ({report_type}): {rows} baris."
                     ),
                 }
             )

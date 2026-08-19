@@ -73,7 +73,7 @@ async def test_context_dispatches_an_enabled_production_operation() -> None:
 async def test_iot_pic_update_fails_without_legacy_nocodb_database_adapter() -> None:
     context = ProductionRunContext()
 
-    with pytest.raises(ProductionOperationUnavailableError, match="legacy NocoDB PostgreSQL DSN"):
+    with pytest.raises(ProductionOperationUnavailableError, match="legacy NocoDB PIC updater"):
         await context.execute(Operation.IOT_PIC_UPDATE, Period.parse("2026-08"))
 
 

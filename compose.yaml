@@ -37,6 +37,7 @@ x-app: &app
     NOCODB_BASE_ID: ${NOCODB_BASE_ID:?NOCODB_BASE_ID is required}
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
+    SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
   secrets: &app-secrets
     - session_secret
     - app_database_dsn
@@ -48,6 +49,7 @@ x-app: &app
     - nocodb_database_dsn
     - google_service_account
     - sqlserver_connection_string
+    - sync_ingest_token
   networks:
     - backend
     - egress
@@ -232,6 +234,73 @@ services:
           cpus: "0.50"
           memory: 128M
 
+  # NocoDB-v2: a second, independent instance whose data source is this
+  # stack's own Postgres, so the grids people edit ARE the rows the pipeline
+  # writes -- no sync, no second copy. The pre-existing nocodb_bast instance
+  # is untouched and stays on the old schema as history plus the admin login
+  # backend.
+  nocodb-v2:
+    image: nocodb/nocodb:0.301.2
+    restart: unless-stopped
+    environment:
+      NC_DB: "pg://postgres:5432?u=${NOCODB_V2_DB_USER:-digital_bast_app}&p=${NOCODB_V2_DB_PASSWORD:?NOCODB_V2_DB_PASSWORD is required}&d=nocodb_v2_meta"
+      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8082}
+      NC_DISABLE_TELE: "true"
+    ports:
+      - "127.0.0.1:${NOCODB_V2_PORT:-8082}:8080"
+    networks:
+      - edge
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - nocodb-v2-data:/usr/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+
+  # The WhatsApp bridge moves off the dev laptop. It shells out to the
+  # digital-bast CLI, so it runs from the app image with node added rather
+  # than reaching into a container from the host.
+  bot-bridge:
+    build:
+      context: .
+      dockerfile: bot-bridge/Dockerfile
+    image: ${BOT_BRIDGE_IMAGE:-digital-bast-bot-bridge:local}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      BOT_SETUP_HOST: 0.0.0.0
+      BOT_SETUP_PORT: "8090"
+      BOT_AUTH_DIR: /data/auth
+      BAST_CLI: digital-bast
+      BOT_ALLOWED_GROUPS: ${BOT_ALLOWED_GROUPS:-}
+      BOT_LLM_URL: ${BOT_LLM_URL:-}
+      BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+    secrets: *app-secrets
+    group_add:
+      - "${SECRETS_GID:?SECRETS_GID is required}"
+    # Loopback-only: /allow and /try have no authentication of their own.
+    ports:
+      - "127.0.0.1:${BOT_SETUP_PORT:-8090}:8090"
+    networks:
+      - backend
+      - egress
+      - digital-bast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - bot-bridge-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+
 secrets:
   postgres_password:
     file: ${SECRETS_DIR:-./secrets}/postgres_password
@@ -261,6 +330,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/google_service_account.json
   sqlserver_connection_string:
     file: ${SECRETS_DIR:-./secrets}/sqlserver_connection_string
+  sync_ingest_token:
+    file: ${SECRETS_DIR:-./secrets}/sync_ingest_token
 
 networks:
   edge:
@@ -274,3 +345,5 @@ networks:
 volumes:
   postgres-data:
   redis-data:
+  nocodb-v2-data:
+  bot-bridge-data:

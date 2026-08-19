@@ -14,6 +14,11 @@ SELECT 'CREATE DATABASE digital_bast_app OWNER digital_bast_app'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'digital_bast_app') \gexec
 SELECT 'CREATE DATABASE digital_bast_prefect OWNER digital_bast_prefect'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'digital_bast_prefect') \gexec
+-- nocodb-v2 keeps its own metadata (users, views, data-source config) here.
+-- The business tables it edits live in digital_bast_app, reached through the
+-- least-privilege nocodb_editor role that migration 20260820_0004 creates.
+SELECT 'CREATE DATABASE nocodb_v2_meta OWNER digital_bast_app'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nocodb_v2_meta') \gexec
 SQL
 
 rm -f /dev/shm/digital-bast-init/app_database_password

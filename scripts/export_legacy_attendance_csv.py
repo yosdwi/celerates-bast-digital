@@ -17,11 +17,26 @@ from pathlib import Path
 import psycopg
 
 HEADERS = (
-    "Employee ID", "Full Name", "Date", "Shift", "Shift Code", "Shift Label",
-    "Schedule In", "Schedule Out", "Attendance Code", "Check In", "Check Out",
-    "Keterangan", "Overtime Check In", "Overtime Check Out", "Overtime Before",
-    "Overtime After", "TimeOff Check Out", "TimeOff Break Before",
-    "TimeOff Break After", "Holiday Code",
+    "Employee ID",
+    "Full Name",
+    "Date",
+    "Shift",
+    "Shift Code",
+    "Shift Label",
+    "Schedule In",
+    "Schedule Out",
+    "Attendance Code",
+    "Check In",
+    "Check Out",
+    "Keterangan",
+    "Overtime Check In",
+    "Overtime Check Out",
+    "Overtime Before",
+    "Overtime After",
+    "TimeOff Check Out",
+    "TimeOff Break Before",
+    "TimeOff Break After",
+    "Holiday Code",
 )
 
 ROLE_FILE_SUFFIX = {
@@ -34,10 +49,23 @@ def fetch_rows(dsn: str, start: date, end: date) -> list[dict[str, object]]:
     with psycopg.connect(dsn) as connection, connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT payload
-            FROM durable_records
-            WHERE entity_kind = 'attendance' AND work_date BETWEEN %s AND %s
-            ORDER BY payload->>'role', payload->>'full_name', work_date
+            SELECT jsonb_build_object(
+                       'employee_id', a.employee_id,
+                       'full_name', e.full_name,
+                       'role', e.role,
+                       'work_date', a.work_date::text,
+                       'shift', a.shift,
+                       'schedule_in', a.schedule_in,
+                       'schedule_out', a.schedule_out,
+                       'attendance_code', a.attendance_code,
+                       'check_in', COALESCE(to_char(a.check_in, 'HH24:MI'), ''),
+                       'check_out', COALESCE(to_char(a.check_out, 'HH24:MI'), ''),
+                       'notes', a.notes
+                   )
+            FROM attendance a
+            JOIN employees e ON e.employee_id = a.employee_id
+            WHERE a.work_date BETWEEN %s AND %s
+            ORDER BY e.role, e.full_name, a.work_date
             """,
             (start, end),
         )
@@ -52,10 +80,26 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
             work_date = date.fromisoformat(str(row["work_date"]))
             writer.writerow(
                 (
-                    row["employee_id"], row["full_name"], work_date.strftime("%d/%m/%Y"),
-                    row["shift"], "", "", row["schedule_in"], row["schedule_out"],
-                    row["attendance_code"], row["check_in"], row["check_out"], row["notes"],
-                    "", "", "", "", "", "", "", "",
+                    row["employee_id"],
+                    row["full_name"],
+                    work_date.strftime("%d/%m/%Y"),
+                    row["shift"],
+                    "",
+                    "",
+                    row["schedule_in"],
+                    row["schedule_out"],
+                    row["attendance_code"],
+                    row["check_in"],
+                    row["check_out"],
+                    row["notes"],
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
                 )
             )
 

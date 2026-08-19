@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, final, override
 
 from holidays import country_holidays
@@ -13,7 +12,6 @@ from digital_bast.domain.reference import HolidayInput, transform_holiday
 from digital_bast.domain.timesheets import TimesheetOptions
 from digital_bast.flows.models import Operation, Period, StepSummary
 from digital_bast.flows.production_operations import (
-    IoTPicUpdateOperation,
     IoTTaskImportOperation,
     ReconciliationOperation,
     RedmineTaskImportOperation,
@@ -22,12 +20,9 @@ from digital_bast.flows.production_operations import (
 )
 from digital_bast.infrastructure.google_api import GoogleApiSheetBatchReader
 from digital_bast.infrastructure.healthcheck import PostgresHealthcheck
-from digital_bast.infrastructure.legacy_pic import LegacyIoTPicUpdater
-from digital_bast.infrastructure.nocodb_repository import NocoDBDomainRepository
 from digital_bast.infrastructure.production_sources import (
     EmployeeSource,
     GoogleIoTTaskSource,
-    NocoDBPostgresEmployeeSource,
     SqlServerRedmineTaskSource,
 )
 from digital_bast.infrastructure.repositories import (
@@ -78,8 +73,6 @@ class ProductionOperation(Protocol):
     async def execute(self, period: Period) -> StepSummary: ...
 
 
-_LOCAL_EMPLOYEE_FILE: Final = Path(__file__).resolve().parents[3] / "employee_data.json"
-
 _OPERATION_GAPS: Final = {
     Operation.ATTENDANCE_IMPORT: "SQL Server attendance-to-employee mapping",
     Operation.REDMINE_IMPORT: "SQL Server Redmine employee mapping",
@@ -88,7 +81,10 @@ _OPERATION_GAPS: Final = {
     Operation.HOLIDAY_SYNC: "holiday sync adapter",
     Operation.SCHEDULE_SYNC: "IoT employee source and schedule mapping",
     Operation.TIMESHEET_GENERATION: "employee inventory and production timesheet options",
-    Operation.IOT_PIC_UPDATE: "legacy NocoDB PostgreSQL DSN for sp_update_tasklist_iot_pic",
+    # The only implementation wrote into the old NocoDB schema's m2m link
+    # tables, which V2 no longer owns. Left unregistered on purpose so running
+    # it reports unavailable instead of silently doing nothing.
+    Operation.IOT_PIC_UPDATE: "legacy NocoDB PIC updater (removed with the NocoDB write path)",
 }
 
 
@@ -149,15 +145,15 @@ def disabled_operations(value: str | None) -> frozenset[Operation]:
 
 
 def create_run_context() -> ProductionRunContext:
-    # local: NocoDB/the OVH VPS is unreachable. When NOCODB_DATABASE_DSN and
-    # NOCODB_BASE_ID aren't set, wire the same PipelineService against
-    # PostgresDomainRepository + LocalEmployeeSource instead -- same fallback
-    # shape as operations.py::_default_completion_source. Operations whose
-    # adapter isn't configured (IOT_PIC_UPDATE without NocoDB, IOT_TASK_IMPORT
-    # without Google credentials) are left out of the map entirely and report
-    # unavailable if run, rather than blocking every other operation.
-    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
-        LocalEmployeeSource,
+    # One store: the typed tables in app Postgres, which NocoDB also edits
+    # directly (migration 20260820_0004). The pipeline no longer branches on
+    # NocoDB configuration -- NOCODB_DATABASE_DSN is now only the web login
+    # backend. Operations whose adapter isn't configured (IOT_TASK_IMPORT
+    # without Google credentials, REDMINE_IMPORT without a server) are left out
+    # of the map entirely and report unavailable if run, rather than blocking
+    # every other operation.
+    from digital_bast.infrastructure.postgres_employees import (  # noqa: PLC0415
+        PostgresEmployeeSource,
     )
     from digital_bast.infrastructure.repositories import (  # noqa: PLC0415
         PostgresDomainRepository,
@@ -171,18 +167,9 @@ def create_run_context() -> ProductionRunContext:
             "APP_DATABASE_DSN",
         )
     dsn = database_dsn.get_secret_value()
-    nocodb_database_dsn = settings.nocodb_database_dsn
-    nocodb_base_id = settings.nocodb_base_id
 
-    repository: DomainRepository
-    employees: EmployeeSource
-    if nocodb_database_dsn is not None and nocodb_base_id is not None:
-        nocodb_dsn = nocodb_database_dsn.get_secret_value()
-        repository = NocoDBDomainRepository(nocodb_dsn, nocodb_base_id)
-        employees = NocoDBPostgresEmployeeSource(nocodb_dsn, nocodb_base_id)
-    else:
-        repository = PostgresDomainRepository(dsn)
-        employees = LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE)
+    repository: DomainRepository = PostgresDomainRepository(dsn)
+    employees: EmployeeSource = PostgresEmployeeSource(dsn)
 
     pipeline = PipelineService(
         repository,
@@ -214,10 +201,6 @@ def create_run_context() -> ProductionRunContext:
         )
         operations[Operation.IOT_TASK_IMPORT] = IoTTaskImportOperation(
             employees, iot_source, pipeline
-        )
-    if nocodb_database_dsn is not None and nocodb_base_id is not None:
-        operations[Operation.IOT_PIC_UPDATE] = IoTPicUpdateOperation(
-            LegacyIoTPicUpdater(nocodb_database_dsn.get_secret_value()),
         )
     redmine_password = settings.redmine_db_password
     if settings.redmine_db_server is not None and redmine_password is not None:

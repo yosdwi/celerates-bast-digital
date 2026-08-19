@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from digital_bast.application.ports import SourceBatch, SourceWindow, SyncCursor
 from digital_bast.infrastructure.errors import InfrastructureError
-from digital_bast.infrastructure.nocodb import JsonValue
+from digital_bast.infrastructure.json_types import JsonValue
 
 type GooglePayload = dict[str, JsonValue]
 

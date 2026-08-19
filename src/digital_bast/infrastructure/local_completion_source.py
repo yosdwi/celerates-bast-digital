@@ -1,6 +1,8 @@
-"""Completion-check sources that read from durable_records / a local JSON
-employee file instead of NocoDB. Used as a fallback when NOCODB_DATABASE_DSN
-isn't configured -- see operations.create_local_completion_source.
+"""Completion-check readers over the typed business tables.
+
+LocalEmployeeSource stays as the seed/bootstrap reader for employee_data.json
+(scripts/seed_employees_from_nocodb.py writes the `employees` table it
+replaces); the live roster comes from infrastructure.postgres_employees.
 """
 
 from __future__ import annotations
@@ -30,9 +32,13 @@ class LocalEmployeeSource:
 
     async def load(self) -> tuple[Employee, ...]:
         raw = json.loads(self._path.read_text(encoding="utf-8"))
+        # employee_data.json historically wrote "IoT Operation" while the
+        # EmployeeRole enum and NocoDB both say "IoT Operations". Accept both
+        # so a roster file from either era loads.
         role_by_name = {
             "Developer": EmployeeRole.DEVELOPER,
             "IoT Operation": EmployeeRole.IOT_OPERATIONS,
+            "IoT Operations": EmployeeRole.IOT_OPERATIONS,
         }
         return tuple(
             Employee(
@@ -46,21 +52,30 @@ class LocalEmployeeSource:
 
 
 class _AttendanceFactRow:
-    __slots__ = ("check_in", "check_out", "employee_id", "work_date")
+    __slots__ = ("check_in", "check_out", "employee_id", "evidence_note", "work_date")
 
-    def __init__(self, employee_id: str, work_date: date, check_in: str, check_out: str) -> None:
+    def __init__(
+        self,
+        employee_id: str,
+        work_date: date,
+        check_in: str,
+        check_out: str,
+        evidence_note: str,
+    ) -> None:
         self.employee_id = employee_id
         self.work_date = work_date
         self.check_in = check_in
         self.check_out = check_out
+        self.evidence_note = evidence_note
 
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the flat 'attendance' rows scripts/load_pama_attendance.py
-    writes. Evidence is never available from this source (no non-NocoDB source exists for
-    it), so has_evidence is always False -- days without both punches surface as incomplete
-    rather than being silently marked complete.
+    """Derives AttendanceFact from the `attendance` table.
+
+    `evidence_note` is the human-maintained column NocoDB edits (it carries the
+    old NocoDB "Evidence" text field), so attendance evidence is a real signal
+    now rather than the hardcoded False this reader used to return.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -80,13 +95,13 @@ class PostgresAttendanceFactReader:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT payload->>'employee_id' AS employee_id,
+                    SELECT employee_id,
                            work_date,
-                           COALESCE(payload->>'check_in', '') AS check_in,
-                           COALESCE(payload->>'check_out', '') AS check_out
-                    FROM durable_records
-                    WHERE entity_kind = 'attendance'
-                      AND work_date BETWEEN %s AND %s
+                           COALESCE(to_char(check_in, 'HH24:MI'), '') AS check_in,
+                           COALESCE(to_char(check_out, 'HH24:MI'), '') AS check_out,
+                           evidence_note
+                    FROM attendance
+                    WHERE work_date BETWEEN %s AND %s
                     """,
                     (period.start, period.end),
                 )
@@ -98,7 +113,7 @@ class PostgresAttendanceFactReader:
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=False,
+                has_evidence=bool(row.evidence_note.strip()),
             )
             for row in rows
         }
@@ -115,8 +130,8 @@ class _TaskEvidenceCountRow:
 @final
 class PostgresTaskEvidenceReader:
     """Per-task evidence counts from task_evidence (talent uploads over WhatsApp DM,
-    see bot/evidence.py), keyed by durable_records.external_id -- the same key
-    domain Task records expose as str(task.key).
+    see bot/evidence.py), keyed by tasks.record_key -- the same key domain Task
+    records expose as str(task.key).
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -136,10 +151,11 @@ class PostgresTaskEvidenceReader:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT task_key, COUNT(*) AS total
-                    FROM task_evidence
-                    WHERE work_date BETWEEN %s AND %s
-                    GROUP BY task_key
+                    SELECT t.record_key AS task_key, COUNT(*) AS total
+                    FROM task_evidence e
+                    JOIN tasks t ON t.id = e.task_id
+                    WHERE e.work_date BETWEEN %s AND %s
+                    GROUP BY t.record_key
                     """,
                     (period.start, period.end),
                 )

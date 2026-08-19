@@ -4,7 +4,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from digital_bast.domain.models import DomainRecord, EntityKind
-from digital_bast.infrastructure.nocodb import JsonValue
+from digital_bast.infrastructure.json_types import JsonValue
 
 DOMAIN_RECORD_ADAPTER: TypeAdapter[DomainRecord] = TypeAdapter(DomainRecord)
 

@@ -47,7 +47,7 @@ from psycopg.rows import class_row
 from digital_bast.domain.models import EmployeeRole
 from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.errors import InfrastructureError
-from digital_bast.infrastructure.local_completion_source import LocalEmployeeSource
+from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -55,7 +55,6 @@ if TYPE_CHECKING:
     from digital_bast.domain.models import Employee
 
 _TEMPLATE_DIR: Final = Path(__file__).resolve().parents[3] / "templates" / "bast"
-_LOCAL_EMPLOYEE_FILE: Final = Path(__file__).resolve().parents[3] / "employee_data.json"
 _ENVIRONMENT: Final = Environment(
     loader=FileSystemLoader(_TEMPLATE_DIR),
     autoescape=select_autoescape(("html",)),
@@ -803,19 +802,19 @@ def _load_tasks(
     with connection.cursor(row_factory=class_row(_TaskRow)) as cursor:
         _ = cursor.execute(
             """
-            SELECT source, external_id,
-                   payload->>'employee_id' AS employee_id,
+            SELECT 'tasks' AS source, record_key AS external_id,
+                   employee_id,
                    work_date,
-                   NULLIF(payload->>'end_date', '')::date AS end_date,
-                   payload->>'title' AS title,
-                   payload->>'requestor' AS requestor,
-                   payload->>'status' AS status,
-                   payload->>'category' AS category,
-                   (payload->>'achievement')::int AS achievement,
+                   end_date,
+                   title,
+                   requestor,
+                   status,
+                   category,
+                   achievement,
                    version, updated_at
-            FROM durable_records
-            WHERE source = 'domain' AND entity_kind = 'task' AND work_date BETWEEN %s AND %s
-            ORDER BY work_date, external_id
+            FROM tasks
+            WHERE work_date BETWEEN %s AND %s
+            ORDER BY work_date, record_key
             """,
             (start, end),
         )
@@ -828,17 +827,17 @@ def _load_timesheets(
     with connection.cursor(row_factory=class_row(_TimesheetRow)) as cursor:
         _ = cursor.execute(
             """
-            SELECT source, external_id,
-                   payload->>'employee_id' AS employee_id,
+            SELECT 'timesheets' AS source, record_key AS external_id,
+                   employee_id,
                    work_date,
-                   payload->>'activity' AS activity,
-                   payload->>'project' AS project,
-                   (payload->>'is_holiday')::bool AS is_holiday,
-                   payload->>'remarks' AS remarks,
+                   activity,
+                   project,
+                   is_holiday,
+                   remarks,
                    version, updated_at
-            FROM durable_records
-            WHERE source = 'domain' AND entity_kind = 'timesheet' AND work_date BETWEEN %s AND %s
-            ORDER BY work_date, external_id
+            FROM timesheets
+            WHERE work_date BETWEEN %s AND %s
+            ORDER BY work_date, record_key
             """,
             (start, end),
         )
@@ -848,20 +847,18 @@ def _load_timesheets(
 def _load_attendance(
     connection: psycopg.Connection[object], start: date, end: date
 ) -> tuple[_AttendanceRow, ...]:
-    # No source filter: real attendance lands with source='pama-direct'
-    # (scripts/load_pama_attendance.py), not 'domain' -- see WP1 notes.
     with connection.cursor(row_factory=class_row(_AttendanceRow)) as cursor:
         _ = cursor.execute(
             """
-            SELECT source, external_id,
-                   payload->>'employee_id' AS employee_id,
+            SELECT 'attendance' AS source, record_key AS external_id,
+                   employee_id,
                    work_date,
-                   payload->>'check_in' AS check_in,
-                   payload->>'check_out' AS check_out,
+                   COALESCE(to_char(check_in, 'HH24:MI'), '') AS check_in,
+                   COALESCE(to_char(check_out, 'HH24:MI'), '') AS check_out,
                    version, updated_at
-            FROM durable_records
-            WHERE entity_kind = 'attendance' AND work_date BETWEEN %s AND %s
-            ORDER BY work_date, external_id
+            FROM attendance
+            WHERE work_date BETWEEN %s AND %s
+            ORDER BY work_date, record_key
             """,
             (start, end),
         )
@@ -874,11 +871,12 @@ def _load_evidence(
     with connection.cursor(row_factory=class_row(_EvidenceRow)) as cursor:
         _ = cursor.execute(
             """
-            SELECT id::text AS evidence_id, task_source, task_key, work_date,
-                   caption, content_type, image
-            FROM task_evidence
-            WHERE work_date BETWEEN %s AND %s
-            ORDER BY task_source, task_key, uploaded_at
+            SELECT e.id::text AS evidence_id, t.task_source, t.record_key AS task_key,
+                   e.work_date, e.caption, e.content_type, e.image
+            FROM task_evidence e
+            JOIN tasks t ON t.id = e.task_id
+            WHERE e.work_date BETWEEN %s AND %s
+            ORDER BY t.task_source, t.record_key, e.uploaded_at
             """,
             (start, end),
         )
@@ -911,9 +909,9 @@ def _load_holiday_scope(
     with connection.cursor(row_factory=class_row(_ScopeRow)) as cursor:
         _ = cursor.execute(
             """
-            SELECT source, external_id, version, updated_at
-            FROM durable_records
-            WHERE entity_kind = 'holiday' AND work_date BETWEEN %s AND %s
+            SELECT 'holidays' AS source, record_key AS external_id, version, updated_at
+            FROM holidays
+            WHERE work_date BETWEEN %s AND %s
             """,
             (start, end),
         )
@@ -999,7 +997,7 @@ def _assemble(
 
 
 async def assemble(report_type: str, year: int, month: int, dsn: str) -> AssembledReport:
-    employees = await LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE).load()
+    employees = await PostgresEmployeeSource(dsn).load()
     return await run_sync(_assemble, report_type, year, month, dsn, employees)
 
 

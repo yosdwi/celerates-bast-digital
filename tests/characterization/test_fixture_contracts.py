@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from digital_bast.infrastructure.nocodb import JsonValue
+    from digital_bast.infrastructure.json_types import JsonValue
 
 FIXTURES: Final = Path(__file__).parents[1] / "fixtures"
 
