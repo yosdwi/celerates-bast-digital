@@ -102,3 +102,33 @@ def _render(editor_html: str) -> bytes:
 
 async def render_pdf(editor_html: str) -> bytes:
     return await run_sync(_render, editor_html)
+
+
+def _render_png(html: str) -> bytes:
+    from playwright.sync_api import Error as PlaywrightError  # noqa: PLC0415
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError  # noqa: PLC0415
+    from playwright.sync_api import sync_playwright  # noqa: PLC0415
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.set_default_timeout(_EXPORT_TIMEOUT_MS)
+                page.set_content(html, wait_until="domcontentloaded")
+                return page.locator("#card").screenshot()
+            finally:
+                browser.close()
+    except PlaywrightTimeoutError as error:
+        raise UpstreamTimeoutError(service="playwright", operation="render_png") from error
+    except PlaywrightError as error:
+        raise InfrastructureError(service="playwright", operation="render_png") from error
+
+
+async def render_png(html: str) -> bytes:
+    """Self-contained HTML (no external assets, expects a `#card` element to
+    frame the screenshot) -> PNG bytes. Used for the WhatsApp group status
+    matrix (§7) -- an internal image render, not the jsPDF/report_editor.html
+    pipeline above, so it needs neither a local static server nor jspdf.
+    """
+    return await run_sync(_render_png, html)

@@ -38,4 +38,21 @@ function isForUs(message, text, ownIds) {
   return mentionsUs || TRIGGER.test(text);
 }
 
-module.exports = { TRIGGER, ownUserIds, isForUs };
+// Keep in sync with src/digital_bast/bot/whatsapp.py's _INTENT_RULES /
+// _CONVERSATION_WORDS. This is a client-side proxy only, used to decide
+// whether the "Siap, tunggu ..." heads-up is worth sending before the CLI
+// even runs -- cli.py::_group_reply is the actual authority on intent (a
+// business keyword there always wins over a conversation one), this just
+// needs to avoid a false "conversation" skip when a business word is also
+// present, so it stays conservative: any business-ish word forces the wait.
+const BUSINESS_WORDS =
+  /\b(restart|reboot|matikan|hidupkan|nyalakan|shutdown|kill|export|absen|generate|buat bast|bikin bast|evidence|status|cek|detail|kenapa|docker|system status|status sistem|status docker|status server)\b/i;
+const CONVERSATION_WORDS =
+  /\b(kenalin|kenalan|siapa kamu|siapa nih|siapa sih|kamu siapa|halo|hai conform|hallo|hi conform|assalamualaikum|pagi conform|siang conform|sore conform|malam conform|makasih|terima kasih|thanks|thank you|mantap|keren|bisa ngapain|bisa apa aja|bantuin apa|fungsi kamu|tolong apa)\b/i;
+
+function looksLikeConversation(text) {
+  const stripped = text.replace(/@[\w.-]+/g, " ");
+  return !BUSINESS_WORDS.test(stripped) && CONVERSATION_WORDS.test(stripped);
+}
+
+module.exports = { TRIGGER, ownUserIds, isForUs, looksLikeConversation };

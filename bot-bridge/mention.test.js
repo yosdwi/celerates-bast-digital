@@ -8,7 +8,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ownUserIds, isForUs } = require("./mention");
+const { ownUserIds, isForUs, looksLikeConversation } = require("./mention");
 
 const SOCK = {
   user: { id: "62881080735871:1@s.whatsapp.net", lid: "250758209531984:1@lid", name: "conform" },
@@ -56,4 +56,16 @@ test("bot display-name change does not affect mention detection", () => {
   const renamed = { user: { ...SOCK.user, name: "BAST Bot v2" } };
   const message = textMessage("status bast", ["250758209531984@lid"]);
   assert.equal(isForUs(message, "status bast", ownUserIds(renamed)), true);
+});
+
+test("a greeting is recognized as conversation (skip the wait notice)", () => {
+  assert.equal(looksLikeConversation("@conform kenalin dong siapa nih"), true);
+  assert.equal(looksLikeConversation("@conform makasih ya"), true);
+});
+
+test("business commands are never treated as conversation, even if casual", () => {
+  assert.equal(looksLikeConversation("@conform status bast agustus dong"), false);
+  assert.equal(looksLikeConversation("@conform generate bast developer"), false);
+  assert.equal(looksLikeConversation("@conform export attendance shifting"), false);
+  assert.equal(looksLikeConversation("@conform restart postgres dong"), false);
 });

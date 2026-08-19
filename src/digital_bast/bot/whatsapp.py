@@ -5,12 +5,15 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
+from html import escape
 from typing import TYPE_CHECKING, Final
 
 from digital_bast.domain.completion import MONTH_NAMES, CheckState, DateRange
 
 if TYPE_CHECKING:
-    from digital_bast.domain.completion import CompletionReport
+    from collections.abc import Callable
+
+    from digital_bast.domain.completion import CompletionReport, EmployeeCompletion
     from digital_bast.infrastructure.docker_status import SystemStatus
 
 _MONTHS: Final = {
@@ -33,6 +36,23 @@ _MONTHS: Final = {
 _ISO_DATE: Final = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _PARTIAL_DATE: Final = re.compile(r"\b(\d{1,2})\b(?:\s+([A-Za-z]+))?(?:\s+(\d{4}))?")
 _MENTION: Final = re.compile(r"@[\w.\-]+")
+_INDEX_WORDS: Final = {
+    "satu": 1,
+    "dua": 2,
+    "tiga": 3,
+    "empat": 4,
+    "lima": 5,
+    "enam": 6,
+    "tujuh": 7,
+    "delapan": 8,
+    "sembilan": 9,
+    "sepuluh": 10,
+}
+_INDEX_PATTERN: Final = re.compile(
+    r"(?:poin|point|nomor|no\.?|number|#)\s*(\d{1,2}|"
+    + "|".join(_INDEX_WORDS)
+    + r")\b"
+)
 _MUTATION_WORDS: Final = (
     "restart",
     "reboot",
@@ -99,6 +119,39 @@ HELP_REPLY: Final = (
     "Format tanggal bebas: `1 agustus`, `2026-08-01`, atau `1 sampai 20 agustus 2026`.\n"
     "Upload evidence lewat chat pribadi ke bot ini, bukan di grup."
 )
+# Authoritative capability facts (§ persona) -- the single source of truth
+# for both the LLM persona prompt (llm.py::persona_reply) and the
+# deterministic fallback below. Never let the model invent a capability that
+# isn't listed here; update this list, not the model's imagination, when a
+# feature actually ships.
+PERSONA_NAME: Final = "Conform AI"
+PERSONA_CAPABILITIES: Final = (
+    (
+        "Di grup: cek status kesiapan BAST tim (ringkas + gambar matriks per talent), "
+        "lihat talent mana yang Task List atau Evidence-nya masih kurang, export data "
+        "attendance, generate dokumen laporan BAST, dan cek status sistem/server."
+    ),
+    (
+        "Di chat pribadi (DM): kenalan sekali pakai NRP, lihat Task List & status "
+        "Evidence pribadi, dibantu pilih Closed Task yang mana, terima upload foto/"
+        "dokumen Evidence, dan lihat progress Evidence pribadi."
+    ),
+)
+PERSONA_FALLBACK_REPLY: Final = (
+    f"Halo 👋 Aku *{PERSONA_NAME}*, asisten otomatis buat Digital BAST.\n\n"
+    "Tugasku bantu tim cek kesiapan BAST, monitor Task List & Evidence, "
+    "export attendance, sampai generate laporan BAST. Kalau ada Evidence "
+    "yang belum lengkap, aku juga bisa bantu tiap talent lewat chat "
+    "pribadi biar grup tetap rapi.\n\n"
+    "Kalau butuh bantuan, tinggal tanya aja di sini secara natural ya 😄"
+)
+_CONVERSATION_WORDS: Final = (
+    "kenalin", "kenalan", "siapa kamu", "siapa nih", "siapa sih", "kamu siapa",
+    "halo", "hai conform", "hallo", "hi conform", "assalamualaikum",
+    "pagi conform", "siang conform", "sore conform", "malam conform",
+    "makasih", "terima kasih", "thanks", "thank you", "mantap", "keren",
+    "bisa ngapain", "bisa apa aja", "bantuin apa", "fungsi kamu", "tolong apa",
+)
 
 
 class Intent(StrEnum):
@@ -108,6 +161,7 @@ class Intent(StrEnum):
     GENERATE_BAST = "generate-bast"
     SYSTEM_STATUS = "system-status"
     UNSUPPORTED_MUTATION = "unsupported-mutation"
+    CONVERSATION = "conversation"
     UNKNOWN = "unknown"
 
 
@@ -191,8 +245,19 @@ _INTENT_RULES: Final[tuple[tuple[Intent, tuple[str, ...]], ...]] = (
     (Intent.EXPORT_ATTENDANCE, ("export", "absen")),
     (Intent.GENERATE_BAST, ("generate", "buat bast", "bikin bast")),
     (Intent.EVIDENCE_RESUME, ("evidence",)),
-    (Intent.COMPLETION_STATUS, ("status", "cek")),
+    (Intent.COMPLETION_STATUS, ("status", "cek", "detail", "kenapa")),
+    # Checked last -- a business keyword above always wins first, so smalltalk
+    # phrased with an actual business word ("makasih ya sudah export") still
+    # routes to the business intent, never to conversation.
+    (Intent.CONVERSATION, _CONVERSATION_WORDS),
 )
+# Best-effort only, deliberately narrow: "detail <name> ..." is unambiguous
+# enough for a regex (the name is always the very next word). "kenapa <name>
+# belum lengkap ..." and a bare "<name> kurang apa?" have too much free-form
+# text around the name for a regex to isolate reliably -- those need the LLM
+# interpreter (llm.py's BotCommandDraft.employee), which is the primary path
+# anyway; this fallback only degrades to a full group summary for those.
+_EMPLOYEE_DETAIL_PATTERN: Final = re.compile(r"\bdetail\s+([A-Za-z][\w.\-]*)", re.IGNORECASE)
 
 
 def _intent_of(text: str) -> Intent:
@@ -213,42 +278,148 @@ def strip_mentions(text: str) -> str:
     return _MENTION.sub(" ", text).strip()
 
 
+def extract_index(text: str) -> int | None:
+    """Pull an explicit 1-based reference ("poin 1", "nomor satu", bare "2")
+    out of free text. Never guesses -- returns None rather than a wrong index.
+    """
+    match = _INDEX_PATTERN.search(text.casefold())
+    if match is not None:
+        token = match[1]
+        return int(token) if token.isdigit() else _INDEX_WORDS.get(token)
+    stripped = text.strip().casefold()
+    if stripped.isdigit():
+        return int(stripped)
+    return _INDEX_WORDS.get(stripped)
+
+
+def _employee_of(text: str) -> str | None:
+    match = _EMPLOYEE_DETAIL_PATTERN.search(text)
+    if match is None:
+        return None
+    word = match[1]
+    return None if _month_of(word) is not None else word
+
+
 def parse_command(text: str, today: date) -> BotCommand:
     normalized = strip_mentions(text)
     lowered = normalized.casefold()
     intent = _intent_of(lowered)
-    if intent in {Intent.UNKNOWN, Intent.SYSTEM_STATUS, Intent.UNSUPPORTED_MUTATION}:
+    if intent in {
+        Intent.UNKNOWN,
+        Intent.SYSTEM_STATUS,
+        Intent.UNSUPPORTED_MUTATION,
+        Intent.CONVERSATION,
+    }:
         return BotCommand(intent)
     period = parse_period(normalized, today)
-    if intent is not Intent.EXPORT_ATTENDANCE:
-        return BotCommand(intent, period)
-    return BotCommand(intent, period, report_type=_report_type_of(lowered))
+    if intent is Intent.EXPORT_ATTENDANCE:
+        return BotCommand(intent, period, report_type=_report_type_of(lowered))
+    employee = _employee_of(normalized) if intent is Intent.COMPLETION_STATUS else None
+    return BotCommand(intent, period, employee=employee)
+
+
+def _ratio(report: CompletionReport, pick: Callable[[EmployeeCompletion], CheckState]) -> str:
+    ok = sum(1 for employee in report.employees if pick(employee) is CheckState.COMPLETE)
+    return f"{ok}/{len(report.employees)}"
 
 
 def format_completion(report: CompletionReport) -> str:
-    lines = [f"*Status BAST — {report.period.label()}*", ""]
-    for index, employee in enumerate(report.employees, start=1):
-        lines.append(f"{index}. {employee.name}")
-        lines.append(
-            f"Timesheet {_STATE_ICONS[employee.timesheet.state]} | "
-            f"Task List {_STATE_ICONS[employee.task_list.state]} | "
-            f"Evidence {_STATE_ICONS[employee.evidence.state]} | "
-            f"Log 1 PAMA {_STATE_ICONS[employee.log_1_pama.state]}"
-        )
-        lines.append("")
+    """Compact group-chat summary (§7) -- counts and ratios only, never a
+    per-employee-per-date dump. Use format_employee_detail for one talent.
+    """
     if not report.employees:
-        lines.append("Tidak ada data karyawan pada periode ini.")
-        return "\n".join(lines).strip()
-    follow_up = [
-        f"• {employee.name} — {issue}"
-        for employee in report.employees
-        for issue in employee.issues
+        return (
+            f"*Status BAST — {report.period.label()}*\n\n"
+            "Tidak ada data karyawan pada periode ini."
+        )
+    complete = sum(1 for employee in report.employees if employee.state is CheckState.COMPLETE)
+    total = len(report.employees)
+    lines = [
+        f"*Status BAST — {report.period.label()}*",
+        "",
+        f"Overall        : {'✅ Siap' if report.state is CheckState.COMPLETE else '⚠️ Belum siap'}",
+        f"Talent lengkap : {complete}/{total}",
+        "",
+        f"Log 1 PAMA : {_ratio(report, lambda e: e.log_1_pama.state)}",
+        f"Timesheet  : {_ratio(report, lambda e: e.timesheet.state)}",
+        f"Task List  : {_ratio(report, lambda e: e.task_list.state)}",
+        f"Evidence   : {_ratio(report, lambda e: e.evidence.state)}",
+        "",
     ]
-    if follow_up:
-        lines.append("*Perlu ditindaklanjuti*")
-        lines.extend(follow_up)
-    else:
-        lines.append("Semua item BAST sudah lengkap.")
+    remaining = total - complete
+    lines.append(
+        f"{remaining} talent masih perlu follow-up."
+        if remaining
+        else "Semua item BAST sudah lengkap."
+    )
+    if remaining:
+        lines.append("Detail per talent: kirim `detail <nama>`.")
+    return "\n".join(lines).strip()
+
+
+_ISSUE_LINE: Final = re.compile(r"^(\d{1,2}) [A-Za-z]+ — (.+)$")
+
+
+def _compress_days(days: list[int]) -> str:
+    ordered = sorted(set(days))
+    spans: list[str] = []
+    start = prev = ordered[0]
+    for day in ordered[1:]:
+        if day == prev + 1:
+            prev = day
+            continue
+        spans.append(f"{start}-{prev}" if start != prev else f"{start}")
+        start = prev = day
+    spans.append(f"{start}-{prev}" if start != prev else f"{start}")
+    return ", ".join(spans)
+
+
+def _aggregate_issues(issues: tuple[str, ...]) -> list[str]:
+    """Group repeated per-date issue lines (domain/completion.py emits one
+    line per date) by their reason text, compressing the dates into ranges --
+    e.g. 19 "<day> Agustus — Clock In ... belum terisi ..." lines collapse to
+    one "19 hari — Clock In ... ; 3-14, 18-21, ..." line. Task-scoped issues
+    (no date prefix, e.g. task_list/evidence) pass through unchanged since
+    they are already one line per task, not per date.
+    """
+    by_reason: dict[str, list[int]] = {}
+    order: list[str] = []
+    passthrough: list[str] = []
+    for issue in issues:
+        match = _ISSUE_LINE.match(issue)
+        if match is None:
+            passthrough.append(issue)
+            continue
+        day, reason = int(match[1]), match[2]
+        if reason not in by_reason:
+            by_reason[reason] = []
+            order.append(reason)
+        by_reason[reason].append(day)
+    grouped = [
+        f"{len(by_reason[reason])} hari — {reason} ({_compress_days(by_reason[reason])})"
+        for reason in order
+    ]
+    return [*grouped, *passthrough]
+
+
+def format_employee_detail(employee: EmployeeCompletion, period: DateRange) -> str:
+    """On-demand single-talent detail (§8): same underlying issues as
+    format_completion's group summary would have dumped, but grouped by
+    reason with compressed date ranges instead of one line per date.
+    """
+    lines = [f"*{employee.name} — BAST {period.label()}*", ""]
+    for label, result in (
+        ("Log 1 PAMA", employee.log_1_pama),
+        ("Timesheet", employee.timesheet),
+        ("Task List", employee.task_list),
+        ("Evidence", employee.evidence),
+    ):
+        lines.append(f"{_STATE_ICONS[result.state]} {label}")
+        if result.issues:
+            lines.extend(_aggregate_issues(result.issues))
+        else:
+            lines.append("Lengkap.")
+        lines.append("")
     return "\n".join(lines).strip()
 
 
@@ -287,3 +458,56 @@ def format_system_status(status: SystemStatus) -> str:
     overall = "✅ Sehat" if status.overall == "healthy" else "❌ Bermasalah"
     lines.append(f"Overall: {overall}")
     return "\n".join(lines)
+
+
+# Plain-text glyphs (not color-emoji codepoints like the WhatsApp-facing
+# ✅/❌/⚠️ in _STATE_ICONS) -- headless Chromium on a bare VPS has no
+# color-emoji font installed and renders those as empty boxes. A CSS badge
+# needs no font support beyond Arial's ASCII/Latin-1 glyphs.
+_MATRIX_BADGE: Final = {
+    CheckState.COMPLETE: ("#2e7d32", "OK"),
+    CheckState.INCOMPLETE: ("#c62828", "X"),
+    CheckState.NEEDS_REVIEW: ("#ef6c00", "!"),
+}
+
+
+def _badge(state: CheckState) -> str:
+    color, glyph = _MATRIX_BADGE[state]
+    return (
+        f'<span style="display:inline-block;min-width:20px;padding:2px 6px;'
+        f'border-radius:10px;background:{color};color:#fff;font-weight:bold;'
+        f'font-size:11px;">{glyph}</span>'
+    )
+
+
+def render_status_matrix_html(report: CompletionReport) -> str:
+    """Self-contained HTML (no external assets) for
+    infrastructure/pdf_export.py::render_png -- the compact PNG matrix
+    attached alongside format_completion's text summary (§7). One row per
+    talent; a #card element frames the screenshot.
+    """
+    rows = "\n".join(
+        f"<tr><td class='name'>{escape(employee.name)}</td>"
+        f"<td>{_badge(employee.log_1_pama.state)}</td>"
+        f"<td>{_badge(employee.timesheet.state)}</td>"
+        f"<td>{_badge(employee.task_list.state)}</td>"
+        f"<td>{_badge(employee.evidence.state)}</td></tr>"
+        for employee in report.employees
+    )
+    return f"""<!doctype html><html><head><meta charset="utf-8"><style>
+body {{ margin:0; }}
+#card {{ display:inline-block; font-family:Arial,sans-serif; background:#fff; padding:16px; }}
+h1 {{ font-size:16px; margin:0 0 10px; }}
+table {{ border-collapse:collapse; font-size:13px; }}
+th, td {{ border:1px solid #ccc; padding:6px 12px; text-align:center; }}
+th {{ background:#f0f0f0; }}
+td.name {{ text-align:left; font-weight:bold; }}
+</style></head><body>
+<div id="card">
+<h1>Status BAST — {escape(report.period.label())}</h1>
+<table>
+<tr><th>Talent</th><th>Log PAMA</th><th>Timesheet</th><th>Task List</th><th>Evidence</th></tr>
+{rows}
+</table>
+</div>
+</body></html>"""

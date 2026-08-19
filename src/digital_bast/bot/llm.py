@@ -19,12 +19,16 @@ from datetime import date  # noqa: TC003 -- pydantic needs this resolvable at ru
 from typing import Final, Literal
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from digital_bast.bot.whatsapp import BotCommand, Intent
+from digital_bast.bot.whatsapp import PERSONA_CAPABILITIES, PERSONA_NAME, BotCommand, Intent
 from digital_bast.domain.completion import DateRange
 
-_TIMEOUT_SECONDS: Final = 10.0
+_TIMEOUT_SECONDS: Final = 18.0
+# Free-text persona generation runs noticeably longer than the short JSON
+# classification above on this hardware (observed ~15-20s vs ~10-12s) --
+# output length drives latency here, not prompt length.
+_PERSONA_TIMEOUT_SECONDS: Final = 25.0
 _MAX_SPAN_DAYS: Final = 366
 _PERIOD_INTENTS: Final = frozenset(
     {
@@ -39,13 +43,27 @@ _COMMAND_SYSTEM_PROMPT: Final = (
     "Kamu mengurai satu pesan WhatsApp menjadi perintah untuk sistem BAST. "
     "Balas HANYA satu objek JSON, tanpa teks lain, sesuai skema:\n"
     '{"intent": "completion-status|evidence-resume|export-attendance|generate-bast|'
-    'system-status|unsupported-mutation|unknown", '
+    'system-status|unsupported-mutation|conversation|unknown", '
     '"start_date": "YYYY-MM-DD atau null", "end_date": "YYYY-MM-DD atau null", '
-    '"report_type": "developer atau shifting atau null"}\n'
+    '"report_type": "developer atau shifting atau null", '
+    '"employee": "nama talent yang ditanyakan secara spesifik, atau null"}\n'
+    "Gunakan conversation HANYA untuk sapaan, perkenalan, pertanyaan identitas/kemampuan "
+    "bot, ucapan terima kasih, atau obrolan ringan yang TIDAK meminta data atau aksi "
+    "apa pun. Begitu pesan menyebut kata seperti status, evidence, task, export, "
+    "attendance, generate, bast, sistem/server/docker, ATAU meminta data/tindakan apa "
+    "pun -- walaupun disampaikan santai/pakai basa-basi -- JANGAN pakai conversation, "
+    'pakai intent bisnis yang sesuai. Contoh: "kenalin dong siapa nih" -> '
+    'conversation. "makasih ya" -> conversation. "bisa ngapain aja" -> conversation. '
+    '"status bast agustus" -> completion-status (BUKAN conversation).\n'
     "Gunakan unsupported-mutation untuk perintah yang mengubah sistem "
-    "(restart, matikan, nyalakan, dsb). Gunakan system-status untuk pertanyaan status "
-    "server/docker. export-attendance wajib mengisi report_type. Lengkapi tanggal/tahun "
-    "yang tidak disebutkan eksplisit memakai tanggal hari ini yang diberikan di pesan user.\n"
+    "(restart, matikan, nyalakan, dsb). Gunakan system-status HANYA jika pesan secara "
+    "eksplisit menyebut server/container/docker/database/infrastruktur -- kata 'status' "
+    "SENDIRIAN, atau 'status bast', atau 'status' + nama bulan/rentang tanggal, SELALU "
+    "berarti completion-status (status kelengkapan dokumen BAST talent), BUKAN "
+    'system-status. Contoh: pesan "liat status bast dong bulan agustus ini" -> '
+    '{"intent":"completion-status",...}, BUKAN system-status. export-attendance wajib '
+    "mengisi report_type. Lengkapi tanggal/tahun yang tidak disebutkan eksplisit memakai "
+    "tanggal hari ini yang diberikan di pesan user.\n"
     "Jika pesan menyebut dua tanggal, dipisah kata apa pun seperti 'sampai', 'sampe', "
     "'s/d', 'hingga', atau tanda '-', tanggal pertama yang disebut adalah start_date dan "
     "tanggal kedua adalah end_date -- jangan pernah mengganti salah satunya dengan "
@@ -54,12 +72,39 @@ _COMMAND_SYSTEM_PROMPT: Final = (
     '{"intent":"export-attendance","start_date":"2026-06-05","end_date":"2026-06-10",'
     '"report_type":"developer"}. Tanggal hari ini hanya dipakai untuk melengkapi bagian '
     "yang benar-benar tidak disebutkan (mis. tahun, atau saat hanya satu tanggal/nama "
-    "bulan yang ada)."
+    "bulan yang ada).\n"
+    "Isi employee HANYA jika pesan menanyakan status satu talent tertentu (mis. "
+    '"kenapa yoses belum lengkap agustus?", "detail yoses agustus", "yoses kurang apa?" '
+    '-> employee="yoses", intent="completion-status"). Untuk pertanyaan status umum/grup '
+    '("status bast agustus", "siapa yang evidence-nya kurang") biarkan employee null.'
 )
 _CHOICE_SYSTEM_PROMPT: Final = (
     "Pilih satu nomor dari daftar bernomor yang diberikan berdasarkan pesan user. "
     'Balas HANYA JSON {"choice": <angka 1..N>} atau {"choice": null} jika tidak yakin '
     "atau tidak ada yang cocok."
+)
+_PERSONA_FACTS: Final = "\n".join(f"- {fact}" for fact in PERSONA_CAPABILITIES)
+# Deliberately its own short, non-JSON call: keeping this out of
+# _COMMAND_SYSTEM_PROMPT keeps every business-intent classification call fast
+# (~10s) -- a "reply" field on that shared schema made the model generate a
+# full sentence for it on every call regardless of intent, close to doubling
+# latency across the board for a field only conversation ever uses.
+_PERSONA_SYSTEM_PROMPT: Final = (
+    f"Kamu adalah {PERSONA_NAME}, asisten otomatis untuk sistem Digital BAST, "
+    "membalas pesan di grup WhatsApp kerja. Jawab HANYA berdasarkan daftar "
+    "kemampuan berikut -- jangan mengarang fitur lain atau menjanjikan aksi di "
+    f"luar daftar ini:\n{_PERSONA_FACTS}\n"
+    "Gaya bahasa Indonesia sehari-hari yang santai dan hangat, seperti rekan "
+    "kerja ngobrol biasa di grup WhatsApp -- BUKAN bahasa formal/korporat "
+    '(hindari frasa kaku seperti "siap membantu dalam kerja sama" atau "demi '
+    'kelancaran operasional"). Ringkas (2-5 kalimat mengalir, boleh beberapa '
+    "baris pendek, tidak perlu bullet list), emoji secukupnya boleh. Jangan "
+    f"berpura-pura jadi manusia -- {PERSONA_NAME} adalah bot/asisten otomatis, "
+    "tapi tetap boleh terdengar hangat dan ramah, bukan kaku. Kalau menutup "
+    'dengan ajakan, ajak user untuk tanya/chat langsung secara natural -- '
+    'JANGAN pakai frasa "nggak perlu hafal command" (itu bukan cara pakainya, '
+    "ini bukan aplikasi command-line). Balas HANYA teks natural untuk "
+    "dikirim langsung ke WhatsApp, tanpa JSON."
 )
 
 
@@ -71,11 +116,24 @@ class BotCommandDraft(BaseModel):
         "generate-bast",
         "system-status",
         "unsupported-mutation",
+        "conversation",
         "unknown",
     ]
     start_date: date | None = None
     end_date: date | None = None
     report_type: Literal["developer", "shifting"] | None = None
+    employee: str | None = None
+
+    @field_validator("start_date", "end_date", "report_type", "employee", mode="before")
+    @classmethod
+    def _blank_string_is_none(cls, value: object) -> object:
+        # The small local model occasionally emits the JSON string "null"
+        # (or "none"/"") instead of a bare null -- that would otherwise fail
+        # date/enum parsing and reject the whole draft, losing every other
+        # field (report_type, employee) it got right.
+        if isinstance(value, str) and value.strip().casefold() in {"null", "none", ""}:
+            return None
+        return value
 
 
 class _ChoiceDraft(BaseModel):
@@ -102,8 +160,14 @@ def _validate_command(draft: BotCommandDraft) -> BotCommand | None:
         return None
     if intent is Intent.EXPORT_ATTENDANCE and draft.report_type is None:
         return None
+    employee = None
+    if intent is Intent.COMPLETION_STATUS and draft.employee:
+        employee = draft.employee.strip()
     return BotCommand(
-        intent, DateRange(draft.start_date, draft.end_date), report_type=draft.report_type
+        intent,
+        DateRange(draft.start_date, draft.end_date),
+        employee=employee or None,
+        report_type=draft.report_type,
     )
 
 
@@ -161,3 +225,32 @@ class LlmInterpreter:
         if draft.choice is None or not (1 <= draft.choice <= len(candidates)):
             return None
         return draft.choice
+
+    async def persona_reply(self, message: str) -> str | None:
+        """Free-text conversational reply (greetings/intro/capability
+        questions), grounded only in whatsapp.PERSONA_CAPABILITIES -- never
+        business data. Separate call/prompt/timeout from interpret() so
+        business-intent classification latency is unaffected (see
+        _PERSONA_SYSTEM_PROMPT). None on any failure; caller falls back to
+        whatsapp.PERSONA_FALLBACK_REPLY.
+        """
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": _PERSONA_SYSTEM_PROMPT},
+                {"role": "user", "content": message},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.3},
+        }
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url, timeout=_PERSONA_TIMEOUT_SECONDS
+            ) as client:
+                response = await client.post("/api/chat", json=payload)
+                _ = response.raise_for_status()
+                parsed = _ChatResponse.model_validate(response.json())
+        except (httpx.HTTPError, ValidationError):
+            return None
+        content = parsed.message.content
+        return content.strip() if content and content.strip() else None

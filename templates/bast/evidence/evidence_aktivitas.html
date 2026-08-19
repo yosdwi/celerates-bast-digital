@@ -91,7 +91,11 @@
 
         {% if item.image_path %}
         <div class="image-container">
-            <img src="{{ item.image_path }}" alt="{{ item.title }}" class="evidence-image" />
+            <img src="{{ item.image_path }}" alt="{{ item.title }}" class="evidence-image"
+                style="max-width: calc(100% - 40px); max-height: 400px; width: auto; height: auto;
+                       border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+                       object-fit: contain; display: block; margin: 20px auto; box-sizing: border-box;
+                       background: white;" />
         </div>
         {% endif %}
 

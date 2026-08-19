@@ -271,7 +271,11 @@ def test_bot_reply_refuses_container_mutation(capsys: CaptureFixture[str]) -> No
     assert "hanya mendukung pemeriksaan status" in capsys.readouterr().out
 
 
-def test_bot_reply_requires_a_date_range(capsys: CaptureFixture[str]) -> None:
+def test_bot_reply_requires_a_date_range(
+    capsys: CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "create_llm_interpreter", lambda: None)
+
     exit_code = cli.main(["bot-reply", "--text", "@BAST Bot status BAST"])
 
     assert exit_code == 0
@@ -281,18 +285,30 @@ def test_bot_reply_requires_a_date_range(capsys: CaptureFixture[str]) -> None:
 def test_bot_reply_formats_completion(
     capsys: CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     async def fake(period: DateRange, employee: str | None = None) -> CompletionReport:
         _ = (period, employee)
         return _completion_report()
 
+    matrix_path = tmp_path / "status-matrix.png"
+
+    async def fake_matrix(period: DateRange) -> Path:
+        _ = period
+        return matrix_path
+
     monkeypatch.setattr(cli, "completion_status", fake)
+    monkeypatch.setattr(cli, "generate_status_matrix", fake_matrix)
     monkeypatch.setattr(cli, "create_llm_interpreter", lambda: None)
 
     exit_code = cli.main(["bot-reply", "--text", "@BAST Bot status 1 sampai 2 Agustus 2026"])
 
     assert exit_code == 0
-    assert "Timesheet ✅" in capsys.readouterr().out
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["kind"] == "file"
+    assert payload["path"] == str(matrix_path)
+    assert "Talent lengkap : 1/1" in payload["caption"]
+    assert "Overall        : ✅ Siap" in payload["caption"]
 
 
 class _FakeInterpreter:

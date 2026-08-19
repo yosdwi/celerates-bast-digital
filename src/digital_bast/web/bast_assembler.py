@@ -67,6 +67,9 @@ _ENVIRONMENT: Final = Environment(
 _ENVIRONMENT.globals["datetime"] = datetime  # type: ignore[assignment]
 
 _BODY_PATTERN: Final = re.compile(r"<body[^>]*>(.*?)</body>", re.DOTALL)
+_STYLE_PATTERN: Final = re.compile(r"<style[^>]*>(.*?)</style>", re.DOTALL)
+_CSS_COMMENT_PATTERN: Final = re.compile(r"/\*.*?\*/", re.DOTALL)
+_CSS_RULE_PATTERN: Final = re.compile(r"([^{}]+)\{([^{}]*)\}")
 
 _ITEMS_PER_PAGE: Final = 10
 _STANDARD_BREAK_HOURS: Final = 1.0
@@ -335,10 +338,55 @@ def _render(template_name: str, context: Mapping[str, object]) -> str:
     return _ENVIRONMENT.get_template(template_name).render(context)
 
 
+def _scope_css(css: str, wrapper_class: str) -> str:
+    """Rewrite every selector in a flat (no @media/@keyframes) CSS block so
+    it only matches inside `.wrapper_class` -- "body" becomes the wrapper
+    class itself (since the wrapper div plays body's role once embedded),
+    everything else gets it as a descendant prefix. Comma-separated
+    selectors are scoped individually.
+    """
+    scope = f".{wrapper_class}"
+
+    def _scope_one(part: str) -> str:
+        if part == "body":
+            return scope
+        if part.startswith("body "):
+            return scope + part[len("body") :]
+        return f"{scope} {part}"
+
+    def _scope_selector_list(selectors: str) -> str:
+        parts = (part.strip() for part in selectors.split(","))
+        return ", ".join(_scope_one(part) for part in parts if part)
+
+    def _scope_rule(match: re.Match[str]) -> str:
+        return f"{_scope_selector_list(match[1])} {{{match[2]}}}"
+
+    # Strip comments first -- a commented-out rule (evidence_aktivitas.html
+    # has two) still contains a balanced { } pair, which would otherwise get
+    # parsed as a real rule and desynchronize every match after it.
+    uncommented = _CSS_COMMENT_PATTERN.sub("", css)
+    return _CSS_RULE_PATTERN.sub(_scope_rule, uncommented)
+
+
 def _body_only(html: str, wrapper_class: str) -> str:
+    # report_editor.html renders all pages as one shared document (a single
+    # <body> holding many .page divs), so a source template's own <style>
+    # block can't just be reinjected verbatim -- even a bare "body { ... }"
+    # rule would leak globally across every other page. Scope it to this
+    # wrapper instead of dropping it outright (dropping it left, e.g.,
+    # attendance_report_template.html's table with no border/blue header
+    # and its logo at native PNG size instead of the intended small icon --
+    # nearly everything in these templates is styled only via the stripped
+    # <style>, not inline).
     match = _BODY_PATTERN.search(html)
     inner = match.group(1) if match is not None else html
-    return f'<div class="{wrapper_class}">{inner}</div>'
+    style_match = _STYLE_PATTERN.search(html)
+    scoped_style = (
+        f"<style>{_scope_css(style_match.group(1), wrapper_class)}</style>"
+        if style_match is not None
+        else ""
+    )
+    return f'<div class="{wrapper_class}">{scoped_style}{inner}</div>'
 
 
 def _parse_hhmm(value: str) -> tuple[int, int] | None:

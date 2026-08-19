@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from contextlib import nullcontext
 from dataclasses import asdict
@@ -13,27 +12,40 @@ from typing import TYPE_CHECKING, Final, Literal, assert_never
 import anyio
 from anyio.to_thread import run_sync
 
-from digital_bast.bot.evidence import UploadOutcome, outstanding, select_by_caption, select_by_index
-from digital_bast.bot.identity import ActivationOutcome
+from digital_bast.bot.evidence import (
+    UploadOutcome,
+    outstanding,
+    select_by_caption_all,
+    select_by_index,
+    sniff_content_type,
+)
+from digital_bast.bot.identity import ActivationOutcome, resolve_employee_by_nrp
 from digital_bast.bot.whatsapp import (
     HELP_REPLY,
     MISSING_PERIOD_REPLY,
     MISSING_REPORT_TYPE_REPLY,
     MUTATION_REPLY,
+    PERSONA_FALLBACK_REPLY,
     BotCommand,
     Intent,
+    extract_index,
     format_completion,
+    format_employee_detail,
     format_evidence_resume,
     format_system_status,
     parse_command,
+    parse_period,
     strip_mentions,
 )
 from digital_bast.domain.completion import (
+    CheckState,
     CompletionReport,
     DateRange,
+    EmployeeCompletion,
     InvalidDateRangeError,
     format_day,
 )
+from digital_bast.domain.identity import canonical_text
 from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.docker_status import (
     DockerUnavailableError,
@@ -50,7 +62,9 @@ from digital_bast.operations import (
     export_attendance,
     export_attendance_report,
     generate_bast,
+    generate_status_matrix,
     issue_activation_codes,
+    load_roster,
 )
 
 if TYPE_CHECKING:
@@ -75,6 +89,7 @@ type Command = Literal[
     "bot-reply",
     "issue-activation-codes",
     "bot-evidence",
+    "reset-identity",
 ]
 type FlowName = Literal[
     "operational-import",
@@ -104,6 +119,7 @@ class CliArguments(argparse.Namespace):
         self.file: str = ""
         self.caption: str = ""
         self.report_type: str = "developer"
+        self.nrp: str | None = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -155,6 +171,10 @@ def build_parser() -> argparse.ArgumentParser:
     _ = evidence_parser.add_argument("--jid", required=True)
     _ = evidence_parser.add_argument("--file", required=True)
     _ = evidence_parser.add_argument("--caption", default="")
+    reset_parser = subparsers.add_parser("reset-identity")
+    target = reset_parser.add_mutually_exclusive_group(required=True)
+    _ = target.add_argument("--nrp")
+    _ = target.add_argument("--jid")
     return parser
 
 
@@ -216,6 +236,7 @@ def _dispatch(args: CliArguments) -> int:
             | "bot-reply"
             | "issue-activation-codes"
             | "bot-evidence"
+            | "reset-identity"
         ):
             _dispatch_command(args)
         case _:
@@ -273,8 +294,23 @@ def _dispatch_command(args: CliArguments) -> None:
             _write_json(anyio.run(issue_activation_codes))
         case "bot-evidence":
             _write(anyio.run(bot_evidence, args.jid or "", Path(args.file), args.caption))
+        case "reset-identity":
+            _write_json(anyio.run(_run_reset_identity, args.nrp, args.jid))
         case _:
             _write(bot_reply(args.text, jid=args.jid, channel=args.channel))
+
+
+async def _run_reset_identity(nrp: str | None, jid: str | None) -> dict[str, bool | str]:
+    activation = create_activation_service()
+    if jid is not None:
+        removed = await activation.unbind_jid(jid)
+        return {"jid": jid, "removed": removed}
+    roster = await load_roster()
+    employee = resolve_employee_by_nrp(nrp or "", roster)
+    if employee is None:
+        return {"nrp": nrp or "", "removed": False, "error": "NRP tidak ditemukan"}
+    removed = await activation.unbind(str(employee.id))
+    return {"nrp": nrp or "", "employee": employee.name, "removed": removed}
 
 
 async def _run_flow(name: FlowName, period: str | None) -> RunSummary:
@@ -408,31 +444,12 @@ def _run_system_status(args: CliArguments) -> None:
     _write_json(status_payload(status))
 
 
-_ACTIVATION_PATTERN: Final = re.compile(r"(?i)^\s*aktivasi\s+(\S+)\s+(\S+)\s*$")
-_ACTIVATION_HELP: Final = (
-    "Nomor ini belum terhubung ke data karyawan.\n"
-    "Kirim: `aktivasi <Employee ID> <kode aktivasi>`\n"
-    "Contoh: `aktivasi MTG-TF/2026010382 AB12CD34`"
-)
-_ACTIVATION_OUTCOME_REPLY: Final = {
-    ActivationOutcome.SUCCESS: (
-        "Aktivasi berhasil! Kirim `evidence` untuk melihat Closed task "
-        "yang belum ada evidence-nya."
-    ),
-    ActivationOutcome.INVALID_CODE: "Kode aktivasi salah. Coba lagi.",
-    ActivationOutcome.LOCKED: "Terlalu banyak percobaan salah. Coba lagi setelah 15 menit.",
-    ActivationOutcome.ALREADY_USED: (
-        "Kode aktivasi ini sudah pernah dipakai. Hubungi admin untuk kode baru."
-    ),
-    ActivationOutcome.UNKNOWN_EMPLOYEE: "Employee ID tidak ditemukan.",
-    ActivationOutcome.ALREADY_BOUND: "Employee ID ini sudah terhubung ke nomor WhatsApp lain.",
-}
 _BAST_REPORT_TYPE: Final = {"developer": "developer", "shifting": "iotoperation"}
 _EVIDENCE_EMPTY_REPLY: Final = "Semua Closed task kamu sudah ada evidence-nya. \U0001f44d"
 _EVIDENCE_SELECT_INVALID: Final = "Nomor tidak valid. Kirim `evidence` untuk melihat daftar ulang."
 _DM_HELP_REPLY: Final = (
     "Kirim `evidence` untuk melihat Closed task yang belum ada evidence, "
-    "lalu balas nomornya dan kirim foto/dokumen evidence-nya."
+    "lalu balas nomornya (atau nama task-nya) dan kirim foto/dokumen evidence-nya."
 )
 _UPLOAD_OUTCOME_REPLY: Final = {
     UploadOutcome.DUPLICATE: "Foto ini sudah pernah dikirim untuk task ini.",
@@ -442,6 +459,53 @@ _UPLOAD_OUTCOME_REPLY: Final = {
     UploadOutcome.TOO_LARGE: "Ukuran file lebih dari 5 MB.",
     UploadOutcome.UNSUPPORTED_TYPE: "Format file tidak didukung. Kirim PNG, JPEG, atau WebP.",
 }
+# NRP-based onboarding (§1): talent know their NRP and name, never the
+# internal Employee ID -- that stays purely an internal key from here on.
+_NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
+_CONFIRM_CANCELLED: Final = "Oke, dibatalkan. Kirim NRP kamu lagi ya."
+_CONFIRM_RETRY: Final = "Balas YA atau BUKAN ya."
+_ALREADY_BOUND_ELSEWHERE: Final = (
+    "NRP ini sudah terhubung ke nomor WhatsApp lain. Hubungi admin untuk reset."
+)
+_YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
+_NO_WORDS: Final = frozenset({"bukan", "tidak", "no", "salah", "nggak", "gak", "ga"})
+_SUMMARY_WORDS: Final = ("tasklist", "task list", "kurang", "progress", "evidence")
+_MIN_AMBIGUOUS_MATCHES: Final = 2
+
+
+def _confirm_prompt(name: str, nrp: str) -> str:
+    return f"Aku menemukan:\n{name}\nNRP: {nrp}\n\nIni kamu?\nBalas YA atau BUKAN."
+
+
+def _bound_reply(name: str) -> str:
+    return f"✅ Terhubung sebagai {name}."
+
+
+async def _dm_onboarding(text: str, jid: str) -> str:
+    activation = create_activation_service()
+    pending_employee_id = await activation.pending_claim(jid)
+    lowered = text.strip().casefold()
+    if pending_employee_id is not None:
+        if lowered in _YES_WORDS:
+            outcome = await activation.bind(jid, pending_employee_id)
+            await activation.clear_claim(jid)
+            if outcome is not ActivationOutcome.SUCCESS:
+                return _ALREADY_BOUND_ELSEWHERE
+            roster = await load_roster()
+            name = next(
+                (e.name for e in roster if str(e.id) == pending_employee_id), pending_employee_id
+            )
+            return _bound_reply(name)
+        if lowered in _NO_WORDS:
+            await activation.clear_claim(jid)
+            return _CONFIRM_CANCELLED
+        return _CONFIRM_RETRY
+    roster = await load_roster()
+    employee = resolve_employee_by_nrp(text, roster)
+    if employee is None:
+        return _NRP_HELP
+    await activation.claim(jid, str(employee.id))
+    return _confirm_prompt(employee.name, employee.external_id)
 
 
 def _format_evidence_list(candidates: tuple[EvidenceCandidate, ...]) -> str:
@@ -459,80 +523,229 @@ def _format_evidence_list(candidates: tuple[EvidenceCandidate, ...]) -> str:
     return "\n".join(lines)
 
 
-def _dm_llm_pick(evidence: EvidenceService, employee_id: str, jid: str, text: str) -> str | None:
-    interpreter = create_llm_interpreter()
-    if interpreter is None:
-        return None
-    candidates = outstanding(anyio.run(evidence.list_candidates, employee_id))
-    if not candidates:
-        return None
-    titles = tuple(candidate.title for candidate in candidates)
-    choice = anyio.run(interpreter.choose_index, titles, text)
-    if choice is None:
-        return None
-    picked = candidates[choice - 1]
-    anyio.run(evidence.set_pending, jid, picked.task_source, picked.task_key)
+def _format_ambiguous_choice(matches: tuple[EvidenceCandidate, ...]) -> str:
+    lines = [f"Aku menemukan {len(matches)} task yang cocok:", ""]
+    lines.extend(f"{index}. {c.title}" for index, c in enumerate(matches, start=1))
+    lines.append("")
+    lines.append("Foto ini untuk yang mana? Balas nomornya.")
+    return "\n".join(lines)
+
+
+def _format_upload_success(
+    title: str, remaining: tuple[EvidenceCandidate, ...], done: int, total: int
+) -> str:
+    if not remaining:
+        return f"✅ Evidence tersimpan.\n\nEvidence kamu sekarang lengkap: {done}/{total}."
+    lines = [
+        "✅ Evidence tersimpan untuk:",
+        "",
+        title,
+        "",
+        f"Progress Evidence kamu: {done}/{total} Closed Task lengkap.",
+        "",
+        "Masih kurang:",
+    ]
+    lines.extend(f"• {c.title}" for c in remaining)
+    return "\n".join(lines)
+
+
+async def _complete_upload(  # noqa: PLR0913, PLR0917
+    evidence: EvidenceService,
+    employee_id: str,
+    jid: str,
+    target: EvidenceCandidate,
+    image: bytes,
+    caption: str,
+) -> str:
+    result = await evidence.upload(
+        employee_id, target.task_source, target.task_key, image, caption
+    )
+    if result.outcome is not UploadOutcome.STORED:
+        return _UPLOAD_OUTCOME_REPLY[result.outcome]
+    await evidence.clear_pending(jid)
+    all_closed = await evidence.list_candidates(employee_id)
+    remaining = outstanding(all_closed)
+    done = len(all_closed) - len(remaining)
+    return _format_upload_success(target.title, remaining, done, len(all_closed))
+
+
+async def _format_personal_summary(
+    employee_id: str, period: DateRange, evidence: EvidenceService
+) -> str:
+    report = await completion_status(period)
+    mine = next((e for e in report.employees if e.employee_id == employee_id), None)
+    candidates = outstanding(await evidence.list_candidates(employee_id))
+    total = 0
+    not_closed = 0
+    if mine is not None:
+        total = mine.total_tasks
+        # task_list.issues holds one NO_TASKS_ISSUE sentinel (state
+        # NEEDS_REVIEW) when the employee has zero tasks at all -- that's
+        # not a "not closed" task, only count issues when the check
+        # actually failed.
+        if mine.task_list.state is CheckState.INCOMPLETE:
+            not_closed = len(mine.task_list.issues)
+    closed = max(total - not_closed, 0)
+    lines = [
+        f"*Task List kamu — {period.label()}*",
+        "",
+        f"Total        : {total}",
+        f"Closed       : {closed}",
+        f"Belum Closed : {not_closed}",
+    ]
+    if candidates:
+        lines.append(f"Evidence     : {len(candidates)} Closed task belum ada evidence")
+        lines.append("")
+        lines.append("Belum ada evidence:")
+        lines.extend(f"{index}. {c.title}" for index, c in enumerate(candidates, start=1))
+        lines.append("")
+        lines.append('Kirim foto dengan caption seperti:\n"buat poin 1" atau "buat CCTV".')
+    else:
+        lines.append("Evidence     : lengkap ✅")
+    return "\n".join(lines).strip()
+
+
+async def _pick_task(
+    evidence: EvidenceService, employee_id: str, jid: str, picked: EvidenceCandidate
+) -> str:
+    stashed = await evidence.stashed_image(jid)
+    if stashed is not None:
+        image, _content_type, caption = stashed
+        await evidence.clear_stashed_image(jid)
+        return await _complete_upload(evidence, employee_id, jid, picked, image, caption)
+    await evidence.set_pending(jid, picked.task_source, picked.task_key)
     return f'Oke, dipilih: "{picked.title}". Kirim foto/dokumen evidence-nya sekarang.'
 
 
-def _dm_reply(text: str, jid: str) -> str:
+async def _dm_llm_pick(
+    evidence: EvidenceService, employee_id: str, jid: str, text: str
+) -> str | None:
+    interpreter = create_llm_interpreter()
+    if interpreter is None:
+        return None
+    candidates = outstanding(await evidence.list_candidates(employee_id))
+    if not candidates:
+        return None
+    titles = tuple(candidate.title for candidate in candidates)
+    choice = await interpreter.choose_index(titles, text)
+    if choice is None or not 1 <= choice <= len(candidates):
+        return None
+    return await _pick_task(evidence, employee_id, jid, candidates[choice - 1])
+
+
+async def _dm_reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 -- a resolution priority chain
     activation = create_activation_service()
-    employee_id = anyio.run(activation.resolve, jid)
+    employee_id = await activation.resolve(jid)
     if employee_id is None:
-        match = _ACTIVATION_PATTERN.match(text)
-        if match is None:
-            return _ACTIVATION_HELP
-        result = anyio.run(activation.activate, jid, match[1], match[2].upper())
-        return _ACTIVATION_OUTCOME_REPLY[result.outcome]
+        return await _dm_onboarding(text, jid)
     evidence = create_evidence_service()
-    lowered = text.strip().casefold()
-    if "evidence" in lowered:
-        candidates = outstanding(anyio.run(evidence.list_candidates, employee_id))
-        return _format_evidence_list(candidates) if candidates else _EVIDENCE_EMPTY_REPLY
-    if text.strip().isdigit():
-        candidates = outstanding(anyio.run(evidence.list_candidates, employee_id))
-        picked = select_by_index(candidates, text)
+    normalized = strip_mentions(text)
+    lowered = normalized.strip().casefold()
+    if not lowered:
+        return _DM_HELP_REPLY
+    if any(word in lowered for word in _SUMMARY_WORDS):
+        today = datetime.now(JAKARTA).date()
+        period = parse_period(normalized, today) or DateRange(
+            today.replace(day=1), today
+        )
+        return await _format_personal_summary(employee_id, period, evidence)
+    index = extract_index(normalized)
+    if index is not None:
+        # An explicit index may refer to the narrowed subset shown by a prior
+        # ambiguous-photo clarification (§5), not the full outstanding list --
+        # reconstruct that same subset from the stashed caption if present.
+        candidates = outstanding(await evidence.list_candidates(employee_id))
+        stashed = await evidence.stashed_image(jid)
+        pool = candidates
+        if stashed is not None:
+            _, _, stashed_caption = stashed
+            if stashed_caption.strip():
+                narrowed = select_by_caption_all(candidates, stashed_caption)
+                if len(narrowed) >= _MIN_AMBIGUOUS_MATCHES:
+                    pool = narrowed
+        picked = select_by_index(pool, str(index))
         if picked is None:
             return _EVIDENCE_SELECT_INVALID
-        anyio.run(evidence.set_pending, jid, picked.task_source, picked.task_key)
-        return f'Oke, dipilih: "{picked.title}". Kirim foto/dokumen evidence-nya sekarang.'
-    picked_reply = _dm_llm_pick(evidence, employee_id, jid, text)
+        return await _pick_task(evidence, employee_id, jid, picked)
+    candidates = outstanding(await evidence.list_candidates(employee_id))
+    narrowed = select_by_caption_all(candidates, normalized)
+    if len(narrowed) == 1:
+        return await _pick_task(evidence, employee_id, jid, narrowed[0])
+    if len(narrowed) >= _MIN_AMBIGUOUS_MATCHES:
+        return _format_ambiguous_choice(narrowed)
+    picked_reply = await _dm_llm_pick(evidence, employee_id, jid, normalized)
     return picked_reply if picked_reply is not None else _DM_HELP_REPLY
+
+
+async def _resolve_evidence_target(  # noqa: C901 -- a sequential priority chain, not nested branching
+    evidence: EvidenceService,
+    candidates: tuple[EvidenceCandidate, ...],
+    jid: str,
+    caption: str,
+) -> tuple[EvidenceCandidate | None, tuple[EvidenceCandidate, ...]]:
+    """Resolution priority (§4): explicit index > natural-language reference
+    (exact substring, then LLM-bounded) > pending-task state > single
+    candidate. Returns (target, narrowed) -- narrowed is the substring-match
+    subset when that's what made it ambiguous, for the clarifying question.
+    """
+    index = extract_index(caption)
+    if index is not None:
+        target = select_by_index(candidates, str(index))
+        if target is not None:
+            return target, ()
+
+    narrowed: tuple[EvidenceCandidate, ...] = ()
+    if caption.strip():
+        narrowed = select_by_caption_all(candidates, caption)
+        if len(narrowed) == 1:
+            return narrowed[0], ()
+    if caption.strip() and not narrowed:
+        interpreter = create_llm_interpreter()
+        if interpreter is not None:
+            titles = tuple(c.title for c in candidates)
+            choice = await interpreter.choose_index(titles, caption)
+            if choice is not None and 1 <= choice <= len(candidates):
+                return candidates[choice - 1], ()
+
+    pending = await evidence.pending_task(jid)
+    if pending is not None:
+        target = next((c for c in candidates if (c.task_source, c.task_key) == pending), None)
+        if target is not None:
+            return target, ()
+
+    if len(candidates) == 1:
+        return candidates[0], ()
+    return None, narrowed
 
 
 async def bot_evidence(jid: str, file_path: Path, caption: str) -> str:
     activation = create_activation_service()
     employee_id = await activation.resolve(jid)
     if employee_id is None:
-        return _ACTIVATION_HELP
+        return _NRP_HELP
     evidence = create_evidence_service()
     candidates = outstanding(await evidence.list_candidates(employee_id))
     if not candidates:
         return _EVIDENCE_EMPTY_REPLY
-    target = select_by_caption(candidates, caption) if caption.strip() else None
-    if target is None:
-        pending = await evidence.pending_task(jid)
-        if pending is not None:
-            target = next(
-                (c for c in candidates if (c.task_source, c.task_key) == pending), None
-            )
-    if target is None and len(candidates) == 1:
-        target = candidates[0]
-    if target is None:
-        return _format_evidence_list(candidates)
     image = await run_sync(file_path.read_bytes)
-    result = await evidence.upload(
-        employee_id, target.task_source, target.task_key, image, caption
-    )
-    if result.outcome is UploadOutcome.STORED:
-        await evidence.clear_pending(jid)
-        return f'Evidence untuk "{target.title}" tersimpan. Terima kasih!'
-    return _UPLOAD_OUTCOME_REPLY[result.outcome]
+    content_type = sniff_content_type(image) or "image/jpeg"
+
+    target, narrowed = await _resolve_evidence_target(evidence, candidates, jid, caption)
+    if target is None:
+        # §5: don't make the user resend the photo -- stash it, scoped to
+        # this sender, and consume it from _dm_reply/_pick_task once they
+        # answer the clarifying question.
+        await evidence.stash_image(jid, image, content_type, caption)
+        if len(narrowed) >= _MIN_AMBIGUOUS_MATCHES:
+            return _format_ambiguous_choice(narrowed)
+        return _format_evidence_list(candidates)
+
+    return await _complete_upload(evidence, employee_id, jid, target, image, caption)
 
 
 def bot_reply(text: str, *, jid: str | None = None, channel: str = "group") -> str:
     if channel == "dm":
-        return _dm_reply(text, jid) if jid else HELP_REPLY
+        return anyio.run(_dm_reply, text, jid) if jid else HELP_REPLY
     return _group_reply(text)
 
 
@@ -546,13 +759,35 @@ def _resolve_command(text: str, today: date) -> BotCommand:
     return parse_command(normalized, today)
 
 
-def _group_reply(text: str) -> str:
-    command = _resolve_command(text, datetime.now(JAKARTA).date())
+def _persona_reply(text: str) -> str:
+    interpreter = create_llm_interpreter()
+    if interpreter is not None:
+        reply = anyio.run(interpreter.persona_reply, strip_mentions(text))
+        if reply:
+            return reply
+    return PERSONA_FALLBACK_REPLY
+
+
+def _group_reply(text: str) -> str:  # noqa: PLR0911 -- one short-circuit per intent case
+    today = datetime.now(JAKARTA).date()
+    # Deterministic fast-path: an unambiguous greeting/intro/capability
+    # keyword ("kenalin", "siapa kamu", "makasih", ...) needs no LLM
+    # round-trip at all -- skip straight to the static reply instead of
+    # waiting 10-40s on this hardware for wording the keyword already
+    # answers. parse_command() checks every business keyword first (see
+    # whatsapp.py::_INTENT_RULES), so this can never mask a real business
+    # request as conversation. Anything NOT keyword-matched still goes
+    # through the normal LLM-primary path below (rare free-form smalltalk).
+    if parse_command(strip_mentions(text), today).intent is Intent.CONVERSATION:
+        return PERSONA_FALLBACK_REPLY
+    command = _resolve_command(text, today)
     match command.intent:
         case Intent.UNSUPPORTED_MUTATION:
             return MUTATION_REPLY
         case Intent.SYSTEM_STATUS:
             return format_system_status(system_status())
+        case Intent.CONVERSATION:
+            return _persona_reply(text)
         case Intent.UNKNOWN:
             return HELP_REPLY
         case _:
@@ -561,7 +796,7 @@ def _group_reply(text: str) -> str:
         return MISSING_PERIOD_REPLY
     if command.intent is Intent.EXPORT_ATTENDANCE and command.report_type is None:
         return MISSING_REPORT_TYPE_REPLY
-    return _business_reply(command.intent, command.period, command.report_type)
+    return _business_reply(command.intent, command.period, command.report_type, command.employee)
 
 
 def _echo_interpretation(intent: Intent, period: DateRange, report_type: str | None) -> str:
@@ -577,11 +812,43 @@ def _echo_interpretation(intent: Intent, period: DateRange, report_type: str | N
     return f"Saya baca sebagai: {body}."
 
 
-def _business_reply(intent: Intent, period: DateRange, report_type: str | None) -> str:
+def _select_by_name(report: CompletionReport, employee: str) -> tuple[EmployeeCompletion, ...]:
+    needle = canonical_text(employee)
+    return tuple(e for e in report.employees if needle in canonical_text(e.name))
+
+
+def _employee_detail_reply(period: DateRange, employee: str) -> str:
+    report = anyio.run(completion_status, period, None)
+    matches = _select_by_name(report, employee)
+    if not matches:
+        return f'Talent "{employee}" tidak ditemukan pada periode {period.label()}.'
+    if len(matches) > 1:
+        names = "\n".join(f"• {m.name}" for m in matches)
+        return (
+            f'Ada {len(matches)} talent yang cocok dengan "{employee}":\n\n{names}\n\n'
+            "Sebutkan nama lengkapnya ya."
+        )
+    return format_employee_detail(next(iter(matches)), period)
+
+
+def _business_reply(
+    intent: Intent, period: DateRange, report_type: str | None, employee: str | None = None
+) -> str:
     echo = _echo_interpretation(intent, period, report_type)
     match intent:
+        case Intent.COMPLETION_STATUS if employee:
+            return _employee_detail_reply(period, employee)
         case Intent.COMPLETION_STATUS:
-            return f"{echo}\n\n" + format_completion(anyio.run(completion_status, period, None))
+            report = anyio.run(completion_status, period, None)
+            path = anyio.run(generate_status_matrix, period)
+            return json.dumps(
+                {
+                    "kind": "file",
+                    "path": str(path),
+                    "filename": path.name,
+                    "caption": f"{echo}\n\n{format_completion(report)}",
+                }
+            )
         case Intent.EVIDENCE_RESUME:
             report = anyio.run(completion_status, period, None)
             return f"{echo}\n\n" + format_evidence_resume(report)

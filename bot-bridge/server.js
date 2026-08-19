@@ -16,7 +16,7 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
-const { ownUserIds, isForUs } = require("./mention");
+const { ownUserIds, isForUs, looksLikeConversation } = require("./mention");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -121,6 +121,7 @@ function parseFileReply(text) {
 const MIME_BY_EXTENSION = {
   ".pdf": "application/pdf",
   ".csv": "text/csv",
+  ".png": "image/png",
 };
 
 function mimetypeFor(filePath) {
@@ -130,16 +131,19 @@ function mimetypeFor(filePath) {
 async function sendFileReply(sock, jid, message, filePayload) {
   try {
     const buffer = fs.readFileSync(filePayload.path);
-    await sock.sendMessage(
-      jid,
-      {
-        document: buffer,
-        fileName: filePayload.filename || path.basename(filePayload.path),
-        mimetype: mimetypeFor(filePayload.path),
-        caption: filePayload.caption || "",
-      },
-      { quoted: message },
-    );
+    const mimetype = mimetypeFor(filePayload.path);
+    // The status-matrix PNG (cli.py generate-status-matrix) is meant to be
+    // read inline in the chat, not saved -- everything else (CSV/PDF export)
+    // stays a document attachment.
+    const payload = mimetype.startsWith("image/")
+      ? { image: buffer, caption: filePayload.caption || "" }
+      : {
+          document: buffer,
+          fileName: filePayload.filename || path.basename(filePayload.path),
+          mimetype,
+          caption: filePayload.caption || "",
+        };
+    await sock.sendMessage(jid, payload, { quoted: message });
     fs.unlink(filePayload.path, (error) => {
       if (error) log(`export cleanup failed: ${error}`);
     });
@@ -213,7 +217,11 @@ async function start() {
       if (message.key?.fromMe || !jid) continue;
       if (jid.endsWith("@g.us")) {
         await handleGroupMessage(sock, message, jid);
-      } else if (jid.endsWith("@s.whatsapp.net")) {
+      } else if (jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid")) {
+        // A 1:1 chat's remoteJid is the phone-number JID or the privacy "@lid"
+        // JID depending on the *other* side's addressing mode (same ambiguity
+        // as group mentions, see mention.js) -- @lid alone used to fall through
+        // neither branch and get silently dropped.
         await handleDirectMessage(sock, message, jid);
       }
     }
@@ -231,11 +239,17 @@ async function handleGroupMessage(sock, message, jid) {
     return;
   }
   log(`command from ${jid}: ${text.slice(0, 120)}`);
-  await sock.sendMessage(
-    jid,
-    { text: "Siap, tunggu sekitar 10-15 detik ya" },
-    { quoted: message },
-  );
+  // A plain greeting/intro (see mention.js::looksLikeConversation, mirrors
+  // cli.py's conversation fast-path) doesn't need a "this'll take a
+  // moment" heads-up -- generate/export/status and everything else still
+  // gets it immediately, same as before.
+  if (!looksLikeConversation(text)) {
+    await sock.sendMessage(
+      jid,
+      { text: "Siap, tunggu sekitar 10-15 detik ya" },
+      { quoted: message },
+    );
+  }
   const startedAt = Date.now();
   const result = await runCli(["bot-reply", "--text", text]);
   const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;

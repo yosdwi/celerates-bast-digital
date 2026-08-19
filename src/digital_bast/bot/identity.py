@@ -1,9 +1,12 @@
-"""One-time WhatsApp activation: Employee ID + activation code -> wa_jid binding.
+"""WhatsApp identity binding: wa_jid -> internal employee_id.
 
-No phone list is pre-collected (see docs/bast-e2e-plan.md §3.3). Codes are
-bcrypt-hashed at rest (mirrors web/nocodb_postgres_auth.py::_verify_password),
-expire on first successful use, and lock an employee out for 15 minutes after
-5 wrong attempts.
+Normal talent onboarding is NRP + full-name confirmation (see
+resolve_employee_by_nrp / ActivationService.claim/bind) -- talent know their
+NRP and name, not the internal Employee ID. The employee-ID + activation-code
+path (issue_codes/activate) is kept only as an admin fallback; it is no longer
+the normal user-facing flow. Codes are bcrypt-hashed at rest (mirrors
+web/nocodb_postgres_auth.py::_verify_password), expire on first successful
+use, and lock an employee out for 15 minutes after 5 wrong attempts.
 """
 
 from __future__ import annotations
@@ -13,19 +16,31 @@ import string
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Final, final
+from typing import TYPE_CHECKING, Final, final
 
 import bcrypt
 import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
+from digital_bast.domain.identity import canonical_text
 from digital_bast.infrastructure.errors import InfrastructureError
+
+if TYPE_CHECKING:
+    from digital_bast.domain.models import Employee
 
 _CODE_ALPHABET: Final = string.ascii_uppercase + string.digits
 _CODE_LENGTH: Final = 8
 _MAX_ATTEMPTS: Final = 5
 _LOCKOUT: Final = timedelta(minutes=15)
+
+
+def resolve_employee_by_nrp(nrp: str, employees: tuple[Employee, ...]) -> Employee | None:
+    needle = canonical_text(nrp)
+    if not needle:
+        return None
+    matches = [employee for employee in employees if canonical_text(employee.external_id) == needle]
+    return matches[0] if len(matches) == 1 else None
 
 
 class ActivationOutcome(StrEnum):
@@ -86,6 +101,24 @@ class ActivationService:
     async def activate(self, wa_jid: str, employee_id: str, code: str) -> ActivationResult:
         return await run_sync(self._activate, wa_jid, employee_id, code)
 
+    async def claim(self, wa_jid: str, employee_id: str) -> None:
+        await run_sync(self._claim, wa_jid, employee_id)
+
+    async def pending_claim(self, wa_jid: str) -> str | None:
+        return await run_sync(self._pending_claim, wa_jid)
+
+    async def clear_claim(self, wa_jid: str) -> None:
+        await run_sync(self._clear_claim, wa_jid)
+
+    async def bind(self, wa_jid: str, employee_id: str) -> ActivationOutcome:
+        return await run_sync(self._bind, wa_jid, employee_id)
+
+    async def unbind(self, employee_id: str) -> bool:
+        return await run_sync(self._unbind, employee_id)
+
+    async def unbind_jid(self, wa_jid: str) -> bool:
+        return await run_sync(self._unbind_jid, wa_jid)
+
     def _connect(self) -> psycopg.Connection[tuple[object, ...]]:
         return psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds)
 
@@ -126,6 +159,90 @@ class ActivationService:
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="resolve_identity") from error
         return None if row is None else str(row[0])
+
+    def _claim(self, wa_jid: str, employee_id: str) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    INSERT INTO bot_conversations (wa_jid, pending_employee_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (wa_jid) DO UPDATE SET
+                        pending_employee_id = EXCLUDED.pending_employee_id,
+                        updated_at = now()
+                    """,
+                    (wa_jid, employee_id),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="claim_identity") from error
+
+    def _pending_claim(self, wa_jid: str) -> str | None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    SELECT pending_employee_id FROM bot_conversations
+                    WHERE wa_jid = %s AND updated_at > now() - interval '15 minutes'
+                    """,
+                    (wa_jid,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="load_pending_claim"
+            ) from error
+        return None if row is None or row[0] is None else str(row[0])
+
+    def _clear_claim(self, wa_jid: str) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    "UPDATE bot_conversations SET pending_employee_id = NULL WHERE wa_jid = %s",
+                    (wa_jid,),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="clear_claim") from error
+
+    def _bind(self, wa_jid: str, employee_id: str) -> ActivationOutcome:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                try:
+                    _ = cursor.execute(
+                        "INSERT INTO wa_identity (wa_jid, employee_id) VALUES (%s, %s)",
+                        (wa_jid, employee_id),
+                    )
+                except psycopg.errors.UniqueViolation:
+                    connection.rollback()
+                    return ActivationOutcome.ALREADY_BOUND
+                _ = cursor.execute(
+                    "UPDATE bot_conversations SET pending_employee_id = NULL WHERE wa_jid = %s",
+                    (wa_jid,),
+                )
+                return ActivationOutcome.SUCCESS
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="bind_identity") from error
+
+    def _unbind(self, employee_id: str) -> bool:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    "DELETE FROM wa_identity WHERE employee_id = %s", (employee_id,)
+                )
+                deleted = cursor.rowcount > 0
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="unbind_identity") from error
+        return deleted
+
+    def _unbind_jid(self, wa_jid: str) -> bool:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute("DELETE FROM wa_identity WHERE wa_jid = %s", (wa_jid,))
+                deleted = cursor.rowcount > 0
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="unbind_identity_jid"
+            ) from error
+        return deleted
 
     def _activate(self, wa_jid: str, employee_id: str, code: str) -> ActivationResult:
         try:

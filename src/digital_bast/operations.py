@@ -21,6 +21,7 @@ from digital_bast.infrastructure.production_sources import NocoDBPostgresEmploye
 
 if TYPE_CHECKING:
     from digital_bast.domain.completion import DateRange
+    from digital_bast.domain.models import Employee
     from digital_bast.web.bast_assembler import AssembledReport
     from digital_bast.web.contracts import AttendanceRow
     from digital_bast.web.postgres_backend import PostgresWebBackend
@@ -128,13 +129,17 @@ def create_llm_interpreter() -> LlmInterpreter | None:
     return LlmInterpreter(str(settings.bot_llm_url), settings.bot_llm_model)
 
 
-async def issue_activation_codes(service: ActivationService | None = None) -> dict[str, str]:
+async def load_roster() -> tuple[Employee, ...]:
     from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
         LocalEmployeeSource,
     )
 
+    return await LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE).load()
+
+
+async def issue_activation_codes(service: ActivationService | None = None) -> dict[str, str]:
     active = service if service is not None else create_activation_service()
-    employees = await LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE).load()
+    employees = await load_roster()
     return await active.issue_codes(tuple(str(employee.id) for employee in employees))
 
 
@@ -183,6 +188,21 @@ async def export_attendance_report(
     path = _EXPORTS_DIRECTORY / filename
     _ = path.write_text(content, encoding="utf-8", newline="")
     return path, rows
+
+
+async def generate_status_matrix(period: DateRange) -> Path:
+    # local: same rationale as generate_bast -- keep Playwright off the
+    # bot-reply import path for commands that never render anything.
+    from digital_bast.bot.whatsapp import render_status_matrix_html  # noqa: PLC0415
+    from digital_bast.infrastructure.pdf_export import render_png  # noqa: PLC0415
+
+    report = await completion_status(period)
+    png_bytes = await render_png(render_status_matrix_html(report))
+    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    filename = f"BAST_status_{period.start.isoformat()}_{period.end.isoformat()}.png"
+    path = _EXPORTS_DIRECTORY / filename
+    _ = path.write_bytes(png_bytes)
+    return path
 
 
 async def generate_bast(

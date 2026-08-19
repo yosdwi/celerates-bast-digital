@@ -10,6 +10,7 @@ never free text resolved against the whole database -- see §3.5.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, final
@@ -50,14 +51,44 @@ def outstanding(candidates: tuple[EvidenceCandidate, ...]) -> tuple[EvidenceCand
     return tuple(candidate for candidate in candidates if candidate.evidence_count == 0)
 
 
+_CAPTION_STOPWORDS: Final = frozenset(
+    {
+        "ini", "itu", "yang", "buat", "untuk", "dulu", "dong", "nih", "ya",
+        "aku", "saya", "mau", "upload", "kirim", "foto", "gambar", "dokumen",
+        "evidence", "task", "tasklist", "poin", "point", "nomor", "no",
+    }
+)
+_KEYWORD_PATTERN: Final = re.compile(r"[a-z0-9]+")
+_MIN_KEYWORD_LENGTH: Final = 3
+
+
+def _keywords(text: str) -> frozenset[str]:
+    return frozenset(
+        word
+        for word in _KEYWORD_PATTERN.findall(text.casefold())
+        if len(word) >= _MIN_KEYWORD_LENGTH and word not in _CAPTION_STOPWORDS
+    )
+
+
+def select_by_caption_all(
+    candidates: tuple[EvidenceCandidate, ...],
+    caption: str,
+) -> tuple[EvidenceCandidate, ...]:
+    # Word-overlap, not substring containment: a caption is free text around
+    # a title reference ("ini buat CCTV Gate" for title "CCTV Gate
+    # Validation"), so the caption is neither a substring of the title nor
+    # vice versa in general -- any shared distinctive word is enough.
+    words = _keywords(caption)
+    if not words:
+        return ()
+    return tuple(candidate for candidate in candidates if words & _keywords(candidate.title))
+
+
 def select_by_caption(
     candidates: tuple[EvidenceCandidate, ...],
     caption: str,
 ) -> EvidenceCandidate | None:
-    text = caption.strip().casefold()
-    if not text:
-        return None
-    matches = [candidate for candidate in candidates if text in candidate.title.casefold()]
+    matches = select_by_caption_all(candidates, caption)
     return matches[0] if len(matches) == 1 else None
 
 
@@ -123,6 +154,20 @@ class _TaskRow:
         self.work_date = work_date
 
 
+class _StashedImageRow:
+    __slots__ = ("pending_image", "pending_image_caption", "pending_image_content_type")
+
+    def __init__(
+        self,
+        pending_image: bytes,
+        pending_image_content_type: str,
+        pending_image_caption: str | None,
+    ) -> None:
+        self.pending_image = pending_image
+        self.pending_image_content_type = pending_image_content_type
+        self.pending_image_caption = pending_image_caption
+
+
 def _reject_task(row: _TaskRow, employee_id: str) -> UploadOutcome | None:
     if row.employee_id != employee_id:
         return UploadOutcome.NOT_OWNED
@@ -151,6 +196,17 @@ class EvidenceService:
 
     async def clear_pending(self, wa_jid: str) -> None:
         await run_sync(self._clear_pending, wa_jid)
+
+    async def stash_image(
+        self, wa_jid: str, image: bytes, content_type: str, caption: str
+    ) -> None:
+        await run_sync(self._stash_image, wa_jid, image, content_type, caption)
+
+    async def stashed_image(self, wa_jid: str) -> tuple[bytes, str, str] | None:
+        return await run_sync(self._stashed_image, wa_jid)
+
+    async def clear_stashed_image(self, wa_jid: str) -> None:
+        await run_sync(self._clear_stashed_image, wa_jid)
 
     async def upload(
         self,
@@ -237,9 +293,77 @@ class EvidenceService:
     def _clear_pending(self, wa_jid: str) -> None:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                _ = cursor.execute("DELETE FROM bot_conversations WHERE wa_jid = %s", (wa_jid,))
+                # Null out just the task-selection columns, not the whole row --
+                # a pending identity claim or a stashed draft image for this
+                # same wa_jid (bot/identity.py, stash_image below) must survive.
+                _ = cursor.execute(
+                    """
+                    UPDATE bot_conversations
+                    SET pending_task_source = NULL, pending_task_key = NULL
+                    WHERE wa_jid = %s
+                    """,
+                    (wa_jid,),
+                )
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="clear_pending_task") from error
+
+    def _stash_image(self, wa_jid: str, image: bytes, content_type: str, caption: str) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    INSERT INTO bot_conversations
+                        (wa_jid, pending_image, pending_image_content_type, pending_image_caption)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (wa_jid) DO UPDATE SET
+                        pending_image = EXCLUDED.pending_image,
+                        pending_image_content_type = EXCLUDED.pending_image_content_type,
+                        pending_image_caption = EXCLUDED.pending_image_caption,
+                        updated_at = now()
+                    """,
+                    (wa_jid, image, content_type, caption),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="stash_image") from error
+
+    def _stashed_image(self, wa_jid: str) -> tuple[bytes, str, str] | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.cursor(row_factory=class_row(_StashedImageRow)) as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT pending_image, pending_image_content_type, pending_image_caption
+                    FROM bot_conversations
+                    WHERE wa_jid = %s AND updated_at > now() - interval '15 minutes'
+                      AND pending_image IS NOT NULL
+                    """,
+                    (wa_jid,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="peek_stashed_image") from error
+        if row is None:
+            return None
+        return row.pending_image, row.pending_image_content_type, row.pending_image_caption or ""
+
+    def _clear_stashed_image(self, wa_jid: str) -> None:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    UPDATE bot_conversations
+                    SET pending_image = NULL, pending_image_content_type = NULL,
+                        pending_image_caption = NULL
+                    WHERE wa_jid = %s
+                    """,
+                    (wa_jid,),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="clear_stashed_image"
+            ) from error
 
     def _upload(
         self,
