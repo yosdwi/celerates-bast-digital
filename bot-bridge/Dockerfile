@@ -8,8 +8,14 @@ FROM digital-bast:local AS base
 
 USER root
 
+# Node 20 from NodeSource, not Debian bookworm's `nodejs` package: bookworm
+# ships Node 18, and the pinned @whiskeysockets/baileys refuses to install on
+# anything below 20 ("This package requires Node.js 20+ to run reliably"), so
+# `npm ci` fails outright.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/digital-bast/bot-bridge

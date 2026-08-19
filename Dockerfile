@@ -31,6 +31,17 @@ COPY --chown=10001:10001 scripts/*.py /opt/digital-bast/scripts/
 COPY --chown=root:root scripts/container-entrypoint.sh /opt/digital-bast/bin/container-entrypoint
 RUN chmod 0555 /opt/digital-bast/bin/container-entrypoint
 
+# Chromium for Playwright. Both the BAST PDF (infrastructure/pdf_export.py
+# export_pdf) and the WhatsApp status-matrix PNG (render_png) launch it, so
+# without this the two headline deliverables fail at runtime with a caught
+# "playwright export_pdf failed" -- degraded gracefully, but broken.
+# Installed into a shared path because the app runs as uid 10001, which has no
+# writable HOME cache of its own.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN /opt/digital-bast/.venv/bin/playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/playwright \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/digital-bast
 USER 10001:10001
 EXPOSE 8000

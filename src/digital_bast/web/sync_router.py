@@ -28,6 +28,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from digital_bast.config import get_settings
 from digital_bast.domain.identity import daily_key
 from digital_bast.domain.transforms import transform_iot_task, transform_redmine_task
+
+# JsonValue is imported at runtime on purpose, and TC001 is suppressed for it:
+# pydantic must resolve this symbol to finish building RedmineBatch and
+# IoTSheetBatch. Deferring it to TYPE_CHECKING leaves those models half-built,
+# and the failure surfaces as a 500 on every request rather than at import.
+from digital_bast.infrastructure.json_types import JsonValue  # noqa: TC001
 from digital_bast.infrastructure.pama_attendance import (
     bucket_punches,
     derive_day,
@@ -39,7 +45,6 @@ from digital_bast.infrastructure.repositories import PostgresDomainRepository
 
 if TYPE_CHECKING:
     from digital_bast.domain.models import DomainRecord, Employee
-    from digital_bast.infrastructure.json_types import JsonValue
 
 _LOGGER = logging.getLogger(__name__)
 
