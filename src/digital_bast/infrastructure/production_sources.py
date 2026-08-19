@@ -232,10 +232,28 @@ ORDER BY start_date DESC, created_on DESC
 
 
 def _as_date(value: object) -> date | None:
+    """Coerce a source date, whether it arrived as an object or as text.
+
+    Both forms are real: the Prefect path gets native date/datetime objects
+    straight from pymssql, while the /internal/sync ingest path receives the
+    same rows as JSON, where every date is a string. Accepting only objects
+    silently dropped 100% of ingested Redmine rows -- the row failed the
+    `start_date is None` check below and hit a bare `continue`, with no error,
+    no counter and no log. That is the same failure shape as the leading-"L"
+    NRP typo, arriving through a different field.
+    """
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    for parse in (lambda t: datetime.fromisoformat(t).date(), lambda t: date.fromisoformat(t[:10])):
+        try:
+            return parse(text)
+        except ValueError:
+            continue
     return None
 
 
@@ -251,6 +269,13 @@ class RedmineParseResult:
 
     rows: tuple[RedmineTaskInput, ...]
     unmatched_nrps: tuple[str, ...]
+    # Rows dropped for reasons other than an unknown NRP: an unparsable or
+    # out-of-window start_date, or a blank subject. Reported so a gap between
+    # `received` and `upserted` has a stated cause rather than being a silent
+    # subtraction someone has to go hunting for.
+    dropped_bad_date: int = 0
+    dropped_out_of_window: int = 0
+    dropped_blank_title: int = 0
 
 
 def parse_redmine_rows(
@@ -261,6 +286,9 @@ def parse_redmine_rows(
     nrp_to_employee = {employee.external_id: employee.id for employee in employees}
     results: list[RedmineTaskInput] = []
     unmatched: set[str] = set()
+    bad_date = 0
+    out_of_window = 0
+    blank_title = 0
     for row in rows:
         nrp = row.get("nrp")
         employee_id = nrp_to_employee.get(str(nrp)) if nrp else None
@@ -269,10 +297,15 @@ def parse_redmine_rows(
                 unmatched.add(str(nrp))
             continue
         start_date = _as_date(row.get("start_date"))
-        if start_date is None or not (period.start <= start_date <= period.end):
+        if start_date is None:
+            bad_date += 1
+            continue
+        if not (period.start <= start_date <= period.end):
+            out_of_window += 1
             continue
         title = str(row.get("isu_subject") or "").strip()
         if not title:
+            blank_title += 1
             continue
         done_ratio = row.get("done_ratio")
         achievement = int(done_ratio) if isinstance(done_ratio, int | float) else 0
@@ -289,7 +322,13 @@ def parse_redmine_rows(
                 achievement=achievement,
             )
         )
-    return RedmineParseResult(tuple(results), tuple(sorted(unmatched)))
+    return RedmineParseResult(
+        tuple(results),
+        tuple(sorted(unmatched)),
+        dropped_bad_date=bad_date,
+        dropped_out_of_window=out_of_window,
+        dropped_blank_title=blank_title,
+    )
 
 
 @final
