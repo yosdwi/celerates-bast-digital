@@ -19,6 +19,22 @@ RUN apt-get update \
     && useradd --uid 10001 --gid app --home-dir /opt/digital-bast --create-home --shell /usr/sbin/nologin app
 
 COPY --from=builder --chown=10001:10001 /opt/digital-bast/.venv /opt/digital-bast/.venv
+
+# Chromium for Playwright, installed BEFORE any source is copied so an ordinary
+# code change does not invalidate this layer. It depends only on the venv, and
+# re-downloading it on every commit costs ~300MB and 40s of build time on a box
+# that does not have the disk to spare.
+#
+# Both headline outputs launch it -- the BAST PDF (pdf_export.export_pdf) and
+# the WhatsApp status-matrix PNG (render_png) -- so without it they fail at
+# runtime with a caught "playwright export_pdf failed": degraded gracefully,
+# but broken. The shared path is deliberate: the app runs as uid 10001, which
+# has no writable HOME cache of its own.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN /opt/digital-bast/.venv/bin/playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/playwright \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --chown=10001:10001 src /opt/digital-bast/src
 COPY --chown=10001:10001 templates /opt/digital-bast/templates
 COPY --chown=10001:10001 static /opt/digital-bast/static
@@ -30,17 +46,6 @@ COPY --chown=10001:10001 alembic.ini /opt/digital-bast/alembic.ini
 COPY --chown=10001:10001 scripts/*.py /opt/digital-bast/scripts/
 COPY --chown=root:root scripts/container-entrypoint.sh /opt/digital-bast/bin/container-entrypoint
 RUN chmod 0555 /opt/digital-bast/bin/container-entrypoint
-
-# Chromium for Playwright. Both the BAST PDF (infrastructure/pdf_export.py
-# export_pdf) and the WhatsApp status-matrix PNG (render_png) launch it, so
-# without this the two headline deliverables fail at runtime with a caught
-# "playwright export_pdf failed" -- degraded gracefully, but broken.
-# Installed into a shared path because the app runs as uid 10001, which has no
-# writable HOME cache of its own.
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN /opt/digital-bast/.venv/bin/playwright install --with-deps chromium \
-    && chmod -R a+rX /opt/playwright \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/digital-bast
 USER 10001:10001
