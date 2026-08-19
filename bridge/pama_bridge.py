@@ -200,8 +200,17 @@ def sync_iot_sheet(ingest: Ingest, start: date, end: date) -> int:
     from google.oauth2 import service_account  # noqa: PLC0415
     from googleapiclient.discovery import build  # noqa: PLC0415
 
+    # Resolved against this file's folder, not the process CWD: Task Scheduler
+    # does not always honour "Start in", and a relative path that silently
+    # misses would look like an auth failure.
+    key_path = Path(_env("GOOGLE_APPLICATION_CREDENTIALS"))
+    if not key_path.is_absolute():
+        key_path = Path(__file__).resolve().parent / key_path
+    if not key_path.exists():
+        print(f"service-account key not found: {key_path}", file=sys.stderr)
+        raise SystemExit(2)
     credentials = service_account.Credentials.from_service_account_file(
-        _env("GOOGLE_APPLICATION_CREDENTIALS"),
+        str(key_path),
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
     )
     sheet_name = os.getenv("GOOGLE_IOT_SHEET_NAME", "Master Support Ticket MS")

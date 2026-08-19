@@ -1,0 +1,24 @@
+# Everything real stays out of git. The repo is public.
+#
+# The root .gitignore already covers .env / .env.* / *.key / *.pem, but this
+# file is deliberately redundant: the bridge folder gets copied to a Windows PC
+# and back, and a local .gitignore travels with it.
+
+.env
+.env.*
+!.env.example
+
+# Service-account JSON, ODBC/DSN files, anything else credential-shaped.
+creds/*
+!creds/.gitkeep
+!creds/README.md
+
+*.json
+!package.json
+*.conf
+*.ini
+*.pfx
+*.p12
+
+.venv/
+__pycache__/

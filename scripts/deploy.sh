@@ -86,8 +86,14 @@ if [ "$DRY_RUN" = "0" ]; then
         sleep 5
         elapsed=$((elapsed + 5))
     done
-    compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
+    # Migration runs BEFORE the shadow gate, not after. /health/ready asserts
+    # the app's schema is present, so gating readiness ahead of the migration
+    # that creates it can never pass for a release that adds a table -- the
+    # gate would be testing the new image against the old schema. Both gates
+    # still run before any traffic moves: a failure here leaves the active
+    # slot serving exactly as it was.
     compose run --rm --no-deps "web-$target" alembic upgrade head || die "migration gate failed; active slot preserved" 1
+    compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
     sed "s/web-$current:8000/web-$target:8000/" "$active_config" > "$active_config.next"
     dd if="$active_config.next" of="$active_config" conv=notrunc status=none
     truncate -s "$(wc -c < "$active_config.next")" "$active_config"
