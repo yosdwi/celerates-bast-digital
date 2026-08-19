@@ -160,16 +160,17 @@ def sync_attendance(ingest: Ingest, roster: list[dict[str, str]], start: date, e
                 cursor.close()
 
     upserted = 0
+    outsiders: set[str] = set()
     for chunk in _chunks(rows):
         result = ingest.post("/internal/sync/attendance", {"rows": chunk})
         upserted += result["upserted"]
-        if result.get("unmatched_nrps"):
-            print(f"  WARNING unmatched NRPs: {result['unmatched_nrps']}", file=sys.stderr)
+        outsiders.update(result.get("unmatched_nrps") or ())
     print(f"attendance: {len(rows)} punches -> {upserted} employee-days")
+    _report_coverage("attendance", roster, [row["nrp"] for row in rows], outsiders)
     return upserted
 
 
-def sync_redmine(ingest: Ingest, start: date, end: date) -> int:
+def sync_redmine(ingest: Ingest, roster: list[dict[str, str]], start: date, end: date) -> int:
     with _mssql(
         _env("REDMINE_DB_SERVER"),
         _env("REDMINE_DB_USERNAME"),
@@ -184,15 +185,16 @@ def sync_redmine(ingest: Ingest, start: date, end: date) -> int:
             cursor.close()
 
     upserted = 0
+    outsiders: set[str] = set()
     for chunk in _chunks(rows):
         result = ingest.post(
             "/internal/sync/redmine",
             {"period_start": str(start), "period_end": str(end), "rows": chunk},
         )
         upserted += result["upserted"]
-        if result.get("unmatched_nrps"):
-            print(f"  WARNING unmatched NRPs: {result['unmatched_nrps']}", file=sys.stderr)
+        outsiders.update(result.get("unmatched_nrps") or ())
     print(f"redmine: {len(rows)} rows -> {upserted} tasks")
+    _report_coverage("redmine", roster, [str(row.get("nrp") or "") for row in rows], outsiders)
     return upserted
 
 
@@ -230,6 +232,35 @@ def sync_iot_sheet(ingest: Ingest, start: date, end: date) -> int:
     )
     print(f"iot-sheet: {result['received']} rows -> {result['upserted']} tasks")
     return int(result["upserted"])
+
+
+def _report_coverage(
+    source: str,
+    roster: list[dict[str, str]],
+    seen_nrps: list[str],
+    outsiders: set[str],
+) -> None:
+    """Report roster members who got nothing -- the failure that actually matters.
+
+    Unmatched NRPs from the source side are expected and harmless: PAMA and
+    Redmine cover the whole company, so most NRPs there belong to people who
+    are not on this roster. What is NOT normal is one of OUR employees coming
+    back empty. That is the shape the leading-"L" NRP typo took -- three people
+    silently had zero rows for months while the unmatched list looked no
+    different from any other day.
+    """
+    present = {nrp for nrp in seen_nrps if nrp}
+    empty = [person for person in roster if person["nrp"] not in present]
+    if outsiders:
+        print(f"  {len(outsiders)} NRPs not on our roster, skipped (expected)")
+    if empty:
+        names = ", ".join(f"{person['full_name']} ({person['nrp']})" for person in empty)
+        print(
+            f"  WARNING {source}: {len(empty)} roster employees got NO rows: {names}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"  all {len(roster)} roster employees have {source} rows")
 
 
 def _chunks(rows: list[Any]) -> list[list[Any]]:
@@ -270,7 +301,7 @@ def main() -> int:
     if "attendance" in selected:
         _run(failures, "attendance", lambda: sync_attendance(ingest, roster, start, end))
     if "redmine" in selected:
-        _run(failures, "redmine", lambda: sync_redmine(ingest, start, end))
+        _run(failures, "redmine", lambda: sync_redmine(ingest, roster, start, end))
     if "iot" in selected:
         _run(failures, "iot", lambda: sync_iot_sheet(ingest, start, end))
 

@@ -19,6 +19,13 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'digital_bast_prefect'
 -- least-privilege nocodb_editor role that migration 20260820_0004 creates.
 SELECT 'CREATE DATABASE nocodb_v2_meta OWNER digital_bast_app'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'nocodb_v2_meta') \gexec
+-- nocodb-v2's least-privilege login. Created here, as the bootstrap
+-- superuser, because migration 20260820_0004 runs as digital_bast_app, which
+-- deliberately has no CREATEROLE. The migration only grants; it skips the
+-- grants when this role is absent. Password is set out of band by the deploy
+-- runbook so no secret lands in a script.
+SELECT 'CREATE ROLE nocodb_editor LOGIN'
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nocodb_editor') \gexec
 SQL
 
 rm -f /dev/shm/digital-bast-init/app_database_password

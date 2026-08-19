@@ -233,23 +233,32 @@ def upgrade() -> None:
         """
     )
 
-    # Least-privilege login for nocodb-v2. The password is set out of band by
-    # the deploy runbook so no secret ever lands in a migration file.
+    # Grants for nocodb-v2's least-privilege login.
+    #
+    # The role itself is NOT created here. Alembic runs as digital_bast_app,
+    # which deliberately lacks CREATEROLE -- role provisioning is a
+    # cluster-level concern that belongs to scripts/postgres-init.sh, not to a
+    # schema migration. Granting is fine: digital_bast_app owns these tables.
+    #
+    # Skipped entirely when the role is absent, so a developer database that
+    # never provisioned it still migrates.
     op.execute(
         """
         DO $$
         BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nocodb_editor') THEN
-                CREATE ROLE nocodb_editor LOGIN;
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nocodb_editor') THEN
+                GRANT USAGE ON SCHEMA public TO nocodb_editor;
+                GRANT SELECT, INSERT, UPDATE, DELETE
+                    ON employees, holidays, schedules, attendance, tasks, timesheets
+                    TO nocodb_editor;
+                GRANT SELECT ON task_evidence TO nocodb_editor;
+                GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO nocodb_editor;
+            ELSE
+                RAISE NOTICE
+                    'role nocodb_editor is absent; skipping grants. '
+                    'Create it as the superuser to give nocodb-v2 access.';
             END IF;
         END $$;
-
-        GRANT USAGE ON SCHEMA public TO nocodb_editor;
-        GRANT SELECT, INSERT, UPDATE, DELETE
-            ON employees, holidays, schedules, attendance, tasks, timesheets
-            TO nocodb_editor;
-        GRANT SELECT ON task_evidence TO nocodb_editor;
-        GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO nocodb_editor;
         """
     )
 
@@ -257,10 +266,15 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
-        REVOKE ALL ON task_evidence FROM nocodb_editor;
-        REVOKE ALL ON employees, holidays, schedules, attendance, tasks, timesheets
-            FROM nocodb_editor;
-        REVOKE USAGE ON SCHEMA public FROM nocodb_editor;
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nocodb_editor') THEN
+                REVOKE ALL ON task_evidence FROM nocodb_editor;
+                REVOKE ALL ON employees, holidays, schedules, attendance, tasks, timesheets
+                    FROM nocodb_editor;
+                REVOKE USAGE ON SCHEMA public FROM nocodb_editor;
+            END IF;
+        END $$;
 
         DELETE FROM task_evidence;
         DELETE FROM bot_conversations;
