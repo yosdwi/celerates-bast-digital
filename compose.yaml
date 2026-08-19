@@ -234,6 +234,11 @@ services:
           cpus: "0.50"
           memory: 128M
 
+  # Port 8083, NOT 8082: a pre-existing cloudflared ingress rule on this host
+  # maps adminpanel.celeratesapps.com -> localhost:8082. Binding 8082 here
+  # silently published this database editor to the public internet, where
+  # NocoDB's first-boot flow lets any visitor claim the admin account.
+  #
   # NocoDB-v2: a second, independent instance whose data source is this
   # stack's own Postgres, so the grids people edit ARE the rows the pipeline
   # writes -- no sync, no second copy. The pre-existing nocodb_bast instance
@@ -244,10 +249,10 @@ services:
     restart: unless-stopped
     environment:
       NC_DB: "pg://postgres:5432?u=${NOCODB_V2_DB_USER:-digital_bast_app}&p=${NOCODB_V2_DB_PASSWORD:?NOCODB_V2_DB_PASSWORD is required}&d=nocodb_v2_meta"
-      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8082}
+      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8083}
       NC_DISABLE_TELE: "true"
     ports:
-      - "127.0.0.1:${NOCODB_V2_PORT:-8082}:8080"
+      - "127.0.0.1:${NOCODB_V2_PORT:-8083}:8080"
     networks:
       - edge
       - backend

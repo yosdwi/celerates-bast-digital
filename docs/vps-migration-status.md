@@ -91,7 +91,7 @@ Add to `.env`:
 
 ```
 NOCODB_V2_DB_PASSWORD=<the digital_bast_app password, from secrets/app_database_password>
-NOCODB_V2_PORT=8082
+NOCODB_V2_PORT=8083
 BOT_LLM_URL=http://172.17.0.1:11434
 BOT_LLM_MODEL=llama3.2:3b
 BOT_ALLOWED_GROUPS=<the WhatsApp group id used in local E2E>
@@ -197,8 +197,16 @@ chmod 640 secrets/nocodb_editor_password && chgrp "$SECRETS_GID" secrets/nocodb_
 
 ### 6. nocodb-v2
 
+**Do not put nocodb-v2 on port 8082.** A pre-existing `cloudflared` ingress
+rule on this host maps `adminpanel.celeratesapps.com` to `localhost:8082`.
+Binding 8082 publishes this database editor to the public internet, and
+NocoDB's first-boot flow lets whoever arrives first claim the admin account.
+This happened during the 2026-08-20 deploy and was caught by the tunnel logs;
+8083 is the safe port. Check `sudo journalctl -u cloudflared | grep originService`
+before choosing any new port on this box.
+
 ```bash
-docker compose up -d nocodb-v2      # http://127.0.0.1:8082
+docker compose up -d nocodb-v2      # http://127.0.0.1:8083
 ```
 
 First boot: create an admin account (separate from the old instance — the V2
