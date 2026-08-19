@@ -900,14 +900,23 @@ def _assemble(
     tasks = tuple(task for task in tasks if task.employee_id in roster_ids)
     tasks_by_key = {task.external_id: task for task in tasks}
 
-    html_sections: list[dict[str, object]] = list(
+    # V1 (fastapi_server.py) always emits an unconditional "N. <Group>" header
+    # section before each group -- this is also what report_editor.html's
+    # {% set counters %} block keys off of to number "1.1 Timesheet <name>"
+    # etc; without it counters.major never leaves 0 and every section prints
+    # as "0.1", "0.2", ... regardless of group.
+    html_sections: list[dict[str, object]] = [{"type": "timesheet_header", "title": "1. Timesheet"}]
+    html_sections.extend(
         _timesheet_sections(roster, tasks, timesheets, attendance, start, end, month_name, year)
     )
+    html_sections.append({"type": "tasklist_header", "title": "2. Task List"})
     if role is EmployeeRole.DEVELOPER:
         html_sections.extend(_developer_tasklist_sections(tasks, roster_names, month_name))
     else:
         html_sections.extend(_iot_tasklist_sections(tasks, roster_names, month_name))
+    html_sections.append({"type": "evidence_header", "title": "3. Evidence"})
     html_sections.extend(_evidence_sections(evidence, tasks_by_key, month_name))
+    html_sections.append({"type": "attendance_header", "title": "4. Attendance"})
     html_sections.extend(
         _attendance_section(
             roster, attendance, start, end, datetime.now(JAKARTA).date().strftime("%d/%m/%Y")

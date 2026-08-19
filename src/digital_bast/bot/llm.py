@@ -15,16 +15,14 @@ numbered list the caller already restricted to the sender's own candidates.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, Literal
+from datetime import date  # noqa: TC003 -- pydantic needs this resolvable at runtime
+from typing import Final, Literal
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from digital_bast.bot.whatsapp import BotCommand, Intent
 from digital_bast.domain.completion import DateRange
-
-if TYPE_CHECKING:
-    from datetime import date
 
 _TIMEOUT_SECONDS: Final = 10.0
 _MAX_SPAN_DAYS: Final = 366
@@ -47,7 +45,16 @@ _COMMAND_SYSTEM_PROMPT: Final = (
     "Gunakan unsupported-mutation untuk perintah yang mengubah sistem "
     "(restart, matikan, nyalakan, dsb). Gunakan system-status untuk pertanyaan status "
     "server/docker. export-attendance wajib mengisi report_type. Lengkapi tanggal/tahun "
-    "yang tidak disebutkan eksplisit memakai tanggal hari ini yang diberikan di pesan user."
+    "yang tidak disebutkan eksplisit memakai tanggal hari ini yang diberikan di pesan user.\n"
+    "Jika pesan menyebut dua tanggal, dipisah kata apa pun seperti 'sampai', 'sampe', "
+    "'s/d', 'hingga', atau tanda '-', tanggal pertama yang disebut adalah start_date dan "
+    "tanggal kedua adalah end_date -- jangan pernah mengganti salah satunya dengan "
+    "tanggal hari ini selama kedua tanggal itu disebutkan eksplisit di pesan. Contoh: "
+    'pesan "export attendance developer 5 juni - 10 juni" -> '
+    '{"intent":"export-attendance","start_date":"2026-06-05","end_date":"2026-06-10",'
+    '"report_type":"developer"}. Tanggal hari ini hanya dipakai untuk melengkapi bagian '
+    "yang benar-benar tidak disebutkan (mis. tahun, atau saat hanya satu tanggal/nama "
+    "bulan yang ada)."
 )
 _CHOICE_SYSTEM_PROMPT: Final = (
     "Pilih satu nomor dari daftar bernomor yang diberikan berdasarkan pesan user. "

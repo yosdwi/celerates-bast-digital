@@ -26,6 +26,7 @@ from digital_bast.bot.whatsapp import (
     format_evidence_resume,
     format_system_status,
     parse_command,
+    strip_mentions,
 )
 from digital_bast.domain.completion import (
     CompletionReport,
@@ -536,12 +537,13 @@ def bot_reply(text: str, *, jid: str | None = None, channel: str = "group") -> s
 
 
 def _resolve_command(text: str, today: date) -> BotCommand:
+    normalized = strip_mentions(text)
     interpreter = create_llm_interpreter()
     if interpreter is not None:
-        drafted = anyio.run(interpreter.interpret, text, today)
+        drafted = anyio.run(interpreter.interpret, normalized, today)
         if drafted is not None:
             return drafted
-    return parse_command(text, today)
+    return parse_command(normalized, today)
 
 
 def _group_reply(text: str) -> str:

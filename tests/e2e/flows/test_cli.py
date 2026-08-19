@@ -287,6 +287,7 @@ def test_bot_reply_formats_completion(
         return _completion_report()
 
     monkeypatch.setattr(cli, "completion_status", fake)
+    monkeypatch.setattr(cli, "create_llm_interpreter", lambda: None)
 
     exit_code = cli.main(["bot-reply", "--text", "@BAST Bot status 1 sampai 2 Agustus 2026"])
 

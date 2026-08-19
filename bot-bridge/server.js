@@ -16,6 +16,7 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
+const { ownUserIds, isForUs } = require("./mention");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -26,7 +27,6 @@ const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
-const TRIGGER = /^\s*[@!/]?\s*bast\s*bot\b|^\s*!bast\b|^\s*@\s*conform\b/i;
 
 const state = {
   connection: "starting",
@@ -75,12 +75,6 @@ function messageText(message) {
   );
 }
 
-function isForUs(message, text, ownJid) {
-  const mentioned = message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-  const bareOwn = ownJid.split(":")[0].split("@")[0];
-  return mentioned.some((jid) => jid.startsWith(bareOwn)) || TRIGGER.test(text);
-}
-
 function runCli(args) {
   return new Promise((resolve) => {
     execFile(
@@ -96,6 +90,23 @@ function runCli(args) {
       },
     );
   });
+}
+
+function requestId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// The full stdout/stderr/traceback from a failed CLI call goes to the
+// process log only -- WhatsApp gets a short Indonesian message plus a
+// ref id so the two can be correlated without ever putting a filesystem
+// path, Python traceback, or SQL detail in front of the sender.
+function friendlyErrorReply(context, resultText) {
+  const id = requestId();
+  log(`${context} failed [${id}]: ${resultText}`);
+  return (
+    `Maaf, proses gagal saat ${context}.\n` +
+    `Coba lagi beberapa saat atau hubungi admin jika tetap gagal. (ref: ${id})`
+  );
 }
 
 function parseFileReply(text) {
@@ -133,10 +144,9 @@ async function sendFileReply(sock, jid, message, filePayload) {
       if (error) log(`export cleanup failed: ${error}`);
     });
   } catch (error) {
-    log(`file send failed: ${error}`);
     await sock.sendMessage(
       jid,
-      { text: `Gagal mengirim berkas export: ${error}` },
+      { text: friendlyErrorReply("mengirim berkas", String(error)) },
       { quoted: message },
     );
   }
@@ -215,7 +225,7 @@ async function start() {
 // GROUP: monitoring + commands, unchanged -- mention-gated, allowlist-gated.
 async function handleGroupMessage(sock, message, jid) {
   const text = messageText(message);
-  if (!text || !isForUs(message, text, state.me || "")) return;
+  if (!text || !isForUs(message, text, ownUserIds(sock))) return;
   if (!allowedGroups().has(jid)) {
     log(`ignored message from unlisted group ${jid}`);
     return;
@@ -237,7 +247,7 @@ async function handleGroupMessage(sock, message, jid) {
   }
   const reply = result.ok
     ? `${result.text}\n\n_${elapsed}_`
-    : `Perintah tidak dapat dijalankan.\n\n${result.text.slice(0, 500)}`;
+    : friendlyErrorReply("menjalankan perintah", result.text);
   await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
 }
 
@@ -257,7 +267,7 @@ async function handleDirectMessage(sock, message, jid) {
   const result = await runCli(["bot-reply", "--text", text, "--jid", jid, "--channel", "dm"]);
   const reply = result.ok
     ? result.text
-    : `Perintah tidak dapat dijalankan.\n\n${result.text.slice(0, 500)}`;
+    : friendlyErrorReply("menjalankan perintah", result.text);
   await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
 }
 
@@ -299,13 +309,12 @@ async function handleEvidenceUpload(sock, message, jid, media) {
     ]);
     const reply = result.ok
       ? result.text
-      : `Gagal menyimpan evidence.\n\n${result.text.slice(0, 500)}`;
+      : friendlyErrorReply("menyimpan evidence", result.text);
     await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
   } catch (error) {
-    log(`evidence download failed: ${error}`);
     await sock.sendMessage(
       jid,
-      { text: `Gagal mengunduh foto/dokumen: ${error}` },
+      { text: friendlyErrorReply("mengunduh foto/dokumen", String(error)) },
       { quoted: message },
     );
   } finally {

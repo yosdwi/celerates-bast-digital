@@ -61,13 +61,20 @@ def legacy_attendance_csv(rows: tuple[Mapping[str, object], ...]) -> str:
     writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
     writer.writerow(LEGACY_CSV_HEADERS)
     for row in rows:
-        work_date = date.fromisoformat(str(row["work_date"]))
+        # payload is legacy JSONB written by older/manual imports -- some rows
+        # (e.g. seed/test fixtures) are missing keys entirely, so read
+        # defensively rather than crashing the whole export on one bad row.
+        raw_work_date = row.get("work_date")
+        work_date_display = (
+            date.fromisoformat(str(raw_work_date)).strftime("%d/%m/%Y") if raw_work_date else ""
+        )
         writer.writerow(
             neutralize_csv_formula(str(value))
             for value in (
-                row["employee_id"], row["full_name"], work_date.strftime("%d/%m/%Y"),
-                row["shift"], "", "", row["schedule_in"], row["schedule_out"],
-                row["attendance_code"], row["check_in"], row["check_out"], row["notes"],
+                row.get("employee_id", ""), row.get("full_name", ""), work_date_display,
+                row.get("shift", ""), "", "", row.get("schedule_in", ""),
+                row.get("schedule_out", ""), row.get("attendance_code", ""),
+                row.get("check_in", ""), row.get("check_out", ""), row.get("notes", ""),
                 "", "", "", "", "", "", "", "",
             )
         )

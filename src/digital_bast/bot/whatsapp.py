@@ -209,8 +209,12 @@ def _report_type_of(lowered: str) -> str | None:
     return None
 
 
+def strip_mentions(text: str) -> str:
+    return _MENTION.sub(" ", text).strip()
+
+
 def parse_command(text: str, today: date) -> BotCommand:
-    normalized = _MENTION.sub(" ", text).strip()
+    normalized = strip_mentions(text)
     lowered = normalized.casefold()
     intent = _intent_of(lowered)
     if intent in {Intent.UNKNOWN, Intent.SYSTEM_STATUS, Intent.UNSUPPORTED_MUTATION}:
