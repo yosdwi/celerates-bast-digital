@@ -14,6 +14,13 @@ dist/
 .env.*
 !.env.example
 secrets/
+
+# Runtime state, not configuration: deploy.sh and rollback.sh rewrite this file
+# in place to record which slot is live. Tracking it in git meant any full-tree
+# sync silently reset the deploy scripts' idea of the active slot -- which is
+# exactly what happened during the 2026-08-20 deploy, leaving one slot stale
+# for hours. Seeded from active-slot.conf.template by preflight.sh.
+config/nginx/active-slot.conf
 *.pem
 *.key
 *.sqlite

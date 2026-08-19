@@ -23,6 +23,12 @@ available_min_gb=${AVAILABLE_MIN_GB:-10}
 root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')
 [ "$root_available_kb" -ge "$((available_min_gb * 1024 * 1024))" ] || die "root disk has less than ${available_min_gb}GB available" 70
 
+# active-slot.conf is runtime state and is not in git (see .gitignore). Seed
+# it from the template on a fresh checkout so deploy.sh has something to read.
+if [ ! -f config/nginx/active-slot.conf ]; then
+    cp config/nginx/active-slot.conf.template config/nginx/active-slot.conf
+fi
+
 secrets_dir=${SECRETS_DIR:-./secrets}
 secrets_gid=${SECRETS_GID:?SECRETS_GID is required}
 for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string; do
