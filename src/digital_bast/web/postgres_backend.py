@@ -19,6 +19,7 @@ from digital_bast.web.contracts import (
     SectionInput,
     StreamSectionInput,
 )
+from digital_bast.web.csv_export import legacy_attendance_csv
 from digital_bast.web.errors import WebBackendUnavailableError
 from digital_bast.web.postgres_models import (
     AttendanceRecord,
@@ -28,7 +29,14 @@ from digital_bast.web.postgres_models import (
     ReportRow,
     StoredPlan,
 )
-from digital_bast.web.postgres_sql import ATTENDANCE, EMPLOYEES, INSERT_PLAN, REPORT, UPDATE_PLAN
+from digital_bast.web.postgres_sql import (
+    ATTENDANCE,
+    ATTENDANCE_LEGACY,
+    EMPLOYEES,
+    INSERT_PLAN,
+    REPORT,
+    UPDATE_PLAN,
+)
 
 
 @final
@@ -52,6 +60,11 @@ class PostgresWebBackend:
         self, employee_names: tuple[str, ...], start_date: date, end_date: date
     ) -> tuple[AttendanceRow, ...]:
         return await run_sync(self._attendance, employee_names, start_date, end_date)
+
+    async def attendance_legacy(
+        self, role: str, start_date: date, end_date: date
+    ) -> tuple[str, int]:
+        return await run_sync(self._attendance_legacy, role, start_date, end_date)
 
     async def create_plan(self, request: GenerationPlanInput) -> GenerationResult:
         return await run_sync(self._create_plan, request)
@@ -139,6 +152,15 @@ class PostgresWebBackend:
             )
             for row in rows
         )
+
+    def _attendance_legacy(self, role: str, start_date: date, end_date: date) -> tuple[str, int]:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(ATTENDANCE_LEGACY, (start_date, end_date, role))
+                rows = tuple(row[0] for row in cursor.fetchall())
+        except psycopg.Error as error:
+            raise WebBackendUnavailableError(operation="attendance_legacy") from error
+        return legacy_attendance_csv(rows), len(rows)
 
     def _create_plan(self, request: GenerationPlanInput) -> GenerationResult:
         plan_id = uuid4()

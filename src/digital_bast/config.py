@@ -183,7 +183,28 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="SQLSERVER_CONNECTION_STRING_FILE",
     )
+    redmine_db_server: str | None = Field(default=None, validation_alias="REDMINE_DB_SERVER")
+    redmine_db_username: str | None = Field(default=None, validation_alias="REDMINE_DB_USERNAME")
+    redmine_db_password: SecretStr | None = Field(
+        default=None,
+        validation_alias="REDMINE_DB_PASSWORD",
+    )
+    redmine_db_password_file: FilePath | None = Field(
+        default=None,
+        validation_alias="REDMINE_DB_PASSWORD_FILE",
+    )
+    redmine_db_name: str = Field(
+        default="DB_SATUPAMA_CIS",
+        min_length=1,
+        validation_alias="REDMINE_DB_NAME",
+    )
     outbound_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    bot_llm_url: AnyHttpUrl | None = Field(default=None, validation_alias="BOT_LLM_URL")
+    bot_llm_model: str = Field(
+        default="llama3.2:3b",
+        min_length=1,
+        validation_alias="BOT_LLM_MODEL",
+    )
 
     @model_validator(mode="after")
     def resolve_files_and_validate(self) -> Self:
@@ -224,6 +245,11 @@ class Settings(BaseSettings):
             self.sqlserver_connection_string,
             self.sqlserver_connection_string_file,
             "sqlserver_connection_string",
+        )
+        self.redmine_db_password = _read_secret(
+            self.redmine_db_password,
+            self.redmine_db_password_file,
+            "redmine_db_password",
         )
         if self.environment.casefold() == "production":
             self._validate_production()

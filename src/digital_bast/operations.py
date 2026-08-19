@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, override
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
+from digital_bast.bot.evidence import EvidenceService
+from digital_bast.bot.identity import ActivationService
+from digital_bast.bot.llm import LlmInterpreter
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.completion_source import (
@@ -17,17 +18,17 @@ from digital_bast.infrastructure.completion_source import (
 )
 from digital_bast.infrastructure.nocodb_repository import NocoDBDomainRepository
 from digital_bast.infrastructure.production_sources import NocoDBPostgresEmployeeSource
-from digital_bast.web.csv_export import attendance_csv
-from digital_bast.web.postgres_backend import PostgresWebBackend
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from digital_bast.domain.completion import DateRange, EmployeeFacts
+    from digital_bast.domain.completion import DateRange
+    from digital_bast.web.bast_assembler import AssembledReport
     from digital_bast.web.contracts import AttendanceRow
+    from digital_bast.web.postgres_backend import PostgresWebBackend
 
-_TEMPLATE_DIRECTORY: Final = Path(__file__).resolve().parents[2] / "templates"
-_BAST_TEMPLATE: Final = "bast.html"
+_EXPORTS_DIRECTORY: Final = Path(__file__).resolve().parents[2] / "bot-bridge" / "data" / "exports"
+_LOCAL_EMPLOYEE_FILE: Final = Path(__file__).resolve().parents[2] / "employee_data.json"
+_REPORT_TYPE_ROLE: Final = {"developer": "Developer", "shifting": "IoT Operations"}
+_REPORT_TYPE_SUFFIX: Final = {"developer": "DEVELOPER", "shifting": "SHIFTING"}
 _MISSING_NOCODB: Final = "NOCODB_DATABASE_DSN, NOCODB_BASE_ID"
 _MISSING_APP_DSN: Final = "APP_DATABASE_DSN"
 _INVALID_SETTINGS: Final = "application settings are invalid; check .env and the secret files"
@@ -67,7 +68,36 @@ def create_completion_source() -> NocoDBCompletionSource:
     )
 
 
+def create_local_completion_source() -> NocoDBCompletionSource:
+    # local: NocoDB is unreachable; fall back to durable_records + the flat
+    # attendance rows scripts/load_pama_attendance.py already writes there.
+    # Evidence comes from task_evidence (talent uploads over WhatsApp DM,
+    # see bot/evidence.py) -- per-task, unlike the old NocoDB aggregate.
+    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
+        LocalEmployeeSource,
+        PostgresAttendanceFactReader,
+        PostgresTaskEvidenceReader,
+    )
+    from digital_bast.infrastructure.repositories import PostgresDomainRepository  # noqa: PLC0415
+
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    secret = dsn.get_secret_value()
+    return NocoDBCompletionSource(
+        LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE),
+        PostgresDomainRepository(secret),
+        PostgresAttendanceFactReader(secret),
+        PostgresTaskEvidenceReader(secret),
+    )
+
+
 def create_attendance_backend() -> PostgresWebBackend:
+    # local: digital_bast.web's package init pulls in the full FastAPI app,
+    # redis, etc. -- keep that off commands that never touch attendance export.
+    from digital_bast.web.postgres_backend import PostgresWebBackend  # noqa: PLC0415
+
     settings = _settings()
     dsn = settings.database_dsn
     if dsn is None:
@@ -75,12 +105,52 @@ def create_attendance_backend() -> PostgresWebBackend:
     return PostgresWebBackend(dsn.get_secret_value())
 
 
+def create_activation_service() -> ActivationService:
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return ActivationService(dsn.get_secret_value())
+
+
+def create_evidence_service() -> EvidenceService:
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return EvidenceService(dsn.get_secret_value())
+
+
+def create_llm_interpreter() -> LlmInterpreter | None:
+    settings = _settings()
+    if settings.bot_llm_url is None:
+        return None
+    return LlmInterpreter(str(settings.bot_llm_url), settings.bot_llm_model)
+
+
+async def issue_activation_codes(service: ActivationService | None = None) -> dict[str, str]:
+    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
+        LocalEmployeeSource,
+    )
+
+    active = service if service is not None else create_activation_service()
+    employees = await LocalEmployeeSource(_LOCAL_EMPLOYEE_FILE).load()
+    return await active.issue_codes(tuple(str(employee.id) for employee in employees))
+
+
+def _default_completion_source() -> NocoDBCompletionSource:
+    try:
+        return create_completion_source()
+    except OperationConfigurationError:
+        return create_local_completion_source()
+
+
 async def completion_status(
     period: DateRange,
     employee: str | None = None,
     source: NocoDBCompletionSource | None = None,
 ) -> CompletionReport:
-    active = source if source is not None else create_completion_source()
+    active = source if source is not None else _default_completion_source()
     return evaluate_completion(period, await active.load(period, employee))
 
 
@@ -89,38 +159,54 @@ async def export_attendance(
     employees: tuple[str, ...] = (),
     backend: PostgresWebBackend | None = None,
 ) -> tuple[str, int]:
+    from digital_bast.web.csv_export import attendance_csv  # noqa: PLC0415
+
     active = backend if backend is not None else create_attendance_backend()
     rows: tuple[AttendanceRow, ...] = await active.attendance(employees, period.start, period.end)
     return attendance_csv(rows), len(rows)
 
 
-def render_bast(
-    report: CompletionReport,
-    facts: Mapping[str, EmployeeFacts],
-    label: str,
-    generated_at: datetime,
-) -> str:
-    environment = Environment(
-        loader=FileSystemLoader(_TEMPLATE_DIRECTORY),
-        autoescape=select_autoescape(("html",)),
+async def export_attendance_report(
+    period: DateRange,
+    report_type: str,
+    backend: PostgresWebBackend | None = None,
+) -> tuple[Path, int]:
+    active = backend if backend is not None else create_attendance_backend()
+    role = _REPORT_TYPE_ROLE[report_type]
+    content, rows = await active.attendance_legacy(role, period.start, period.end)
+    suffix = _REPORT_TYPE_SUFFIX[report_type]
+    filename = (
+        f"Attendance_Celerates_Combined_{period.start.isoformat()}"
+        f"_to_{period.end.isoformat()} ({suffix}).csv"
     )
-    template = environment.get_template(_BAST_TEMPLATE)
-    return template.render(report=report, facts=facts, label=label, generated_at=generated_at)
+    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    path = _EXPORTS_DIRECTORY / filename
+    _ = path.write_text(content, encoding="utf-8", newline="")
+    return path, rows
 
 
 async def generate_bast(
     period: DateRange,
-    label: str = "",
-    source: NocoDBCompletionSource | None = None,
-) -> tuple[str, CompletionReport]:
-    active = source if source is not None else create_completion_source()
-    facts = await active.load(period, None)
-    report = evaluate_completion(period, facts)
-    title = label or f"BAST {period.label()}"
-    document = render_bast(
-        report,
-        {item.employee_id: item for item in facts},
-        title,
-        datetime.now(UTC),
+    report_type: str = "developer",
+) -> tuple[Path, AssembledReport]:
+    # local: digital_bast.web's package init pulls in the full FastAPI app,
+    # redis, etc. -- keep that off commands that never touch the web app.
+    from digital_bast.infrastructure.pdf_export import render_pdf  # noqa: PLC0415
+    from digital_bast.web.bast_assembler import (  # noqa: PLC0415
+        PostgresBastArtifactStore,
+        assemble,
     )
-    return document, report
+
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    secret = dsn.get_secret_value()
+    report = await assemble(report_type, period.start.year, period.start.month, secret)
+    pdf_bytes = await render_pdf(report.editor_html)
+    _ = await PostgresBastArtifactStore(secret).save(report)
+    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    filename = f"BAST_{report_type}_{report.year}-{report.month:02d}.pdf"
+    path = _EXPORTS_DIRECTORY / filename
+    _ = path.write_bytes(pdf_bytes)
+    return path, report

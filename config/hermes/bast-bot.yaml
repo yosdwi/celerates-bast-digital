@@ -6,10 +6,16 @@ description: Digital BAST WhatsApp group assistant
 channel:
   transport: whatsapp-baileys
   mode: group
-  respond_to: mention_only        # ignore every message that does not mention the bot
+  respond_to: mention_only        # group messages: ignore anything that doesn't mention the bot
   allowed_groups:                 # fill with the group JIDs that may use the bot
     - "REPLACE_WITH_GROUP_JID@g.us"
-  allow_direct_messages: false
+  allow_direct_messages: true     # DM = evidence upload only, scoped below -- not open reporting
+  # Command surface is scoped per channel (docs/bast-e2e-plan.md §3.3):
+  #   allowlisted group : resume / status / export / generate -- unchanged
+  #   DM, bound JID      : evidence listing and upload only
+  #   DM, unbound JID     : activation attempt only, rate-limited, nothing else
+  # digital-bast enforces this scoping itself (cli.py::_dm_reply / bot_evidence);
+  # this config only documents it, it isn't a separate access-control layer.
 runtime:
   working_directory: /opt/digital-bast
   timeout_seconds: 120
@@ -32,5 +38,5 @@ denied_intents:
   - restart / stop / start container
   - docker compose up / down / exec
   - arbitrary shell execution
-  - individual direct messages
+  - reporting or document generation from a direct message (group-only, see channel scoping above)
 reply_language: id-ID

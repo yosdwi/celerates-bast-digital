@@ -35,7 +35,6 @@ TASK_EVIDENCE_MAPPING_ISSUE: Final = (
     "Mapping Evidence Task List belum dikonfigurasi (NOCODB_TASK_EVIDENCE_COLUMN)."
 )
 NO_TASKS_ISSUE: Final = "Belum ada Task List pada periode."
-NO_TASK_EVIDENCE_ISSUE: Final = "Evidence Task List belum tersedia."
 
 
 class InvalidDateRangeError(DomainError):
@@ -114,6 +113,7 @@ class TaskFact:
     work_date: date
     title: str
     status: str
+    evidence_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +124,7 @@ class EmployeeFacts:
     attendance: tuple[AttendanceFact, ...]
     timesheets: tuple[TimesheetFact, ...]
     tasks: tuple[TaskFact, ...]
-    task_evidence_count: int | None
+    evidence_available: bool
     attendance_available: bool
 
 
@@ -142,6 +142,7 @@ class EmployeeCompletion:
     task_list: CheckResult
     evidence: CheckResult
     log_1_pama: CheckResult
+    total_tasks: int = 0
 
     @property
     def state(self) -> CheckState:
@@ -260,11 +261,17 @@ def _task_list(facts: EmployeeFacts) -> CheckResult:
 
 
 def _evidence(facts: EmployeeFacts) -> CheckResult:
-    if facts.task_evidence_count is None:
+    if not facts.evidence_available:
         return CheckResult(CheckState.NEEDS_REVIEW, (TASK_EVIDENCE_MAPPING_ISSUE,))
-    if facts.task_evidence_count > 0:
+    missing = tuple(
+        task
+        for task in facts.tasks
+        if task.status.strip().casefold() == CLOSED_STATUS and task.evidence_count == 0
+    )
+    if not missing:
         return CheckResult(CheckState.COMPLETE, ())
-    return CheckResult(CheckState.INCOMPLETE, (NO_TASK_EVIDENCE_ISSUE,))
+    issues = tuple(f'Task "{task.title}" belum ada evidence.' for task in missing)
+    return CheckResult(CheckState.INCOMPLETE, issues)
 
 
 def evaluate_employee(facts: EmployeeFacts, period: DateRange) -> EmployeeCompletion:
@@ -276,6 +283,7 @@ def evaluate_employee(facts: EmployeeFacts, period: DateRange) -> EmployeeComple
         task_list=_task_list(facts),
         evidence=_evidence(facts),
         log_1_pama=log_result,
+        total_tasks=len(facts.tasks),
     )
 
 

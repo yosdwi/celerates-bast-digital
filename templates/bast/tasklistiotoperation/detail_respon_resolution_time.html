@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <title>Detail Respon dan Resolution Time</title> -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: white;
+        }
+        .header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .iot-respon-section .table-container {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .iot-respon-section table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9px;
+            border: 2px solid #000;
+            table-layout: fixed;
+        }
+        .iot-respon-section th {
+            background-color: #9BB5D6;
+            color: #000;
+            font-weight: bold;
+            padding: 4px 3px;
+            text-align: center;
+            border: 1px solid #000;
+            vertical-align: middle;
+            font-size: 9px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .iot-respon-section td {
+            padding: 3px 2px;
+            border: 1px solid #000;
+            text-align: center;
+            vertical-align: middle;
+        }
+        td.left-align {
+            text-align: left;
+        }
+        .no-col {
+            width: 3%;
+        }
+        .problem-col {
+            width: 24%;
+        }
+        .date-col {
+            width: 5%;
+        }
+        .time-col {
+            width: 5%;
+        }
+        .pic-col {
+            width: 8%;
+        }
+        .engineer-col {
+            width: 8%;
+        }
+        .performance-col {
+            width: 4%;
+        }
+        .summary-row {
+            background-color: #E6E6E6;
+            font-weight: bold;
+        }
+
+        /* Optimize for A4 paper width like timesheet */
+        .iot-respon-section {
+            transform: scale(0.80);
+            transform-origin: top left;
+            width: 180%;
+        }
+    </style>
+</head>
+<body>
+    <!-- <div class="header">Detail Respon dan Resolution Time</div> -->
+
+    <div class="iot-respon-section">
+        <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th rowspan="2" class="no-col">No</th>
+                    <th rowspan="2" class="problem-col">Problem</th>
+                    <th rowspan="2" class="date-col">Tanggal Problem</th>
+                    <th rowspan="2" class="time-col">Waktu Problem</th>
+                    <th rowspan="2" class="date-col">Tanggal Waktu Respon</th>
+                    <th rowspan="2" class="date-col">Tanggal Waktu Penyelesaian</th>
+                    <th rowspan="2" class="time-col">Waktu Penyelesaian</th>
+                    <th rowspan="2" class="pic-col">PIC PAMA</th>
+                    <th rowspan="2" class="engineer-col">Engineer Manage Service</th>
+                    <th rowspan="2" class="performance-col">Waktu Respon (Menit)</th>
+                    <th colspan="4">Aktual Waktu Respon</th>
+                    <th colspan="2">Performance Waktu Respon</th>
+                    <th colspan="2">Performance Waktu Penyelesaian</th>
+                </tr>
+                <tr>
+                    <th class="performance-col">Waktu Penyelesaian (Menit)</th>
+                    <th class="performance-col">(Menit)</th>
+                    <th class="performance-col">(Menit)</th>
+                    <th class="performance-col">(Menit)</th>
+                    <th class="performance-col">(%)</th>
+                    <th class="performance-col">(%)</th>
+                    <th class="performance-col">(%)</th>
+                    <th class="performance-col">(%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in respon_data %}
+                <tr>
+                    <td class="no-col">{{ item.no }}</td>
+                    <td class="problem-col left-align">{{ item.problem }}</td>
+                    <td class="date-col">{{ item.tanggal_problem }}</td>
+                    <td class="time-col">{{ item.waktu_problem }}</td>
+                    <td class="date-col">{{ item.tanggal_respon }}</td>
+                    <td class="date-col">{{ item.tanggal_penyelesaian }}</td>
+                    <td class="time-col">{{ item.waktu_penyelesaian }}</td>
+                    <td class="pic-col">{{ item.pic_pama }}</td>
+                    <td class="engineer-col">{{ item.engineer }}</td>
+                    <td class="performance-col">{{ item.waktu_respon_menit }}</td>
+                    <td class="performance-col">{{ item.aktual_waktu_1 }}</td>
+                    <td class="performance-col">{{ item.aktual_waktu_2 }}</td>
+                    <td class="performance-col">{{ item.aktual_waktu_3 }}</td>
+                    <td class="performance-col">{{ item.aktual_waktu_4 }}</td>
+                    <td class="performance-col">{{ item.performance_respon_1 }}%</td>
+                    <td class="performance-col">{{ item.performance_respon_2 }}%</td>
+                    <td class="performance-col">{{ item.performance_penyelesaian_1 }}%</td>
+                    <td class="performance-col">{{ item.performance_penyelesaian_2 }}%</td>
+                </tr>
+                {% endfor %}
+                {% if summary_percentage %}
+                <tr class="summary-row">
+                    <td colspan="17" class="left-align">Rata Rata Waktu Respon dan Waktu Penyelesaian</td>
+                    <td class="performance-col">{{ summary_percentage }}%</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</body>
+</html>

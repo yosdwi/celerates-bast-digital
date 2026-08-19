@@ -6,6 +6,7 @@ from digital_bast.bot.whatsapp import (
     HELP_REPLY,
     Intent,
     format_completion,
+    format_evidence_resume,
     format_system_status,
     parse_command,
     parse_period,
@@ -70,7 +71,7 @@ def test_container_mutation_is_rejected() -> None:
 
 def test_unknown_text_falls_back_to_help() -> None:
     assert parse_command("@BAST Bot halo", TODAY).intent is Intent.UNKNOWN
-    assert HELP_REPLY.startswith("*BAST Bot*")
+    assert HELP_REPLY.startswith("*@conform")
 
 
 def facts(name: str, *, closed: bool) -> EmployeeFacts:
@@ -85,8 +86,8 @@ def facts(name: str, *, closed: bool) -> EmployeeFacts:
             ),
         ),
         timesheets=(TimesheetFact(period.start, "Shift Pagi"),),
-        tasks=(TaskFact(period.start, "CCTV Gate 2", "Closed" if closed else "Open"),),
-        task_evidence_count=1,
+        tasks=(TaskFact(period.start, "CCTV Gate 2", "Closed" if closed else "Open", 1),),
+        evidence_available=True,
         attendance_available=True,
     )
 
@@ -103,6 +104,47 @@ def test_completion_message_lists_employees_and_follow_up() -> None:
     assert "1. Titin" in message
     assert "*Perlu ditindaklanjuti*" in message
     assert '• Putra — Task "CCTV Gate 2" belum Closed.' in message
+
+
+def test_evidence_resume_counts_only_real_not_closed_tasks() -> None:
+    period = DateRange(date(2026, 8, 1), date(2026, 8, 1))
+    missing_evidence = EmployeeFacts(
+        employee_id="1",
+        name="Farhan",
+        off_days=frozenset(),
+        attendance=(),
+        timesheets=(),
+        tasks=(TaskFact(period.start, "CCTV Gate 2", "Closed", 0),),
+        evidence_available=True,
+        attendance_available=True,
+    )
+    not_closed = EmployeeFacts(
+        employee_id="2",
+        name="Hanung",
+        off_days=frozenset(),
+        attendance=(),
+        timesheets=(),
+        tasks=(TaskFact(period.start, "Firmware Validation", "In Progress", 0),),
+        evidence_available=True,
+        attendance_available=True,
+    )
+    no_tasks_at_all = EmployeeFacts(
+        employee_id="3",
+        name="Titin",
+        off_days=frozenset(),
+        attendance=(),
+        timesheets=(),
+        tasks=(),
+        evidence_available=True,
+        attendance_available=True,
+    )
+
+    report = evaluate_completion(period, (missing_evidence, not_closed, no_tasks_at_all))
+    message = format_evidence_resume(report)
+
+    assert "2/3 talent lengkap" in message
+    assert "• Farhan — 1 Closed task tanpa evidence" in message
+    assert "Task belum Closed: 1 (dari 2)" in message
 
 
 def test_system_status_message_uses_friendly_labels() -> None:

@@ -49,6 +49,15 @@ ATTENDANCE = """
     ORDER BY work_date, full_name
 """
 
+ATTENDANCE_LEGACY = """
+    SELECT payload
+    FROM durable_records
+    WHERE entity_kind = 'attendance'
+      AND work_date BETWEEN %s AND %s
+      AND payload->>'role' = %s
+    ORDER BY payload->>'full_name', work_date
+"""
+
 INSERT_PLAN = """
     INSERT INTO generation_plans (id, owner_id, status, plan, retention_until)
     VALUES (%s, %s, 'draft', %s, %s)

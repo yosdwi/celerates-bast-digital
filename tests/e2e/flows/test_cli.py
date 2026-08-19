@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from digital_bast import cli
+from digital_bast.bot.whatsapp import BotCommand, Intent
 from digital_bast.cli import main
 from digital_bast.domain.completion import (
     AttendanceFact,
@@ -20,10 +22,9 @@ from digital_bast.infrastructure.docker_status import (
     ServiceStatus,
     SystemStatus,
 )
+from digital_bast.web.bast_assembler import AssembledReport
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
     from _pytest.capture import CaptureFixture
 
@@ -74,8 +75,8 @@ def _completion_report() -> CompletionReport:
             TimesheetFact(date(2026, 8, 1), "Shift Pagi"),
             TimesheetFact(date(2026, 8, 2), "OFF"),
         ),
-        tasks=(TaskFact(date(2026, 8, 1), "CCTV Gate 2", "Closed"),),
-        task_evidence_count=1,
+        tasks=(TaskFact(date(2026, 8, 1), "CCTV Gate 2", "Closed", 1),),
+        evidence_available=True,
         attendance_available=True,
     )
     return evaluate_completion(period, (facts,))
@@ -225,12 +226,24 @@ def test_generate_bast_writes_document(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def fake(period: DateRange, label: str = "") -> tuple[str, CompletionReport]:
-        _ = (period, label)
-        return "<html></html>", _completion_report()
+    async def fake(
+        period: DateRange, report_type: str = "developer"
+    ) -> tuple[Path, AssembledReport]:
+        assert period == DateRange(date(2026, 8, 1), date(2026, 8, 2))
+        assert report_type == "developer"
+        pdf_path = tmp_path / "generated.pdf"
+        _ = pdf_path.write_bytes(b"%PDF-1.4 fake")
+        return pdf_path, AssembledReport(
+            report_type="developer",
+            year=2026,
+            month=8,
+            fingerprint="deadbeef",
+            document="<html></html>",
+            editor_html="<html></html>",
+        )
 
     monkeypatch.setattr(cli, "generate_bast", fake)
-    target = tmp_path / "bast.html"
+    target = tmp_path / "bast.pdf"
 
     exit_code = cli.main(
         [
@@ -246,8 +259,9 @@ def test_generate_bast_writes_document(
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert payload["employees"] == 1
-    assert target.read_text(encoding="utf-8") == "<html></html>"
+    assert payload["report_type"] == "developer"
+    assert payload["fingerprint"] == "deadbeef"
+    assert target.read_bytes() == b"%PDF-1.4 fake"
 
 
 def test_bot_reply_refuses_container_mutation(capsys: CaptureFixture[str]) -> None:
@@ -278,3 +292,55 @@ def test_bot_reply_formats_completion(
 
     assert exit_code == 0
     assert "Timesheet ✅" in capsys.readouterr().out
+
+
+class _FakeInterpreter:
+    def __init__(self, command: BotCommand | None) -> None:
+        self._command = command
+
+    async def interpret(self, text: str, today: object) -> BotCommand | None:
+        _ = (text, today)
+        return self._command
+
+
+def test_bot_reply_llm_disambiguates_ambiguous_date_range(
+    capsys: CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The regex parser misreads this exact message as day "20" inside year
+    # "2026" (docs/bast-e2e-plan.md §3.5) -- an LLM draft bypasses that class
+    # of error entirely, so the echoed period must be 1-20 August, not 20-20.
+    command = BotCommand(
+        Intent.EXPORT_ATTENDANCE,
+        DateRange(date(2026, 8, 1), date(2026, 8, 20)),
+        report_type="shifting",
+    )
+    monkeypatch.setattr(cli, "create_llm_interpreter", lambda: _FakeInterpreter(command))
+
+    async def fake_export(period: DateRange, report_type: str) -> tuple[Path, int]:
+        assert period == DateRange(date(2026, 8, 1), date(2026, 8, 20))
+        assert report_type == "shifting"
+        return Path("attendance.csv"), 7
+
+    monkeypatch.setattr(cli, "export_attendance_report", fake_export)
+
+    exit_code = cli.main(
+        ["bot-reply", "--text", "@BAST Bot shifting1 agustus 2026 - 20 agustus 2026"]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert "1-20 Agustus 2026" in payload["caption"]
+    assert "Saya baca sebagai:" in payload["caption"]
+
+
+def test_bot_reply_falls_back_to_regex_when_llm_returns_none(
+    capsys: CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "create_llm_interpreter", lambda: _FakeInterpreter(None))
+
+    exit_code = cli.main(["bot-reply", "--text", "@BAST Bot restart worker"])
+
+    assert exit_code == 0
+    assert "hanya mendukung pemeriksaan status" in capsys.readouterr().out

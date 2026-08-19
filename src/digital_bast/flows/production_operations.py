@@ -18,7 +18,12 @@ from digital_bast.domain.timesheets import (
     TimesheetOptions,
     generate_monthly_timesheets,
 )
-from digital_bast.domain.transforms import IoTTaskInput, transform_iot_task
+from digital_bast.domain.transforms import (
+    IoTTaskInput,
+    RedmineTaskInput,
+    transform_iot_task,
+    transform_redmine_task,
+)
 from digital_bast.flows.models import Operation, Period, StepSummary
 
 if TYPE_CHECKING:
@@ -36,6 +41,14 @@ class IoTTaskSource(Protocol):
         period: Period,
         employees: tuple[Employee, ...],
     ) -> tuple[IoTTaskInput, ...]: ...
+
+
+class RedmineTaskSource(Protocol):
+    async def load(
+        self,
+        period: Period,
+        employees: tuple[Employee, ...],
+    ) -> tuple[RedmineTaskInput, ...]: ...
 
 
 class RecordUpserter(Protocol):
@@ -120,6 +133,32 @@ class IoTTaskImportOperation:
         result = await self._records.upsert(tasks)
         return StepSummary(
             operation=Operation.IOT_TASK_IMPORT,
+            read=len(source_rows),
+            written=result.created_or_updated,
+            unchanged=result.unchanged,
+            locked=result.locked,
+        )
+
+
+@final
+class RedmineTaskImportOperation:
+    def __init__(
+        self,
+        employees: EmployeeSource,
+        source: RedmineTaskSource,
+        records: RecordUpserter,
+    ) -> None:
+        self._employees = employees
+        self._source = source
+        self._records = records
+
+    async def execute(self, period: Period) -> StepSummary:
+        employee_rows = await self._employees.load()
+        source_rows = await self._source.load(period, employee_rows)
+        tasks = tuple(transform_redmine_task(row) for row in source_rows)
+        result = await self._records.upsert(tasks)
+        return StepSummary(
+            operation=Operation.REDMINE_IMPORT,
             read=len(source_rows),
             written=result.created_or_updated,
             unchanged=result.unchanged,

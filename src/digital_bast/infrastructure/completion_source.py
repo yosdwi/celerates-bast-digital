@@ -93,6 +93,14 @@ class MonthlyRecordSource(Protocol):
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]: ...
 
 
+class AttendanceReader(Protocol):
+    async def load(self, period: DateRange) -> dict[tuple[str, date], AttendanceFact]: ...
+
+
+class TaskEvidenceReader(Protocol):
+    async def counts(self, period: DateRange) -> dict[str, int]: ...
+
+
 @final
 class NocoDBAttendanceReader:
     def __init__(
@@ -172,8 +180,14 @@ class NocoDBTaskEvidenceReader:
     async def counts(self, period: DateRange) -> dict[str, int]:
         return await run_sync(self._counts, period)
 
-
     def _counts(self, period: DateRange) -> dict[str, int]:
+        # NocoDB has no column that maps its row Id_Key to the domain RecordKey
+        # computed in domain/identity.py::task_key -- that correspondence was
+        # never established anywhere in this codebase. Keying by Id_Key here is
+        # therefore a best-effort placeholder: it is internally consistent with
+        # the per-task-key TaskEvidenceReader protocol but won't line up with
+        # real Task records. Harmless in practice -- NocoDB is unreachable and
+        # this reader is never wired into create_run_context / operations.py.
         totals: dict[str, int] = {}
         try:
             with (
@@ -197,9 +211,9 @@ class NocoDBTaskEvidenceReader:
                     for row in cursor.fetchall():
                         if not has_value(row.evidence):
                             continue
-                        _, _, employee_id = str(row.id_key or "").rpartition("_")
-                        if employee_id:
-                            totals[employee_id] = totals.get(employee_id, 0) + 1
+                        key = str(row.id_key or "")
+                        if key:
+                            totals[key] = totals.get(key, 0) + 1
         except psycopg.Error as error:
             raise InfrastructureError(service="nocodb", operation="list_task_evidence") from error
         return totals
@@ -211,8 +225,8 @@ class NocoDBCompletionSource:
         self,
         employees: EmployeeSource,
         records: MonthlyRecordSource,
-        attendance: NocoDBAttendanceReader | None = None,
-        evidence: NocoDBTaskEvidenceReader | None = None,
+        attendance: AttendanceReader | None = None,
+        evidence: TaskEvidenceReader | None = None,
     ) -> None:
         self._employees = employees
         self._records = records
@@ -254,13 +268,16 @@ class NocoDBCompletionSource:
                     if record.employee_id == person.id
                 ),
                 tasks=tuple(
-                    TaskFact(record.work_date, record.title, record.status)
+                    TaskFact(
+                        record.work_date,
+                        record.title,
+                        record.status,
+                        evidence.get(str(record.key), 0),
+                    )
                     for record in tasks
                     if record.employee_id == person.id
                 ),
-                task_evidence_count=(
-                    None if self._evidence is None else evidence.get(str(person.id), 0)
-                ),
+                evidence_available=self._evidence is not None,
                 attendance_available=self._attendance is not None,
             )
             for person in selected

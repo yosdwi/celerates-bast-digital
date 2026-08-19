@@ -31,7 +31,7 @@ _MONTHS: Final = {
     "des": 12,
 }
 _ISO_DATE: Final = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
-_PARTIAL_DATE: Final = re.compile(r"\b(\d{1,2})(?:\s+([A-Za-z]+))?(?:\s+(\d{4}))?")
+_PARTIAL_DATE: Final = re.compile(r"\b(\d{1,2})\b(?:\s+([A-Za-z]+))?(?:\s+(\d{4}))?")
 _MENTION: Final = re.compile(r"@[\w.\-]+")
 _MUTATION_WORDS: Final = (
     "restart",
@@ -48,6 +48,13 @@ _MUTATION_WORDS: Final = (
 )
 _SYSTEM_WORDS: Final = ("system status", "status sistem", "status docker", "status server")
 _MINIMUM_RANGE_PARTS: Final = 2
+_REPORT_TYPE_WORDS: Final = {
+    "developer": "developer",
+    "dev": "developer",
+    "shifting": "shifting",
+    "shift": "shifting",
+    "iot": "shifting",
+}
 _STATE_ICONS: Final = {
     CheckState.COMPLETE: "✅",
     CheckState.INCOMPLETE: "❌",
@@ -72,17 +79,31 @@ MISSING_PERIOD_REPLY: Final = (
     "Mohon sertakan rentang tanggal. Contoh: "
     "`status 1 sampai 31 Agustus` atau `status 2026-08-01 sampai 2026-08-31`."
 )
+MISSING_REPORT_TYPE_REPLY: Final = (
+    "Mohon sertakan jenis laporan: `developer` atau `shifting`. Contoh: "
+    "`export attendance developer 1 sampai 31 Agustus`."
+)
 HELP_REPLY: Final = (
-    "*BAST Bot*\n"
-    "• `status <rentang tanggal>` — status kelengkapan BAST\n"
-    "• `export attendance <rentang tanggal>` — export absensi CSV\n"
-    "• `generate bast <rentang tanggal>` — buat dokumen BAST\n"
-    "• `system status` — status layanan Digital BAST"
+    "*@conform — daftar perintah*\n\n"
+    "• *Export absensi* (kirim file CSV)\n"
+    "  `export attendance developer 1 sampai 20 agustus`\n"
+    "  `export attendance shifting 1 sampai 20 agustus`\n\n"
+    "• *Status kelengkapan BAST*\n"
+    "  `status 1 sampai 31 agustus`\n\n"
+    "• *Resume evidence*\n"
+    "  `evidence 1 sampai 31 agustus`\n\n"
+    "• *Buat dokumen BAST*\n"
+    "  `generate bast 1 sampai 31 agustus`\n\n"
+    "• *Status sistem*\n"
+    "  `system status`\n\n"
+    "Format tanggal bebas: `1 agustus`, `2026-08-01`, atau `1 sampai 20 agustus 2026`.\n"
+    "Upload evidence lewat chat pribadi ke bot ini, bukan di grup."
 )
 
 
 class Intent(StrEnum):
     COMPLETION_STATUS = "completion-status"
+    EVIDENCE_RESUME = "evidence-resume"
     EXPORT_ATTENDANCE = "export-attendance"
     GENERATE_BAST = "generate-bast"
     SYSTEM_STATUS = "system-status"
@@ -95,6 +116,7 @@ class BotCommand:
     intent: Intent
     period: DateRange | None = None
     employee: str | None = None
+    report_type: str | None = None
 
 
 def _month_of(token: str | None) -> int | None:
@@ -163,18 +185,28 @@ def parse_period(text: str, today: date) -> DateRange | None:
     return None
 
 
+_INTENT_RULES: Final[tuple[tuple[Intent, tuple[str, ...]], ...]] = (
+    (Intent.UNSUPPORTED_MUTATION, _MUTATION_WORDS),
+    (Intent.SYSTEM_STATUS, (*_SYSTEM_WORDS, "docker")),
+    (Intent.EXPORT_ATTENDANCE, ("export", "absen")),
+    (Intent.GENERATE_BAST, ("generate", "buat bast", "bikin bast")),
+    (Intent.EVIDENCE_RESUME, ("evidence",)),
+    (Intent.COMPLETION_STATUS, ("status", "cek")),
+)
+
+
 def _intent_of(text: str) -> Intent:
-    if any(word in text for word in _MUTATION_WORDS):
-        return Intent.UNSUPPORTED_MUTATION
-    if any(word in text for word in _SYSTEM_WORDS) or "docker" in text:
-        return Intent.SYSTEM_STATUS
-    if "export" in text or "absen" in text:
-        return Intent.EXPORT_ATTENDANCE
-    if "generate" in text or "buat bast" in text or "bikin bast" in text:
-        return Intent.GENERATE_BAST
-    if "status" in text or "cek" in text:
-        return Intent.COMPLETION_STATUS
+    for intent, words in _INTENT_RULES:
+        if any(word in text for word in words):
+            return intent
     return Intent.UNKNOWN
+
+
+def _report_type_of(lowered: str) -> str | None:
+    for word, report_type in _REPORT_TYPE_WORDS.items():
+        if word in lowered:
+            return report_type
+    return None
 
 
 def parse_command(text: str, today: date) -> BotCommand:
@@ -183,7 +215,10 @@ def parse_command(text: str, today: date) -> BotCommand:
     intent = _intent_of(lowered)
     if intent in {Intent.UNKNOWN, Intent.SYSTEM_STATUS, Intent.UNSUPPORTED_MUTATION}:
         return BotCommand(intent)
-    return BotCommand(intent, parse_period(normalized, today))
+    period = parse_period(normalized, today)
+    if intent is not Intent.EXPORT_ATTENDANCE:
+        return BotCommand(intent, period)
+    return BotCommand(intent, period, report_type=_report_type_of(lowered))
 
 
 def format_completion(report: CompletionReport) -> str:
@@ -210,6 +245,30 @@ def format_completion(report: CompletionReport) -> str:
         lines.extend(follow_up)
     else:
         lines.append("Semua item BAST sudah lengkap.")
+    return "\n".join(lines).strip()
+
+
+def format_evidence_resume(report: CompletionReport) -> str:
+    total = len(report.employees)
+    lengkap = sum(1 for employee in report.employees if not employee.evidence.issues)
+    lines = [f"*Evidence BAST — {report.period.label()}*", f"{lengkap}/{total} talent lengkap", ""]
+    kurang = [
+        f"• {employee.name} — {len(employee.evidence.issues)} Closed task tanpa evidence"
+        for employee in report.employees
+        if employee.evidence.issues
+    ]
+    if kurang:
+        lines.append("Kurang:")
+        lines.extend(kurang)
+        lines.append("")
+    not_closed = sum(
+        len(employee.task_list.issues)
+        for employee in report.employees
+        if employee.task_list.state is CheckState.INCOMPLETE
+    )
+    total_tasks = sum(employee.total_tasks for employee in report.employees)
+    lines.append(f"Task belum Closed: {not_closed} (dari {total_tasks})")
+    lines.append("Lengkapi lewat chat pribadi ke bot ini.")
     return "\n".join(lines).strip()
 
 

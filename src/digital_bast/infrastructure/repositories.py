@@ -103,7 +103,8 @@ class PostgresDomainRepository:
                 connection.cursor(row_factory=class_row(DomainRecordRow)) as cursor,
             ):
                 _ = cursor.execute(
-                    "SELECT entity_kind, payload FROM durable_records WHERE external_id = %s",
+                    "SELECT entity_kind, payload FROM durable_records"
+                    " WHERE source = 'domain' AND external_id = %s",
                     (str(key),),
                 )
                 row = cursor.fetchone()
@@ -157,7 +158,8 @@ class PostgresDomainRepository:
                 _ = cursor.execute(
                     """
                     SELECT payload FROM durable_records
-                    WHERE entity_kind = %s
+                    WHERE source = 'domain'
+                      AND entity_kind = %s
                       AND work_date >= make_date(%s, %s, 1)
                       AND work_date < make_date(%s, %s, 1) + interval '1 month'
                     ORDER BY work_date, external_id

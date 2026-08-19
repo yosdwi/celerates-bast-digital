@@ -1,0 +1,19 @@
+[
+  {"full_name": "Ahmad Anwar Hidayat", "employee_id": "MTG-TF/2026010382", "nrp": "JI260011", "role": "Developer"},
+  {"full_name": "Aris Purnomo", "employee_id": "MTG-TF/2025020305", "nrp": "LJIMT25004", "role": "Developer"},
+  {"full_name": "Farhan Dwicahyo", "employee_id": "MTG-TF/2025090349", "nrp": "JICE25004", "role": "Developer"},
+  {"full_name": "Hanung Rizqi Widianto", "employee_id": "MTG-TF/2025100354", "nrp": "JICE25007", "role": "Developer"},
+  {"full_name": "Muhammad Atsal Rizandi", "employee_id": "MTG-TF/2025100356", "nrp": "JICE25008", "role": "Developer"},
+  {"full_name": "Muhammad Putra Tama Bayu Hargio", "employee_id": "MTG-TF/2024020212", "nrp": "JIMT24001", "role": "Developer"},
+  {"full_name": "Muhammad Taufiq Azra Haromain", "employee_id": "MTG-TF/2024020210", "nrp": "JIMT24006", "role": "Developer"},
+  {"full_name": "Ovianto", "employee_id": "MTG-TF/2022110173", "nrp": "LJIMT22012", "role": "Developer"},
+  {"full_name": "Randy Afif Herlambang", "employee_id": "MTG-TF/2025090350", "nrp": "JICE25003", "role": "Developer"},
+  {"full_name": "Yoses Dwi Maheswara", "employee_id": "MTG-TF/2024020213", "nrp": "LJIMT24002", "role": "Developer"},
+  {"full_name": "Bayu Sutra", "employee_id": "MTG-TF/2026020385", "nrp": "JI260037", "role": "IoT Operation"},
+  {"full_name": "Titin Ervina Sari", "employee_id": "MTG-TF/2024020214", "nrp": "JIMT24004", "role": "IoT Operation"},
+  {"full_name": "Oktavia Nur Azizah", "employee_id": "MTG-TF/2024110292", "nrp": "JIMT24015", "role": "IoT Operation"},
+  {"full_name": "Gading Aulia", "employee_id": "MTG-TF/2024110293", "nrp": "JIMT24016", "role": "IoT Operation"},
+  {"full_name": "Oditya Andalas Putra", "employee_id": "MTG-TF/2025070332", "nrp": "JICE25001", "role": "IoT Operation"},
+  {"full_name": "Muhammad Jibran Hady", "employee_id": "MTG-TF/2026020386", "nrp": "JI260036", "role": "IoT Operation"},
+  {"full_name": "Muhamad Alviani", "employee_id": "MTG-TF/2026020388", "nrp": "JI260307", "role": "IoT Operation"}
+]

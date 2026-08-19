@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol, final
 
 import psycopg
+import pymssql
 from anyio.to_thread import run_sync
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -11,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from digital_bast.domain.identity import canonical_text
 from digital_bast.domain.models import Employee, EmployeeId, EmployeeRole
 from digital_bast.domain.time import JAKARTA
-from digital_bast.domain.transforms import IoTTaskInput
+from digital_bast.domain.transforms import IoTTaskInput, RedmineTaskInput
+from digital_bast.infrastructure.errors import InfrastructureError, UpstreamTimeoutError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -288,3 +290,103 @@ class GoogleIoTTaskSource:
             self._ranges,
         )
         return parse_iot_sheet(payload, period, employees)
+
+
+type RedmineRow = dict[str, str | int | float | date | datetime | None]
+
+_REDMINE_QUERY = """
+SELECT login, nrp, nama, project_id, project_name, tracker_id, tracker_name,
+       isu_id, isu_subject, description, start_date, due_date, created_on,
+       closed_on, status_id, status_desc, author_id, author_name, done_ratio,
+       estimated_hours, parent_id, updated_on
+FROM DB_SATUPAMA_CIS.dbo.cis_jiep_tbl_redmine_bigdata_all_wi_digi
+WHERE (start_date >= %s AND start_date <= %s) OR (created_on >= %s AND created_on <= %s)
+ORDER BY start_date DESC, created_on DESC
+"""
+
+
+def _as_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def parse_redmine_rows(
+    rows: Sequence[RedmineRow],
+    employees: Sequence[Employee],
+    period: Period,
+) -> tuple[RedmineTaskInput, ...]:
+    nrp_to_employee = {employee.external_id: employee.id for employee in employees}
+    results: list[RedmineTaskInput] = []
+    for row in rows:
+        nrp = row.get("nrp")
+        employee_id = nrp_to_employee.get(str(nrp)) if nrp else None
+        if employee_id is None:
+            continue
+        start_date = _as_date(row.get("start_date"))
+        if start_date is None or not (period.start <= start_date <= period.end):
+            continue
+        title = str(row.get("isu_subject") or "").strip()
+        if not title:
+            continue
+        done_ratio = row.get("done_ratio")
+        achievement = int(done_ratio) if isinstance(done_ratio, int | float) else 0
+        results.append(
+            RedmineTaskInput(
+                source_id=str(row.get("isu_id")),
+                employee_id=employee_id,
+                title=title,
+                requestor=str(row.get("author_name") or ""),
+                status=str(row.get("status_desc") or ""),
+                start_date=start_date,
+                end_date=_as_date(row.get("due_date")),
+                tracker=str(row.get("tracker_name") or ""),
+                achievement=achievement,
+            )
+        )
+    return tuple(results)
+
+
+@final
+class SqlServerRedmineTaskSource:
+    def __init__(self, server: str, username: str, password: str, database: str) -> None:
+        self._server = server
+        self._username = username
+        self._password = password
+        self._database = database
+
+    async def load(
+        self,
+        period: Period,
+        employees: tuple[Employee, ...],
+    ) -> tuple[RedmineTaskInput, ...]:
+        rows = await run_sync(self._fetch, period)
+        return parse_redmine_rows(rows, employees, period)
+
+    def _fetch(self, period: Period) -> list[RedmineRow]:
+        parameters = (period.start, period.end, period.start, period.end)
+        try:
+            with pymssql.connect(
+                server=self._server,
+                user=self._username,
+                password=self._password,
+                database=self._database,
+                timeout=30,
+                login_timeout=15,
+            ) as connection:
+                cursor = connection.cursor(as_dict=True)
+                try:
+                    cursor.execute(_REDMINE_QUERY, parameters)
+                    return list(cursor.fetchall())
+                finally:
+                    cursor.close()
+        except pymssql.OperationalError as error:
+            if "timeout" in str(error).casefold():
+                raise UpstreamTimeoutError(
+                    service="sqlserver", operation="redmine_tasks"
+                ) from error
+            raise InfrastructureError(service="sqlserver", operation="redmine_tasks") from error
+        except pymssql.Error as error:
+            raise InfrastructureError(service="sqlserver", operation="redmine_tasks") from error

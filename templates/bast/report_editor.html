@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Editor | Digital BAST</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/admin/static/css/admin_style.css">
+    <style>
+        :root {
+            --timesheet-scale: 0.75;
+            --tasklist-scale: 0.7;
+            --evidence-scale: 1.0;
+            --attendance-scale: 1.0;
+
+            /* Define all missing CSS variables */
+            --sidebar-width: 350px;
+            --white-color: #ffffff;
+            --light-color: #f8f9fa;
+            --gray-light: #e9ecef;
+            --gray-color: #6c757d;
+            --dark-color: #343a40;
+            --dark-secondary: #495057;
+            --primary-color: #007bff;
+            --primary-dark: #0056b3;
+            --border-radius: 8px;
+            --border-radius-sm: 4px;
+            --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            --shadow-md: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --shadow-lg: 0 1rem 3rem rgba(0, 0, 0, 0.175);
+            --transition: all 0.15s ease-in-out;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--light-color);
+            font-feature-settings: 'cv11', 'ss01';
+            font-variation-settings: 'opsz' 32;
+        }
+
+        /* Editor Controls Panel */
+        .editor-controls {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--white-color);
+            border-right: 1px solid var(--gray-light);
+            z-index: 1000;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .editor-header {
+            padding: 1.5rem;
+            background: linear-gradient(180deg, var(--dark-color) 0%, var(--dark-secondary) 100%);
+            color: var(--white-color);
+            position: sticky;
+            top: 0;
+            z-index: 1001;
+        }
+
+        .editor-header h4 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .control-section {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--gray-light);
+        }
+
+        .control-section h6 {
+            margin-bottom: 1rem;
+            color: var(--dark-color);
+            font-weight: 600;
+            font-size: 0.875rem;
+            letter-spacing: -0.01em;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--gray-color);
+        }
+
+        .range-input {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .range-value {
+            font-size: 12px;
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        .orientation-indicator {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-align: center;
+            border: 2px solid;
+        }
+
+        .orientation-indicator.portrait {
+            background: #f0f4ff;
+            color: #4A90E2;
+            border-color: #4A90E2;
+        }
+
+        .orientation-indicator.landscape {
+            background: #fff8f0;
+            color: #FF9500;
+            border-color: #FF9500;
+        }
+
+        /* Print Preview Area */
+        .preview-area {
+            margin-left: var(--sidebar-width);
+            padding: 1.5rem;
+            background: var(--light-color);
+            min-height: 100vh;
+        }
+
+        .page-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* A4 Page Simulation */
+        .page {
+            background: white;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            position: relative;
+            /* Allow content overflow for accurate preview */
+            overflow: visible;
+            /* Add page break simulation */
+            page-break-after: always;
+            page-break-inside: avoid;
+        }
+
+        /* A4 Portrait: 210×297mm at 96dpi ≈ 794×1123px */
+        .page.portrait {
+            width: 794px;
+            /* Use fixed height for consistent page breaks */
+            height: 1123px;
+            padding: 40px;
+            background: white;
+            margin: 20px auto;
+            border: 1px solid #e0e0e0;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            /* Ensure content fits within page */
+            box-sizing: border-box;
+        }
+
+        /* A4 Landscape: 297×210mm at 96dpi ≈ 1123×794px */
+        .page.landscape {
+            width: 1123px;
+            min-height: 794px;
+            padding: 30px 40px;
+            background: white;
+            margin: 20px auto;
+            border: 1px solid #e0e0e0;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Remove page labels for clean view like all_report_template.html */
+
+        /* Page header styling from all_report_template.html */
+        .page-header {
+            width: 100%;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #000;
+            margin-bottom: 30px;
+        }
+
+        .logo-left img, .logo-right img {
+            max-height: 60px;
+            max-width: 150px;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c5aa0;
+        }
+
+        /* Section containers with scaling */
+        .section-container {
+            transform-origin: top left;
+            transition: transform 0.3s ease;
+        }
+
+        .timesheet-container {
+            transform: scale(var(--timesheet-scale));
+        }
+
+        .tasklist-container {
+            transform: scale(var(--tasklist-scale));
+        }
+
+        /* Evidence and attendance will use individual transforms via updateSectionScale() */
+        .evidence-container {
+            /* Individual scaling applied via JavaScript */
+        }
+
+        .attendance-container {
+            /* Individual scaling applied via JavaScript */
+        }
+
+        /* Action buttons */
+        .action-buttons {
+            position: sticky;
+            bottom: 1.5rem;
+            background: var(--white-color);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-lg);
+            margin: 1.5rem 0;
+            border: 1px solid var(--gray-light);
+        }
+
+        .btn-group .btn {
+            margin-right: 10px;
+        }
+
+        .action-buttons .btn {
+            font-weight: 600;
+            font-size: 0.875rem;
+            padding: 0.75rem 1rem;
+            border-radius: var(--border-radius-sm);
+            transition: var(--transition);
+            letter-spacing: -0.01em;
+        }
+
+        .action-buttons .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            border: none;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .action-buttons .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-dark) 0%, #312e81 100%);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .action-buttons .btn-outline-secondary {
+            color: var(--gray-color);
+            border-color: var(--gray-light);
+            background: transparent;
+        }
+
+        .action-buttons .btn-outline-secondary:hover {
+            background: var(--light-color);
+            border-color: var(--gray-color);
+            color: var(--dark-color);
+            transform: translateY(-1px);
+        }
+
+        /* Print-specific styles */
+        @media print {
+            /* Override ALL browser defaults */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                background: white !important;
+            }
+
+            .editor-controls,
+            .action-buttons,
+            .sidebar,
+            .position-controls,
+            .scale-controls,
+            .font-size-controls {
+                display: none !important;
+            }
+
+            /* Hide orientation labels in print */
+            .page.portrait::before,
+            .page.landscape::before {
+                display: none !important;
+            }
+
+            /* Clean print styling while preserving layout */
+            .page.portrait,
+            .page.landscape {
+                border: none !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                background: white !important;
+                margin: 0 !important;
+                padding: 40px !important;
+                width: 100% !important;
+                max-width: none !important;
+                min-height: auto !important;
+                /* Keep relative positioning to allow content adjustments */
+                position: relative !important;
+            }
+
+            .preview-area {
+                margin-left: 0 !important;
+                padding: 0 !important;
+                background: white !important;
+                width: 100% !important;
+            }
+
+            .page-container {
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .page {
+                page-break-after: always;
+                page-break-inside: avoid;
+                margin: 0 !important;
+                box-shadow: none !important;
+                display: block !important;
+                position: relative !important;
+                /* Force exact page height in print */
+                height: auto !important;
+                min-height: 0 !important;
+            }
+
+            .page:last-child {
+                page-break-after: auto;
+            }
+
+            /* FORCE preservation of user adjustments with maximum specificity */
+            .page .section-container,
+            .page.portrait .section-container,
+            .page.landscape .section-container {
+                /* CRITICAL: Keep user adjustments for print - DO NOT reset transform */
+                position: relative !important;
+                width: 100% !important;
+                /* Preserve transform-origin for proper scaling */
+                transform-origin: top left !important;
+                /* Avoid breaking sections across pages */
+                page-break-inside: avoid !important;
+                /* Force browser to keep inline styles (from JavaScript adjustments) */
+                transform: inherit !important;
+            }
+
+            /* Force keep inline transform styles from JavaScript */
+            .page .section-container[style*="transform"],
+            .page.portrait .section-container[style*="transform"],
+            .page.landscape .section-container[style*="transform"] {
+                /* This selector targets elements with inline transform styles */
+                /* Browser should preserve the inline style */
+            }
+
+            /* Center content properly */
+            .page-header {
+                width: 100% !important;
+                margin-bottom: 20px !important;
+                padding: 0 !important;
+            }
+
+            /* FORCE CSS variables to persist in print */
+            :root, html, body {
+                /* Ensure CSS variables survive print media */
+                --timesheet-scale: var(--timesheet-scale, 0.75) !important;
+                --tasklist-scale: var(--tasklist-scale, 0.7) !important;
+                --evidence-scale: var(--evidence-scale, 1.0) !important;
+                --attendance-scale: var(--attendance-scale, 1.0) !important;
+            }
+
+            /* Apply scaling with fallbacks for print */
+            .page .timesheet-container {
+                transform: scale(var(--timesheet-scale, 0.75)) !important;
+                transform-origin: top left !important;
+            }
+
+            .page .tasklist-container {
+                transform: scale(var(--tasklist-scale, 0.7)) !important;
+                transform-origin: top left !important;
+            }
+
+            /* Evidence and attendance use individual transforms - no global CSS variables */
+            .page .evidence-container {
+                transform-origin: top left !important;
+                /* Individual transform will be preserved from inline styles */
+            }
+
+            .page .attendance-container {
+                transform-origin: top left !important;
+                /* Individual transform will be preserved from inline styles */
+            }
+
+            /* Ensure all pages use portrait orientation */
+            @page {
+                size: A4 portrait;
+                margin: 15mm;
+            }
+
+            .page.portrait {
+                page: portrait-page;
+            }
+
+            @page portrait-page {
+                size: A4 portrait;
+                margin: 15mm;
+            }
+        }
+
+        /* Complete fix for text cutting */
+        .page {
+            overflow: visible !important;
+            min-height: auto !important;
+        }
+        .page * {
+            overflow: visible !important;
+            text-overflow: unset !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+        }
+
+        /* Force table cells to show all content */
+        .page table, .page td, .page th {
+            overflow: visible !important;
+            text-overflow: unset !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            border-collapse: collapse !important;
+        }
+
+        /* Reset button styling */
+        .btn-reset {
+            background: #6c757d;
+            border-color: #6c757d;
+            color: white;
+            font-size: 12px;
+        }
+
+        .btn-reset:hover {
+            background: #5a6268;
+            border-color: #545b62;
+        }
+
+        /* Position controls */
+        .position-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            margin: 10px 0;
+        }
+
+        .position-row {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-position {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #dee2e6;
+            background: #f8f9fa;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-position:hover {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .btn-position i {
+            font-size: 14px;
+        }
+
+        /* Individual section positioning */
+        .section-container {
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        /* Responsive image handling specifically for evidence images only */
+        .evidence-container img,
+        .evidence-section img,
+        .evidence-image {
+            max-width: min(700px, calc(100% - 80px));
+            max-height: min(500px, calc(100vh - 200px));
+            height: auto;
+            object-fit: contain;
+            display: block;
+            margin: 10px auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+
+        /* Prevent images from breaking page layout in print/PDF */
+        @media print {
+            img {
+                max-width: 100% !important;
+                max-height: 90vh !important;
+                page-break-inside: avoid;
+                object-fit: contain !important;
+            }
+
+            /* Ensure tables don't get cut off */
+            table {
+                table-layout: auto !important;
+                width: 100% !important;
+                break-inside: auto !important;
+                border-collapse: collapse !important;
+            }
+
+            td, th {
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+                white-space: normal !important;
+                padding: 2px 4px !important;
+                border: 1px solid #ddd !important;
+                vertical-align: top !important;
+            }
+
+            /* Force text content to be visible */
+            .timesheet-content * {
+                overflow: visible !important;
+                text-overflow: clip !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+            <h5>Processing...</h5>
+            <p class="text-muted">Please wait</p>
+
+            <!-- Progress Bar -->
+            <div class="progress mt-3 mb-2" style="height: 8px;">
+                <div class="progress-bar bg-primary" id="progressBar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="d-flex justify-content-between">
+                <small class="text-muted" id="progressPercent">0%</small>
+                <small class="text-muted" id="estimatedTime">Calculating...</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor Controls Panel -->
+    <div class="editor-controls">
+        <div class="editor-header">
+            <h4><i class="bi bi-file-text me-2"></i>Digital BAST</h4>
+            <small>Editor Laporan</small>
+        </div>
+
+        {% for section in html_sections %}
+        <div class="control-section">
+            {% if section.type == 'timesheet' %}
+                <div class="orientation-indicator portrait">
+                    <i class="bi bi-phone me-1"></i>Portrait
+                </div>
+                <h6><i class="bi bi-table me-1"></i>{{ section.title }}</h6>
+
+                <div class="control-group">
+                    <label>Position Controls</label>
+                    <div class="position-controls">
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'up')">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'left')">
+                                <i class="bi bi-arrow-left"></i>
+                            </button>
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'right')">
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'down')">
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="range-value" id="position-value-{{ loop.index }}">X: 0px, Y: 0px</div>
+                </div>
+
+                <div class="control-group">
+                    <label for="timesheet-scale-{{ loop.index }}">Scale</label>
+                    <input type="range" class="range-input"
+                           id="timesheet-scale-{{ loop.index }}"
+                           min="0.4" max="1.0" step="0.05" value="0.75"
+                           onchange="updateSectionScale({{ loop.index }}, this.value)">
+                    <div class="range-value" id="timesheet-scale-value-{{ loop.index }}">75%</div>
+                </div>
+
+            {% elif section.type == 'tasklist' or section.type == 'tasklist_header' or 'tasklist' in section.title.lower() or 'sla' in section.title.lower() or 'task list' in section.title.lower() %}
+                <div class="orientation-indicator portrait">
+                    <i class="bi bi-phone me-1"></i>Portrait
+                </div>
+                <h6><i class="bi bi-list-check me-1"></i>{{ section.title }}</h6>
+
+                <div class="control-group">
+                    <label>Position Controls</label>
+                    <div class="position-controls">
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'up')">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'left')">
+                                <i class="bi bi-arrow-left"></i>
+                            </button>
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'right')">
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'down')">
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="range-value" id="position-value-{{ loop.index }}">X: 0px, Y: 0px</div>
+                </div>
+
+                <div class="control-group">
+                    <label for="tasklist-scale-{{ loop.index }}">Scale</label>
+                    <input type="range" class="range-input"
+                           id="tasklist-scale-{{ loop.index }}"
+                           min="0.4" max="1.0" step="0.05" value="0.7"
+                           onchange="updateSectionScale({{ loop.index }}, this.value)">
+                    <div class="range-value" id="tasklist-scale-value-{{ loop.index }}">70%</div>
+                </div>
+
+            {% elif section.title.startswith('3.') and 'evidence' in section.title.lower() %}
+                <div class="orientation-indicator portrait">
+                    <i class="bi bi-phone me-1"></i>Portrait
+                </div>
+                <h6><i class="bi bi-image me-1"></i>{{ section.title }}</h6>
+                <p class="text-muted small">Header page - No controls needed</p>
+
+            {% elif section.type == 'evidence' or ('evidence' in section.title.lower() and not section.title.startswith('3.')) %}
+                <div class="orientation-indicator portrait">
+                    <i class="bi bi-phone me-1"></i>Portrait
+                </div>
+                <h6><i class="bi bi-image me-1"></i>{{ section.title }}</h6>
+
+                <div class="control-group">
+                    <label>Position Controls</label>
+                    <div class="position-controls">
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'up')">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'left')">
+                                <i class="bi bi-arrow-left"></i>
+                            </button>
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'right')">
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'down')">
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="range-value" id="position-value-{{ loop.index }}">X: 0px, Y: 0px</div>
+                </div>
+
+                <div class="control-group">
+                    <label for="evidence-scale-{{ loop.index }}">Scale</label>
+                    <input type="range" class="range-input"
+                           id="evidence-scale-{{ loop.index }}"
+                           min="0.6" max="1.0" step="0.05" value="1.0"
+                           onchange="updateSectionScale({{ loop.index }}, this.value)">
+                    <div class="range-value" id="evidence-scale-value-{{ loop.index }}">100%</div>
+                </div>
+
+            {% else %}
+                <div class="orientation-indicator portrait">
+                    <i class="bi bi-phone me-1"></i>Portrait
+                </div>
+                <h6><i class="bi bi-file-text me-1"></i>{{ section.title }}</h6>
+
+                <div class="control-group">
+                    <label>Position Controls</label>
+                    <div class="position-controls">
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'up')">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'left')">
+                                <i class="bi bi-arrow-left"></i>
+                            </button>
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'right')">
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                        <div class="position-row">
+                            <button class="btn-position" onclick="adjustPosition({{ loop.index }}, 'down')">
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="range-value" id="position-value-{{ loop.index }}">X: 0px, Y: 0px</div>
+                </div>
+
+                <div class="control-group">
+                    <label for="attendance-scale-{{ loop.index }}">Scale</label>
+                    <input type="range" class="range-input"
+                           id="attendance-scale-{{ loop.index }}"
+                           min="0.6" max="1.0" step="0.05" value="1.0"
+                           onchange="updateSectionScale({{ loop.index }}, this.value)">
+                    <div class="range-value" id="attendance-scale-value-{{ loop.index }}">100%</div>
+                </div>
+            {% endif %}
+
+            <button class="btn btn-reset btn-sm w-100" onclick="resetIndividualSection({{ loop.index }})">
+                <i class="bi bi-arrow-clockwise me-1"></i>Reset
+            </button>
+        </div>
+        {% endfor %}
+
+        <!-- Global Actions -->
+        <div class="action-buttons">
+            <button class="btn btn-primary w-100 mb-2" onclick="printReport()">
+                <i class="bi bi-file-pdf me-2"></i>Download PDF
+            </button>
+            <button class="btn btn-outline-secondary w-100" onclick="backToAdmin()">
+                <i class="bi bi-arrow-left me-2"></i>Back to Admin
+            </button>
+        </div>
+    </div>
+
+    <!-- Preview Area -->
+    <div class="preview-area">
+        <div class="page-container">
+
+            {% set counters = {'major': 0, 'minor': 1} %}
+            {% for section in html_sections %}
+                {% if section.type == 'timesheet_header' or section.type == 'tasklist_header' or section.type == 'attendance_header' or section.type == 'evidence_header' %}
+                    {% set _ = counters.update({'major': counters.major + 1, 'minor': 1}) %}
+                    <!-- Header Section - Professional Document Style -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                            <div>
+                                <h1 style="font-size: 2.5rem; font-weight: 400; color: #000; margin: 0; font-family: 'Times New Roman', serif; text-transform: uppercase;">
+                                    {% if section.title.startswith('1.') %}TIMESHEET
+                                    {% elif section.title.startswith('2.') %}TASK LIST
+                                    {% elif section.title.startswith('3.') %}EVIDENCE
+                                    {% elif section.title.startswith('4.') %}ATTENDANCE
+                                    {% else %}{{ section.title }}{% endif %}
+                                </h1>
+                            </div>
+                        </div>
+                    </div>
+
+                {% elif section.type == 'timesheet' %}
+                    <!-- Timesheet pages - Portrait -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <!-- Page Header with Logos -->
+                        <div class="page-header">
+                            <div class="logo-left">
+                                <img src="{{ logo_pama_url }}" alt="PAMA Logo">
+                            </div>
+                            <div class="section-title">
+                                {{ counters.major }}.{{ counters.minor }} Timesheet {{ section.employee_name }}
+                            </div>
+                            <div class="logo-right">
+                                <img src="{{ logo_celerates_url }}" alt="Celerates Logo">
+                            </div>
+                        </div>
+
+                        <div class="section-container timesheet-container" data-section="timesheet">
+                            <!-- CSS isolation like all_report_template.html -->
+                            <div class="timesheet-content" style="all: initial; display: block; font-family: Arial, sans-serif; transform: scale(0.8); transform-origin: top left; width: 125%; margin: 0; padding: 10px; box-sizing: border-box;">
+                                {{ section.content | safe }}
+                            </div>
+                        </div>
+                    </div>
+                    {% set _ = counters.update({'minor': counters.minor + 1}) %}
+
+                {% elif section.type == 'tasklist' or section.type == 'tasklist_header' or 'tasklist' in (section.title | lower) or 'sla' in (section.title | lower) or 'task list' in (section.title | lower) %}
+                    <!-- Tasklist pages - Portrait -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <!-- Page Header with Logos -->
+                        <div class="page-header">
+                            <div class="logo-left">
+                                <img src="{{ logo_pama_url }}" alt="PAMA Logo">
+                            </div>
+                            <div class="section-title">
+                                {{ section.title }}
+                            </div>
+                            <div class="logo-right">
+                                <img src="{{ logo_celerates_url }}" alt="Celerates Logo">
+                            </div>
+                        </div>
+
+                        <div class="section-container tasklist-container" data-section="tasklist">
+                            <div class="iot-tasklist-section">
+                                {{ section.content | safe }}
+                            </div>
+                        </div>
+                    </div>
+
+                {% elif section.title.startswith('3.') and 'evidence' in (section.title | lower) %}
+                    <!-- Evidence Sub-section Header - Professional Document Style -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                            <div>
+                                <h1 style="font-size: 2.5rem; font-weight: 400; color: #000; margin: 0; font-family: 'Times New Roman', serif; text-transform: uppercase;">
+                                    {{ section.title }}
+                                </h1>
+                            </div>
+                        </div>
+                    </div>
+
+                {% elif section.type == 'evidence' or ('evidence' in (section.title | lower) and not section.title.startswith('3.')) %}
+                    <!-- Evidence pages - Portrait -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <!-- Page Header with Logos -->
+                        <div class="page-header">
+                            <div class="logo-left">
+                                <img src="{{ logo_pama_url }}" alt="PAMA Logo">
+                            </div>
+                            <div class="section-title">
+                                {{ section.title }}
+                            </div>
+                            <div class="logo-right">
+                                <img src="{{ logo_celerates_url }}" alt="Celerates Logo">
+                            </div>
+                        </div>
+
+                        <div class="section-container evidence-container" data-section="evidence">
+                            <div class="evidence-section">
+                                {{ section.content | safe }}
+                            </div>
+                        </div>
+                    </div>
+
+                {% else %}
+                    <!-- Attendance and other pages - Portrait -->
+                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                        <!-- Page Header with Logos -->
+                        <div class="page-header">
+                            <div class="logo-left">
+                                <img src="{{ logo_pama_url }}" alt="PAMA Logo">
+                            </div>
+                            <div class="section-title">
+                                {{ section.title }}
+                            </div>
+                            <div class="logo-right">
+                                <img src="{{ logo_celerates_url }}" alt="Celerates Logo">
+                            </div>
+                        </div>
+
+                        <div class="section-container attendance-container" data-section="attendance">
+                            {{ section.content | safe }}
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        // Update CSS custom properties for scaling
+        function updateScale(sectionType, value) {
+            const percentage = Math.round(value * 100);
+
+            // Update CSS variable
+            document.documentElement.style.setProperty(`--${sectionType}-scale`, value);
+
+            // Update display value
+            const valueDisplays = document.querySelectorAll(`[id*="${sectionType}-scale-value"]`);
+            valueDisplays.forEach(display => {
+                display.textContent = percentage + '%';
+            });
+
+            // Sync all sliders of same type
+            const sliders = document.querySelectorAll(`[id*="${sectionType}-scale-"]:not([id*="value"])`);
+            sliders.forEach(slider => {
+                slider.value = value;
+            });
+        }
+
+        function updateFontSize(sectionType, value) {
+            // Apply font size to timesheet content
+            const containers = document.querySelectorAll('.timesheet-container');
+            containers.forEach(container => {
+                const tables = container.querySelectorAll('table');
+                tables.forEach(table => {
+                    table.style.fontSize = value + 'px';
+                });
+            });
+
+            // Update display value
+            const valueDisplays = document.querySelectorAll(`[id*="${sectionType}-font-value"]`);
+            valueDisplays.forEach(display => {
+                display.textContent = value + 'px';
+            });
+
+            // Sync all sliders of same type
+            const sliders = document.querySelectorAll(`[id*="${sectionType}-font-"]:not([id*="value"])`);
+            sliders.forEach(slider => {
+                slider.value = value;
+            });
+        }
+
+        // Individual section position tracking
+        const sectionPositions = {};
+
+        function adjustPosition(sectionIndex, direction) {
+            if (!sectionPositions[sectionIndex]) {
+                sectionPositions[sectionIndex] = { x: 0, y: 0 };
+            }
+
+            const moveAmount = 10; // pixels
+            const pos = sectionPositions[sectionIndex];
+
+            switch(direction) {
+                case 'up':
+                    pos.y -= moveAmount;
+                    break;
+                case 'down':
+                    pos.y += moveAmount;
+                    break;
+                case 'left':
+                    pos.x -= moveAmount;
+                    break;
+                case 'right':
+                    pos.x += moveAmount;
+                    break;
+            }
+
+            // Apply transform to the section
+            const sectionElement = document.querySelector(`.page[data-section-index="${sectionIndex}"]`);
+            if (sectionElement) {
+                const contentElement = sectionElement.querySelector('.section-container');
+                if (contentElement) {
+                    const currentScale = contentElement.style.transform.match(/scale\(([\d.]+)\)/);
+                    const scale = currentScale ? currentScale[1] : '1';
+                    contentElement.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${scale})`;
+                }
+            }
+
+            // Update position display
+            const positionDisplay = document.getElementById(`position-value-${sectionIndex}`);
+            if (positionDisplay) {
+                positionDisplay.textContent = `X: ${pos.x}px, Y: ${pos.y}px`;
+            }
+        }
+
+        function updateSectionScale(sectionIndex, value) {
+            const percentage = Math.round(value * 100);
+
+            // Apply scale to specific section
+            const sectionElement = document.querySelector(`.page[data-section-index="${sectionIndex}"]`);
+            if (sectionElement) {
+                const contentElement = sectionElement.querySelector('.section-container');
+                if (contentElement) {
+                    const pos = sectionPositions[sectionIndex] || { x: 0, y: 0 };
+                    contentElement.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${value})`;
+                }
+            }
+
+            // Update scale display
+            const scaleDisplay = document.querySelector(`#timesheet-scale-value-${sectionIndex}, #tasklist-scale-value-${sectionIndex}, #evidence-scale-value-${sectionIndex}, #attendance-scale-value-${sectionIndex}`);
+            if (scaleDisplay) {
+                scaleDisplay.textContent = percentage + '%';
+            }
+        }
+
+        function resetIndividualSection(sectionIndex) {
+            // Reset position
+            sectionPositions[sectionIndex] = { x: 0, y: 0 };
+
+            // Reset transform
+            const sectionElement = document.querySelector(`.page[data-section-index="${sectionIndex}"]`);
+            if (sectionElement) {
+                const contentElement = sectionElement.querySelector('.section-container');
+                if (contentElement) {
+                    // Get default scale based on section type
+                    let defaultScale = 1.0;
+                    if (contentElement.classList.contains('timesheet-container')) {
+                        defaultScale = 0.75;
+                    } else if (contentElement.classList.contains('tasklist-container')) {
+                        defaultScale = 0.7;
+                    } else if (contentElement.classList.contains('evidence-container')) {
+                        defaultScale = 1.0;
+                    } else if (contentElement.classList.contains('attendance-container')) {
+                        defaultScale = 1.0;
+                    }
+
+                    contentElement.style.transform = `translate(0px, 0px) scale(${defaultScale})`;
+                }
+            }
+
+            // Reset UI controls
+            const positionDisplay = document.getElementById(`position-value-${sectionIndex}`);
+            if (positionDisplay) {
+                positionDisplay.textContent = 'X: 0px, Y: 0px';
+            }
+
+            // Reset scale slider
+            const scaleSlider = document.querySelector(`[id*="scale-${sectionIndex}"]:not([id*="value"])`);
+            if (scaleSlider) {
+                let defaultValue = 1.0;
+                if (scaleSlider.id.includes('timesheet')) {
+                    defaultValue = 0.75;
+                } else if (scaleSlider.id.includes('tasklist')) {
+                    defaultValue = 0.7;
+                } else if (scaleSlider.id.includes('evidence')) {
+                    defaultValue = 1.0;
+                } else if (scaleSlider.id.includes('attendance')) {
+                    defaultValue = 1.0;
+                }
+                scaleSlider.value = defaultValue;
+                updateSectionScale(sectionIndex, defaultValue);
+            }
+        }
+
+        function resetSection(sectionType) {
+            const defaults = {
+                'timesheet': 0.75,
+                'tasklist': 0.7,
+                'evidence': 1.0,
+                'attendance': 1.0
+            };
+
+            const defaultValue = defaults[sectionType] || 0.8;
+            updateScale(sectionType, defaultValue);
+
+            // Reset font size for timesheet
+            if (sectionType === 'timesheet') {
+                updateFontSize(sectionType, 8);
+            }
+        }
+
+
+        function printReport() {
+            // SCREENSHOT APPROACH - Capture actual visual content
+
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = loadingOverlay.querySelector('h5');
+            const loadingSubtext = loadingOverlay.querySelector('p');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+            const estimatedTime = document.getElementById('estimatedTime');
+
+            showLoading();
+
+            // Hide editor controls
+            const editorControls = document.querySelector('.editor-controls');
+            editorControls.style.display = 'none';
+
+            // Get all pages
+            const pages = document.querySelectorAll('.page');
+            const { jsPDF } = window.jspdf;
+
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            let pageIndex = 0;
+            let hasAddedPage = false;
+            const totalPages = pages.length;
+            const startTime = Date.now();
+            let pageProcessingTimes = [];
+
+            // Function to update progress
+            function updateProgress() {
+                const progress = (pageIndex / totalPages) * 100;
+                const progressPercentValue = Math.round(progress);
+
+                // Update progress bar
+                progressBar.style.width = `${progress}%`;
+                progressPercent.textContent = `${progressPercentValue}%`;
+
+                // Calculate estimated time based on completed pages
+                if (pageProcessingTimes.length > 0) {
+                    const avgTimePerPage = pageProcessingTimes.reduce((a, b) => a + b, 0) / pageProcessingTimes.length;
+                    const remainingPages = totalPages - pageIndex;
+                    const estimatedRemainingTime = (avgTimePerPage * remainingPages) / 1000; // Convert to seconds
+
+                    if (remainingPages > 0) {
+                        if (estimatedRemainingTime < 60) {
+                            estimatedTime.textContent = `~${Math.ceil(estimatedRemainingTime)}s remaining`;
+                        } else {
+                            const minutes = Math.floor(estimatedRemainingTime / 60);
+                            const seconds = Math.ceil(estimatedRemainingTime % 60);
+                            estimatedTime.textContent = `~${minutes}m ${seconds}s remaining`;
+                        }
+                    } else {
+                        estimatedTime.textContent = 'Almost done!';
+                    }
+                } else {
+                    estimatedTime.textContent = 'Calculating...';
+                }
+            }
+
+            // Function to process each page
+            function processNextPage() {
+                if (pageIndex >= totalPages) {
+                    // All pages processed - save PDF
+                    progressBar.style.width = '100%';
+                    progressPercent.textContent = '100%';
+                    estimatedTime.textContent = 'Saving...';
+                    loadingText.textContent = 'Saving PDF...';
+                    loadingSubtext.textContent = 'Almost there!';
+
+                    setTimeout(() => {
+                        doc.save('Digital_BAST_Report.pdf');
+                        editorControls.style.display = 'block';
+                        hideLoading();
+                        alert('PDF dengan content asli berhasil diunduh!');
+                    }, 500);
+                    return;
+                }
+
+                const page = pages[pageIndex];
+                const pageStartTime = Date.now();
+
+                // Update UI
+                loadingText.textContent = `Capturing page ${pageIndex + 1} of ${totalPages}...`;
+                loadingSubtext.textContent = 'Please wait, this may take a moment.';
+                updateProgress();
+
+                console.log(`Processing page ${pageIndex + 1}/${totalPages}`);
+
+                // Optimized high-quality capture with memory management
+                html2canvas(page, {
+                    scale: 1.5,
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#ffffff',
+                    logging: false,  // Disable logging for performance
+                    removeContainer: true  // Clean up temp elements
+                }).then(canvas => {
+                    const pageEndTime = Date.now();
+                    const pageProcessingTime = pageEndTime - pageStartTime;
+                    pageProcessingTimes.push(pageProcessingTime);
+
+                    // Use JPEG with optimized quality for faster processing
+                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+
+                    // Add new page if not first page
+                    if (hasAddedPage) {
+                        doc.addPage();
+                    }
+                    hasAddedPage = true;
+
+                    // Calculate dimensions to fit A4
+                    const imgWidth = 210; // A4 width in mm
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                    // Add image to PDF with JPEG format
+                    doc.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+
+                    // Clean up canvas to free memory
+                    canvas.width = 1;
+                    canvas.height = 1;
+                    canvas = null;
+
+                    // Process next page faster (300ms → 100ms delay)
+                    pageIndex++;
+                    setTimeout(() => processNextPage(), 100);
+
+                }).catch(error => {
+                    console.error('Error capturing page:', error);
+                    const pageEndTime = Date.now();
+                    const pageProcessingTime = pageEndTime - pageStartTime;
+                    pageProcessingTimes.push(pageProcessingTime);
+
+                    // Skip this page and continue
+                    pageIndex++;
+                    setTimeout(() => processNextPage(), 500);
+                });
+            }
+
+            // Start processing with simple delay
+            setTimeout(() => processNextPage(), 1000);
+        }
+
+        // v2 addition (docs/bast-e2e-plan.md WP4/§3.8): headless PDF export hook for
+        // Playwright. Same html2canvas + jsPDF pipeline as printReport() above (same
+        // scale, same JPEG quality, same A4 sizing) so the bytes match what a human
+        // would get from the "Export PDF" button -- just returns a data URI instead of
+        // triggering doc.save()'s browser download, and skips the loading-overlay UI
+        // since nobody is watching. printReport() itself is untouched.
+        window.__bastExportPdf = async function () {
+            const pages = document.querySelectorAll('.page');
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            let hasAddedPage = false;
+            for (const page of pages) {
+                const canvas = await html2canvas(page, {
+                    scale: 1.5,
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    removeContainer: true,
+                });
+                const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                if (hasAddedPage) {
+                    doc.addPage();
+                }
+                hasAddedPage = true;
+                const imgWidth = 210;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                doc.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+            }
+            return doc.output('datauristring');
+        };
+
+        function backToAdmin() {
+            if (confirm('Are you sure you want to go back? Your adjustments will be lost.')) {
+                window.location.href = '/admin';
+            }
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // Restore adjustments from localStorage if available
+        function restoreAdjustments() {
+            const savedState = localStorage.getItem('reportAdjustments');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+
+                // Restore positions
+                if (state.positions) {
+                    Object.assign(sectionPositions, state.positions);
+
+                    // Apply saved positions
+                    Object.keys(sectionPositions).forEach(sectionIndex => {
+                        const pos = sectionPositions[sectionIndex];
+                        const sectionElement = document.querySelector(`.page[data-section-index="${sectionIndex}"]`);
+                        if (sectionElement) {
+                            const contentElement = sectionElement.querySelector('.section-container');
+                            if (contentElement && pos) {
+                                // Apply saved transform
+                                const currentScale = contentElement.style.transform.match(/scale\(([\d.]+)\)/);
+                                const scale = currentScale ? currentScale[1] : '1';
+                                contentElement.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${scale})`;
+
+                                // Update position display
+                                const positionDisplay = document.getElementById(`position-value-${sectionIndex}`);
+                                if (positionDisplay) {
+                                    positionDisplay.textContent = `X: ${pos.x}px, Y: ${pos.y}px`;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Restore CSS variables
+                if (state.cssVariables) {
+                    const root = document.documentElement;
+                    if (state.cssVariables.timesheet) {
+                        root.style.setProperty('--timesheet-scale', state.cssVariables.timesheet);
+                    }
+                    if (state.cssVariables.tasklist) {
+                        root.style.setProperty('--tasklist-scale', state.cssVariables.tasklist);
+                    }
+                    if (state.cssVariables.evidence) {
+                        root.style.setProperty('--evidence-scale', state.cssVariables.evidence);
+                    }
+                    if (state.cssVariables.attendance) {
+                        root.style.setProperty('--attendance-scale', state.cssVariables.attendance);
+                    }
+                }
+
+                // Clear saved state after restoration
+                localStorage.removeItem('reportAdjustments');
+            }
+        }
+
+        // Initialize default values
+        document.addEventListener('DOMContentLoaded', function() {
+            // First try to restore saved adjustments
+            restoreAdjustments();
+
+            // Then set initial values if nothing was restored
+            updateScale('timesheet', 0.75);
+            updateScale('tasklist', 0.7);
+            updateScale('evidence', 1.0);
+            updateScale('attendance', 1.0);
+            updateFontSize('timesheet', 8);
+        });
+    </script>
+
+</body>
+</html>

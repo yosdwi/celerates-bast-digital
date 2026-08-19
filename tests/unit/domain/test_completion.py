@@ -27,8 +27,8 @@ def facts(**overrides: object) -> EmployeeFacts:
         "off_days": frozenset(),
         "attendance": (),
         "timesheets": tuple(TimesheetFact(day, "Shift Pagi") for day in PERIOD.days()),
-        "tasks": (TaskFact(WORK_DAY, "CCTV Gate 2", "Closed"),),
-        "task_evidence_count": 1,
+        "tasks": (TaskFact(WORK_DAY, "CCTV Gate 2", "Closed", 1),),
+        "evidence_available": True,
         "attendance_available": True,
     }
     base.update(overrides)
@@ -188,25 +188,40 @@ def test_zero_tasks_requests_review() -> None:
 
 
 def test_single_task_evidence_completes_evidence_check() -> None:
-    result = evaluate_employee(
-        facts(attendance=complete_attendance(), task_evidence_count=1), PERIOD
-    )
+    result = evaluate_employee(facts(attendance=complete_attendance()), PERIOD)
 
     assert result.evidence.state is CheckState.COMPLETE
 
 
 def test_missing_task_evidence_is_incomplete() -> None:
+    tasks = (TaskFact(WORK_DAY, "CCTV Gate 2", "Closed", 0),)
+
     result = evaluate_employee(
-        facts(attendance=complete_attendance(), task_evidence_count=0), PERIOD
+        facts(attendance=complete_attendance(), tasks=tasks), PERIOD
     )
 
     assert result.evidence.state is CheckState.INCOMPLETE
-    assert result.evidence.issues == ("Evidence Task List belum tersedia.",)
+    assert result.evidence.issues == ('Task "CCTV Gate 2" belum ada evidence.',)
+
+
+def test_evidence_names_only_the_closed_tasks_missing_it() -> None:
+    tasks = (
+        TaskFact(WORK_DAY, "CCTV Gate 2", "Closed", 0),
+        TaskFact(WORK_DAY, "Firmware Validation", "Closed", 1),
+        TaskFact(WORK_DAY, "Datalog", "In Progress", 0),
+    )
+
+    result = evaluate_employee(
+        facts(attendance=complete_attendance(), tasks=tasks), PERIOD
+    )
+
+    assert result.evidence.state is CheckState.INCOMPLETE
+    assert result.evidence.issues == ('Task "CCTV Gate 2" belum ada evidence.',)
 
 
 def test_unmapped_task_evidence_requests_review() -> None:
     result = evaluate_employee(
-        facts(attendance=complete_attendance(), task_evidence_count=None), PERIOD
+        facts(attendance=complete_attendance(), evidence_available=False), PERIOD
     )
 
     assert result.evidence.state is CheckState.NEEDS_REVIEW

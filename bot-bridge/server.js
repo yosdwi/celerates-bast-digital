@@ -12,6 +12,7 @@ const QRCode = require("qrcode");
 const {
   default: makeWASocket,
   useMultiFileAuthState,
+  downloadMediaMessage,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
@@ -19,12 +20,13 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
 const DATA_DIR = process.env.BOT_DATA_DIR || path.join(__dirname, "data");
+const EVIDENCE_DIR = path.join(DATA_DIR, "evidence-uploads");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
-const TRIGGER = /^\s*[@!/]?\s*bast\s*bot\b|^\s*!bast\b/i;
+const TRIGGER = /^\s*[@!/]?\s*bast\s*bot\b|^\s*!bast\b|^\s*@\s*conform\b/i;
 
 const state = {
   connection: "starting",
@@ -96,6 +98,50 @@ function runCli(args) {
   });
 }
 
+function parseFileReply(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && parsed.kind === "file" && parsed.path ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+const MIME_BY_EXTENSION = {
+  ".pdf": "application/pdf",
+  ".csv": "text/csv",
+};
+
+function mimetypeFor(filePath) {
+  return MIME_BY_EXTENSION[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+async function sendFileReply(sock, jid, message, filePayload) {
+  try {
+    const buffer = fs.readFileSync(filePayload.path);
+    await sock.sendMessage(
+      jid,
+      {
+        document: buffer,
+        fileName: filePayload.filename || path.basename(filePayload.path),
+        mimetype: mimetypeFor(filePayload.path),
+        caption: filePayload.caption || "",
+      },
+      { quoted: message },
+    );
+    fs.unlink(filePayload.path, (error) => {
+      if (error) log(`export cleanup failed: ${error}`);
+    });
+  } catch (error) {
+    log(`file send failed: ${error}`);
+    await sock.sendMessage(
+      jid,
+      { text: `Gagal mengirim berkas export: ${error}` },
+      { quoted: message },
+    );
+  }
+}
+
 async function refreshGroups(sock) {
   try {
     const groups = await sock.groupFetchAllParticipating();
@@ -154,23 +200,117 @@ async function start() {
     if (type !== "notify") return;
     for (const message of messages) {
       const jid = message.key?.remoteJid || "";
-      if (message.key?.fromMe || !jid.endsWith("@g.us")) continue;
-      const text = messageText(message);
-      if (!text || !isForUs(message, text, state.me || "")) continue;
-      if (!allowedGroups().has(jid)) {
-        log(`ignored message from unlisted group ${jid}`);
-        continue;
+      if (message.key?.fromMe || !jid) continue;
+      if (jid.endsWith("@g.us")) {
+        await handleGroupMessage(sock, message, jid);
+      } else if (jid.endsWith("@s.whatsapp.net")) {
+        await handleDirectMessage(sock, message, jid);
       }
-      log(`command from ${jid}: ${text.slice(0, 120)}`);
-      const result = await runCli(["bot-reply", "--text", text]);
-      const reply = result.ok
-        ? result.text
-        : `Perintah tidak dapat dijalankan.\n\n${result.text.slice(0, 500)}`;
-      await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
     }
   });
 
   return sock;
+}
+
+// GROUP: monitoring + commands, unchanged -- mention-gated, allowlist-gated.
+async function handleGroupMessage(sock, message, jid) {
+  const text = messageText(message);
+  if (!text || !isForUs(message, text, state.me || "")) return;
+  if (!allowedGroups().has(jid)) {
+    log(`ignored message from unlisted group ${jid}`);
+    return;
+  }
+  log(`command from ${jid}: ${text.slice(0, 120)}`);
+  await sock.sendMessage(
+    jid,
+    { text: "Siap, tunggu sekitar 10-15 detik ya" },
+    { quoted: message },
+  );
+  const startedAt = Date.now();
+  const result = await runCli(["bot-reply", "--text", text]);
+  const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+  const filePayload = result.ok ? parseFileReply(result.text) : null;
+  if (filePayload) {
+    filePayload.caption = `${filePayload.caption || ""} (${elapsed})`.trim();
+    await sendFileReply(sock, jid, message, filePayload);
+    return;
+  }
+  const reply = result.ok
+    ? `${result.text}\n\n_${elapsed}_`
+    : `Perintah tidak dapat dijalankan.\n\n${result.text.slice(0, 500)}`;
+  await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
+}
+
+// DM: activation + evidence only. No trigger word needed -- every DM is in scope,
+// and digital-bast itself enforces "unbound JID can only attempt activation"
+// (see cli.py::_dm_reply). No business logic here, same rule as the group path.
+async function handleDirectMessage(sock, message, jid) {
+  const content = message.message || {};
+  const media = content.imageMessage || content.documentMessage;
+  if (media) {
+    await handleEvidenceUpload(sock, message, jid, media);
+    return;
+  }
+  const text = messageText(message);
+  if (!text) return;
+  log(`dm from ${jid}: ${text.slice(0, 120)}`);
+  const result = await runCli(["bot-reply", "--text", text, "--jid", jid, "--channel", "dm"]);
+  const reply = result.ok
+    ? result.text
+    : `Perintah tidak dapat dijalankan.\n\n${result.text.slice(0, 500)}`;
+  await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
+}
+
+function evidenceFileExtension(mimetype) {
+  if (mimetype && mimetype.includes("png")) return "png";
+  if (mimetype && mimetype.includes("webp")) return "webp";
+  return "jpg";
+}
+
+// WhatsApp re-compresses photos sent as imageMessage; documentMessage preserves
+// the original bytes. Both are accepted -- digital-bast bot-evidence sniffs
+// magic bytes and validates size/type itself, so the bridge just downloads and
+// hands off the file.
+async function handleEvidenceUpload(sock, message, jid, media) {
+  fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
+  const caption = media.caption || "";
+  const extension = evidenceFileExtension(media.mimetype);
+  const filePath = path.join(
+    EVIDENCE_DIR,
+    `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`,
+  );
+  try {
+    const buffer = await downloadMediaMessage(
+      message,
+      "buffer",
+      {},
+      { logger: console, reuploadRequest: sock.updateMediaMessage },
+    );
+    fs.writeFileSync(filePath, buffer);
+    log(`evidence upload from ${jid} (${buffer.length} bytes)`);
+    const result = await runCli([
+      "bot-evidence",
+      "--jid",
+      jid,
+      "--file",
+      filePath,
+      "--caption",
+      caption,
+    ]);
+    const reply = result.ok
+      ? result.text
+      : `Gagal menyimpan evidence.\n\n${result.text.slice(0, 500)}`;
+    await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
+  } catch (error) {
+    log(`evidence download failed: ${error}`);
+    await sock.sendMessage(
+      jid,
+      { text: `Gagal mengunduh foto/dokumen: ${error}` },
+      { quoted: message },
+    );
+  } finally {
+    fs.unlink(filePath, () => {});
+  }
 }
 
 function escapeHtml(value) {

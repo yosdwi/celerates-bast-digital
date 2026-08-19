@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evidence Aktivitas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: white;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 40px;
+        }
+        .evidence-item {
+            margin-bottom: 60px;
+            page-break-inside: avoid;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        /* .evidence-title {
+            font-size: 18px;
+            font-weight: 900;
+            margin-bottom: 25px;
+            line-height: 1.5;
+            color: #000;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 3px solid #000;
+            padding-bottom: 12px;
+            font-family: 'Arial Black', Arial, sans-serif;
+        } */
+        .evidence-image {
+            max-width: calc(100% - 40px) !important;
+            max-height: 400px !important;
+            width: auto !important;
+            height: auto !important;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            object-fit: contain !important;
+            display: block !important;
+            margin: 20px auto !important;
+            box-sizing: border-box !important;
+            background: white;
+        }
+        .image-container {
+            text-align: center;
+            margin: 25px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        /* .evidence-description {
+            font-size: 14px;
+            color: #555;
+            margin-top: 25px;
+            font-style: normal;
+            padding: 15px;
+            background: white;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+            line-height: 1.6;
+        } */
+
+        /* Force all images to be responsive */
+        img {
+            max-width: calc(100% - 40px) !important;
+            max-height: 400px !important;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain !important;
+            display: block !important;
+            margin: 10px auto !important;
+            box-sizing: border-box !important;
+        }
+    </style>
+</head>
+<body>
+    {% for item in evidence_data %}
+    <div class="evidence-item">
+        <!-- <div class="evidence-title">3.{{ item.number }}. {{ item.title }}</div> -->
+
+        {% if item.image_path %}
+        <div class="image-container">
+            <img src="{{ item.image_path }}" alt="{{ item.title }}" class="evidence-image" />
+        </div>
+        {% endif %}
+
+        <!-- {% if item.description %} -->
+        <!-- <div class="evidence-description">
+            <strong>Deskripsi:</strong> {{ item.description }}
+        </div> -->
+        <!-- {% endif %} -->
+    </div>
+    {% endfor %}
+</body>
+</html>
