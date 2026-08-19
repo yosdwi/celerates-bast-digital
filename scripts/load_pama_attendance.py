@@ -38,45 +38,12 @@ from digital_bast.domain.models import (
     Schedule,
 )
 from digital_bast.domain.timesheets import day_status
-from digital_bast.infrastructure.pama_attendance import parse_clock
-
-ATTENDANCE_QUERY = """
-DECLARE @NRP AS VARCHAR(20) = %s;
-DECLARE @RANGE_START AS DATE = %s;
-DECLARE @RANGE_END AS DATE = %s;
-
-WITH data_raw AS (
-    SELECT h.[attendance_date],
-           LEFT(CONVERT(VARCHAR(5), CAST(h.attendance_hour AS TIME), 108), 5)
-              + ' (' + h.trans + ')' AS att_hour_label
-    FROM [db_attendance].[attend].[tbl_t_att_daily_history] h
-    LEFT JOIN [db_pamamobile].[dbo].[tbl_user] u ON u.nrp = h.nrp
-    WHERE h.nrp = @NRP AND h.attendance_date BETWEEN @RANGE_START AND @RANGE_END
-      AND u.is_pama = 0 AND u.active = 1
-    UNION ALL
-    SELECT d.[attendance_date],
-           LEFT(CONVERT(VARCHAR(5), CAST(d.attendance_hour AS TIME), 108), 5)
-              + ' (' + d.trans + ')' AS att_hour_label
-    FROM [db_attendance].[attend].[tbl_t_att_daily] d
-    LEFT JOIN [db_pamamobile].[dbo].[tbl_user] u ON u.nrp = d.nrp
-    WHERE d.nrp = @NRP AND d.attendance_date BETWEEN @RANGE_START AND @RANGE_END
-      AND u.is_pama = 0 AND u.active = 1
+from digital_bast.infrastructure.pama_attendance import (
+    ATTENDANCE_QUERY,
+    DEVELOPER_SCHEDULE,
+    SHIFT_LEGEND,
+    parse_clock,
 )
-SELECT attendance_date, att_hour_label FROM data_raw ORDER BY attendance_date, att_hour_label;
-"""
-
-SHIFT_LEGEND: dict[str, tuple[str, str, str]] = {
-    "P": ("SHIFT 1", "07:00", "15:00"),
-    "PS": ("SHIFT 1.5", "12:00", "20:00"),
-    "S": ("SHIFT 2", "15:00", "23:00"),
-    "M": ("SHIFT 3", "23:00", "07:00"),
-    "L": ("Libur", "", ""),
-    "LS": ("Libur", "", ""),
-    "TS": ("Tugas Site", "", ""),
-    "C": ("Cuti", "", ""),
-    "I": ("Sakit", "", ""),
-}
-DEVELOPER_SCHEDULE = ("07:30", "16:30")
 
 
 @dataclass(frozen=True, slots=True)

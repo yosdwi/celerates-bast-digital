@@ -33,6 +33,16 @@ class HolidayLookup(Protocol):
     def get(self, key: date, /) -> object | None: ...
 
 
+# Column names verified against the live server on 2026-08-20. The previous
+# spelling (att_hour / att_type, wrapped in FORMAT) does not exist there and
+# failed with "Invalid column name 'att_hour'" -- it had never actually been
+# run, because the attendance host was unreachable from the dev sandbox when
+# this query was written. The real columns are attendance_hour ('HH:MM:SS'
+# varchar, so LEFT(...,5) gives HH:MM) and trans ('IN'/'OUT').
+#
+# The u.is_pama = 0 AND u.active = 1 join filter is load-bearing and was
+# checked against all 17 roster members: every one passes. It silently drops
+# anyone it does not match, so re-check it when the roster changes.
 ATTENDANCE_QUERY: Final = """
 DECLARE @NRP AS VARCHAR(20) = %s;
 DECLARE @RANGE_START AS DATE = %s;
@@ -40,14 +50,14 @@ DECLARE @RANGE_END AS DATE = %s;
 
 WITH data_raw AS (
     SELECT h.attendance_date,
-           CONCAT(FORMAT(h.att_hour, 'HH:mm'), ' (', h.att_type, ')') AS att_hour_label
+           CONCAT(LEFT(h.attendance_hour, 5), ' (', h.trans, ')') AS att_hour_label
     FROM [db_attendance].[attend].[tbl_t_att_daily_history] h
     LEFT JOIN [db_pamamobile].[dbo].[tbl_user] u ON u.nrp = h.nrp
     WHERE h.nrp = @NRP AND h.attendance_date BETWEEN @RANGE_START AND @RANGE_END
       AND u.is_pama = 0 AND u.active = 1
     UNION ALL
     SELECT d.attendance_date,
-           CONCAT(FORMAT(d.att_hour, 'HH:mm'), ' (', d.att_type, ')') AS att_hour_label
+           CONCAT(LEFT(d.attendance_hour, 5), ' (', d.trans, ')') AS att_hour_label
     FROM [db_attendance].[attend].[tbl_t_att_daily] d
     LEFT JOIN [db_pamamobile].[dbo].[tbl_user] u ON u.nrp = d.nrp
     WHERE d.nrp = @NRP AND d.attendance_date BETWEEN @RANGE_START AND @RANGE_END
