@@ -24,6 +24,10 @@ COPY --chown=10001:10001 templates /opt/digital-bast/templates
 COPY --chown=10001:10001 static /opt/digital-bast/static
 COPY --chown=10001:10001 migrations /opt/digital-bast/migrations
 COPY --chown=10001:10001 alembic.ini /opt/digital-bast/alembic.ini
+# Operational one-offs run inside the container: the roster seed, the schedule
+# CSV import, the direct PAMA attendance load. Without these here, running them
+# means bind-mounting the host checkout into a throwaway container.
+COPY --chown=10001:10001 scripts/*.py /opt/digital-bast/scripts/
 COPY --chown=root:root scripts/container-entrypoint.sh /opt/digital-bast/bin/container-entrypoint
 RUN chmod 0555 /opt/digital-bast/bin/container-entrypoint
 

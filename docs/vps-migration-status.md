@@ -106,10 +106,21 @@ now belong to the bridge host. The secret files can stay; nothing reads them.
 The deploy directory is not a git checkout, so rsync current `main` into it
 (preserving `.env` and `secrets/`), then:
 
+`preflight.sh` reads `SECRETS_GID` as a shell variable — only `docker compose`
+subcommands auto-load `.env` — so export the environment first:
+
 ```bash
+set -a; . ./.env; set +a
 ./scripts/preflight.sh
-./scripts/deploy.sh          # blue/green: green -> blue, runs alembic upgrade head
+./scripts/deploy.sh
 ```
+
+`deploy.sh` runs `alembic upgrade head` **before** the shadow gate. That order
+matters: `/health/ready` asserts the schema exists, so gating readiness ahead
+of the migration can never pass for a release that adds tables.
+
+The migration file is baked into the image, so **rebuild before deploying** if
+you changed one: `docker compose build web-blue`.
 
 `deploy.sh` gates on container health, a shadow request, the migration, then
 `nginx -t` before flipping traffic. A migration failure leaves the active slot
@@ -117,15 +128,51 @@ serving the old image.
 
 Expect `alembic current` to move `20260803_0001 → 20260820_0004`.
 
+### 3b. One-off provisioning on a pre-existing cluster
+
+`scripts/postgres-init.sh` only runs on a **fresh** Postgres data directory.
+This cluster predates both of these, so they must be created once by hand as
+the bootstrap superuser (`digital_bast`, which is `POSTGRES_USER` and connects
+without a password inside the container). `digital_bast_app` deliberately has
+neither `CREATEROLE` nor `CREATEDB`, and that is not something to relax.
+
+```bash
+docker exec digital-bast-v2-postgres-1 psql -U digital_bast -d digital_bast_app \
+  -c "CREATE ROLE nocodb_editor LOGIN;"
+docker exec digital-bast-v2-postgres-1 psql -U digital_bast -d postgres \
+  -c "CREATE DATABASE nocodb_v2_meta OWNER digital_bast_app;"
+```
+
+Migration `20260820_0004` only *grants* to `nocodb_editor` and skips the grants
+with a NOTICE if the role is absent, so a database without it still migrates —
+but nocodb-v2 will then have no access. After deploying, confirm the grants
+actually landed:
+
+```bash
+docker exec digital-bast-v2-postgres-1 psql -U digital_bast_app -d digital_bast_app \
+  -c "select grantee, table_name, privilege_type from information_schema.role_table_grants
+      where grantee = 'nocodb_editor' order by table_name;"
+```
+
+Empty means the role was created after the migration ran — create it, then
+`alembic upgrade head` again (the migration is idempotent on a re-run only if
+you first `alembic downgrade`; simpler is to grant by hand).
+
 ### 4. Seed the roster
 
 Nothing else works before this: every typed table has a foreign key to
 `employees`.
 
 ```bash
-docker compose run --rm --no-deps web-blue \
-  python scripts/seed_employees_from_nocodb.py
+docker compose run --rm --no-deps \
+  -e APP_DATABASE_DSN="$(sudo cat secrets/app_database_dsn)" \
+  -e NOCODB_DATABASE_DSN="$(sudo cat secrets/nocodb_database_dsn)" \
+  -e NOCODB_BASE_ID=pc38r6u1npuq0ul \
+  web-blue python scripts/seed_employees_from_nocodb.py
 ```
+
+The script takes plain env vars, not the `*_FILE` indirection the app uses.
+`scripts/*.py` is baked into the image, so no bind-mount is needed.
 
 It prints all 17 rows. Confirm the three NRPs that carried a leading-`L` typo
 now read `JIMT25004`, `JIMT22012`, `JIMT24002`. NocoDB's roster is the correct
@@ -133,12 +180,19 @@ one — `employee_data.json` was the file with the typo.
 
 ### 5. Set the nocodb_editor password
 
-The migration creates the role without a password so no secret lands in a
-migration file:
+The role is created without a password so no secret lands in a script. Setting
+it needs the superuser — `digital_bast_app` cannot alter roles:
 
 ```bash
-docker exec digital-bast-v2-postgres-1 psql -U digital_bast_app -d digital_bast_app \
+docker exec digital-bast-v2-postgres-1 psql -U digital_bast -d digital_bast_app \
   -c "ALTER ROLE nocodb_editor PASSWORD '<pick one>';"
+```
+
+Keep it where it can be found again — step 6's browser step needs it:
+
+```bash
+printf '%s' '<the password>' > secrets/nocodb_editor_password
+chmod 640 secrets/nocodb_editor_password && chgrp "$SECRETS_GID" secrets/nocodb_editor_password
 ```
 
 ### 6. nocodb-v2
@@ -152,7 +206,7 @@ web admin login still authenticates against the *old* NocoDB's `nc_users_v2`
 and is unaffected). Then add a data source:
 
 - host `postgres`, port `5432`, database `digital_bast_app`, schema `public`
-- user `nocodb_editor` with the password from step 5
+- user `nocodb_editor`, password from `secrets/nocodb_editor_password`
 - **editable ON**
 
 The six business tables appear as normal editable grids. The pre-existing
