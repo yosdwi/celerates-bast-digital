@@ -24,6 +24,22 @@ lock_file=${DEPLOY_LOCK_FILE:-/tmp/digital-bast-deploy.lock}
 exec 9>"$lock_file"
 flock -n 9 || die "another deployment is running" 75
 
+# reverse-proxy runs as a fixed, non-root, non-"debian" uid (101:101,
+# hardened: read_only + cap_drop ALL) and bind-mounts these two files
+# read-only. A file that lands here without "other" read (e.g. a manual
+# scp/rsync inheriting a restrictive umask, or a backup restore) means
+# nginx can open() the config on first read but silently keeps working
+# off that open fd forever -- the break only surfaces on the *next*
+# container start (a host reboot, a redeploy), by which point it looks
+# unrelated to whatever actually wrote the bad permissions. Enforce this
+# on every deploy so it can never regress silently again.
+if [ -d config/nginx ]; then
+    chmod o+x config config/nginx 2>/dev/null || true
+    for f in config/nginx/nginx.conf config/nginx/active-slot.conf; do
+        [ -f "$f" ] && chmod o+r "$f"
+    done
+fi
+
 if [ "$SKIP_PREFLIGHT" = "0" ]; then
     "$SCRIPT_DIR/preflight.sh" $(if [ "$DRY_RUN" = "1" ]; then printf '%s' '--dry-run'; fi)
 fi
