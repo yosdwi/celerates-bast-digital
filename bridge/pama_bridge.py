@@ -46,9 +46,17 @@ from typing import Any
 import httpx
 import pymssql
 
-_BATCH_SIZE = 500
 _RETRIES = 3
 _TIMEOUT = 120.0
+# Sized to Google Sheets' 50,000-char single-cell limit, not just batching
+# taste: --upload-sheet writes each chunk's whole serialized JSON into one
+# cell. Redmine rows run far bigger than attendance rows (task titles and
+# descriptions vs a date and a punch label) -- a 109-row redmine dump once
+# came out to 79,778 chars in a single chunk under the old fixed-500-rows
+# cap, already past the limit before any margin. Chunking by actual
+# serialized size instead of a row count keeps every chunk safe regardless
+# of which source produced it.
+_MAX_CHUNK_CHARS = 20_000
 
 # Kept identical to src/digital_bast/infrastructure/pama_attendance.py.
 # The bridge cannot import the package (it ships standalone to a Windows PC),
@@ -382,7 +390,21 @@ def _report_coverage(
 
 
 def _chunks(rows: list[Any]) -> list[list[Any]]:
-    return [rows[index : index + _BATCH_SIZE] for index in range(0, len(rows), _BATCH_SIZE)] or [[]]
+    if not rows:
+        return [[]]
+    chunks: list[list[Any]] = []
+    current: list[Any] = []
+    current_chars = 0
+    for row in rows:
+        row_chars = len(json.dumps(row))
+        if current and current_chars + row_chars > _MAX_CHUNK_CHARS:
+            chunks.append(current)
+            current = []
+            current_chars = 0
+        current.append(row)
+        current_chars += row_chars
+    chunks.append(current)
+    return chunks
 
 
 def _jsonable(row: dict[str, Any]) -> dict[str, Any]:
