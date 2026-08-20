@@ -233,6 +233,11 @@ def upload_dump_to_sheet(directory: Path) -> int:
         .execute()
     )
     for file in files:
+        # Safely uploaded (the append above didn't raise), so the local copy
+        # is redundant -- delete it or a scheduled run leaves one more file
+        # on disk forever. The row is the source of truth from here; the
+        # VPS-side poller deletes it in turn once replayed.
+        file.unlink()
         print(f"uploaded {file.name}")
     return len(files)
 
