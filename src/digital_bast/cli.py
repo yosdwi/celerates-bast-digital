@@ -462,6 +462,7 @@ _UPLOAD_OUTCOME_REPLY: Final = {
 # NRP-based onboarding (§1): talent know their NRP and name, never the
 # internal Employee ID -- that stays purely an internal key from here on.
 _NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
+_NRP_ATTEMPT_MAX_ECHO: Final = 40
 _CONFIRM_CANCELLED: Final = "Oke, dibatalkan. Kirim NRP kamu lagi ya."
 _CONFIRM_RETRY: Final = "Balas YA atau BUKAN ya."
 _ALREADY_BOUND_ELSEWHERE: Final = (
@@ -477,8 +478,31 @@ def _confirm_prompt(name: str, nrp: str) -> str:
     return f"Aku menemukan:\n{name}\nNRP: {nrp}\n\nIni kamu?\nBalas YA atau BUKAN."
 
 
+def _nrp_not_found_reply(attempted: str) -> str:
+    echo = attempted[:_NRP_ATTEMPT_MAX_ECHO]
+    return (
+        f'NRP "{echo}" belum aku kenali.\n'
+        "Cek lagi ejaannya (tanpa spasi/tanda baca tambahan), atau hubungi admin kalau NRP "
+        "kamu memang itu."
+    )
+
+
 def _bound_reply(name: str) -> str:
     return f"✅ Terhubung sebagai {name}."
+
+
+async def _bound_reply_with_nudge(name: str, employee_id: str) -> str:
+    """Greet with an immediate, personalized next step instead of leaving a
+    freshly-connected user staring at a bare confirmation with no idea what
+    to type -- the summary already tells them exactly what's outstanding and
+    how to act on it (see _format_personal_summary), so showing it now
+    removes a whole guessing-what-to-type round trip.
+    """
+    today = datetime.now(JAKARTA).date()
+    period = DateRange(today.replace(day=1), today)
+    evidence = create_evidence_service()
+    summary = await _format_personal_summary(employee_id, period, evidence)
+    return f"{_bound_reply(name)}\n\n{summary}"
 
 
 async def _dm_onboarding(text: str, jid: str) -> str:
@@ -495,7 +519,7 @@ async def _dm_onboarding(text: str, jid: str) -> str:
             name = next(
                 (e.name for e in roster if str(e.id) == pending_employee_id), pending_employee_id
             )
-            return _bound_reply(name)
+            return await _bound_reply_with_nudge(name, pending_employee_id)
         if lowered in _NO_WORDS:
             await activation.clear_claim(jid)
             return _CONFIRM_CANCELLED
@@ -503,7 +527,8 @@ async def _dm_onboarding(text: str, jid: str) -> str:
     roster = await load_roster()
     employee = resolve_employee_by_nrp(text, roster)
     if employee is None:
-        return _NRP_HELP
+        stripped = text.strip()
+        return _NRP_HELP if not stripped else _nrp_not_found_reply(stripped)
     await activation.claim(jid, str(employee.id))
     return _confirm_prompt(employee.name, employee.external_id)
 
