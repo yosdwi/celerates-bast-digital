@@ -1,7 +1,62 @@
 # VPS migration — deployment handover
 
-Code is done and committed (`633cc4d`). What remains is deployment and live
-E2E. Read this before touching the VPS.
+**State as of 2026-08-20: deployed and running.** The typed-table migration is
+live, the roster is seeded, Ollama and bot-bridge are up, nocodb-v2 is up. One
+commit (`c82b48c`) is written and verified locally but **not yet deployed** --
+see "Resume here" below.
+
+Read this before touching the VPS.
+
+## Resume here
+
+1. **Deploy `c82b48c`** (sync → `docker compose build web-blue` → `deploy.sh`).
+   It fixes `_as_date`, which silently discarded 100% of Redmine rows arriving
+   through `/internal/sync`. Until it ships, task ingest returns 200 with
+   `upserted: 0` and nothing lands.
+2. **Run the bridge.** All credentials are in `bridge/.env` (gitignored). Both
+   SQL Servers are reachable from the dev machine, so it can stand in for the
+   PAMA PC: `python pama_bridge.py --since 2026-07-01`. Verified data waiting:
+   1274 attendance punches, 80 Redmine tasks, all 17 roster members covered.
+3. **Connect nocodb-v2's data source** (browser step, see §6) and then write to
+   a `timesheets` row from it to confirm `origin` flips to `'manual'`.
+4. **IoT / Google Sheets has never been exercised** -- the service-account key
+   is dead. Two of the three source paths turned out to carry bugs that only
+   appeared when actually run; do not assume the third is clean.
+
+## What was already deployed and verified
+
+- alembic at `20260820_0004`; 18 tables; `employees` = 17 with correct NRPs
+- `web-blue` active, `/health/ready` 200, blue/green alternating correctly
+- BAST PDF and status PNG both produce real files (run them in the
+  **bot-bridge** container, not `web-*`: the web slots are `read_only` and have
+  no `bot-bridge/data/exports` path)
+- unauthenticated ingest → 401; empty batch → 200
+- Ollama `llama3.2:3b` on 127.0.0.1:11434. **Cold load ~8s**, warm ~1.3s. The
+  bot's classification timeout is 18s, so a cold model eats half of it --
+  consider pinning `keep_alive` if timeouts appear.
+- bot-bridge stable on Node 20, WhatsApp session restored without a QR
+- nocodb-v2 on **8083**
+- public hostnames: `conform-v2-web` → app (8080), `conform-v2-stagging` →
+  nocodb-v2 (8083)
+
+## Bugs found by running it, all fixed in the repo
+
+| Commit | Defect |
+|---|---|
+| `03eddd2` | `deploy.sh` ran the shadow gate before the migration, so any release adding a table could never pass |
+| `1e8d3d9` | migration ran `CREATE ROLE`; alembic connects as `digital_bast_app`, which has no `CREATEROLE` |
+| `99708c6` | `scripts/*.py` was never copied into the runtime image |
+| `1b8c6e0` | nocodb-v2 on 8082 collided with a pre-existing cloudflared rule and published the DB editor publicly |
+| `b53bc1e` | `JsonValue` under `TYPE_CHECKING` left the ingest models half-built → every POST 500 |
+| `b53bc1e` | no Chromium in the image → BAST PDF and status PNG both failed |
+| `b53bc1e` | bot-bridge built on Node 18; baileys needs 20+ |
+| `8396ff5` | `ATTENDANCE_QUERY` used columns that do not exist (`att_hour`/`att_type`); it had never been run |
+| `4949caf` | `active-slot.conf` was tracked in git *and* rewritten at runtime, so every sync reset the deploy scripts' idea of the live slot |
+| `c82b48c` | `_as_date` rejected string dates → 100% of ingested Redmine rows silently dropped |
+
+The pattern worth remembering: every one of these was invisible to reading and
+to the test suite. They surfaced only by executing the real path against the
+real systems.
 
 **Credentials are not in this file (the repo is public).** SSH details live in
 Claude's own memory (`reference: vps-access`); ask the user otherwise.

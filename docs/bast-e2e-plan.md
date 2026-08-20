@@ -34,7 +34,7 @@ in format to the reference export, overlapping rows matching the historical file
 if nocodb_database_dsn is None or nocodb_base_id is None:
     raise ProductionOperationUnavailableError(...)
 repository = NocoDBDomainRepository(...)
-employees  = NocoDBPostgresEmployeeSource(...)
+employees = NocoDBPostgresEmployeeSource(...)
 ```
 
 Everything downstream (`PipelineService`, all operations, `completion_status`, `generate_bast`)
@@ -506,10 +506,10 @@ All reads for one BAST happen on **one connection, in one transaction, at REPEAT
 with psycopg.connect(dsn) as connection:
     connection.set_isolation_level(IsolationLevel.REPEATABLE_READ)
     with connection.transaction():
-        rows      = _load_scope(connection, ...)     # tasks, timesheets, attendance, schedules
-        evidence  = _load_evidence(connection, ...)
+        rows = _load_scope(connection, ...)  # tasks, timesheets, attendance, schedules
+        evidence = _load_evidence(connection, ...)
         fingerprint = _fingerprint(rows, evidence)
-        document    = assemble(rows, evidence)
+        document = assemble(rows, evidence)
         _insert_artifact(connection, fingerprint, document)
 ```
 
