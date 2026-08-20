@@ -17,6 +17,7 @@ const {
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
 const { ownUserIds, isForUs, looksLikeConversation } = require("./mention");
+const { waitingReply } = require("./greeting");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -261,7 +262,7 @@ async function handleGroupMessage(sock, message, jid) {
   if (!looksLikeConversation(text)) {
     await sock.sendMessage(
       jid,
-      { text: "Siap, tunggu sekitar 10-15 detik ya" },
+      { text: waitingReply(message.pushName) },
       { quoted: message },
     );
   }
