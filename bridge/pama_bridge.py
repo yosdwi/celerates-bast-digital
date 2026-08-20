@@ -11,6 +11,12 @@ the business rules stay in one place instead of drifting between two codebases.
     python pama_bridge.py --since 2026-07-01  # initial seed
     python pama_bridge.py --only attendance   # attendance | redmine | iot
 
+Two-network split. The PAMA network reaches the SQL Servers but blocks SSH and
+blocks TLS to the ingest host, so one machine can rarely do both halves:
+
+    python pama_bridge.py --since 2026-07-01 --dump out --roster-file roster.json
+    python pama_bridge.py --replay out       # from a network that reaches the VPS
+
 Recovery model: a fixed overlapping lookback window re-sent every run, with
 idempotent upserts on the far side. PC offline, half-failed batch, duplicate
 run and VPS restart all resolve by simply running again -- there is no cursor
@@ -22,6 +28,7 @@ Exits non-zero on any failure so Windows Task Scheduler reports it.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -133,6 +140,44 @@ class Ingest:
                 if attempt < _RETRIES - 1:
                     time.sleep(2**attempt)
         raise RuntimeError(f"{path} failed after {_RETRIES} attempts: {last}")
+
+
+class DumpIngest:
+    """Offline half of a two-network run: capture payloads instead of POSTing.
+
+    The counts it reports are row counts, not server-side upserts -- nothing
+    has been ingested yet. Replay prints the real numbers.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._dir = directory
+        self._dir.mkdir(parents=True, exist_ok=True)
+        self._count = 0
+
+    def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self._count += 1
+        name = f"{self._count:03d}-{path.strip('/').replace('/', '-')}.json"
+        target = self._dir / name
+        _ = target.write_text(
+            json.dumps({"path": path, "payload": payload}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        rows = payload.get("rows")
+        return {"upserted": len(rows) if isinstance(rows, list) else 0, "received": 0}
+
+
+def replay(ingest: Ingest, directory: Path) -> int:
+    """POST payloads captured by an earlier --dump run, in capture order."""
+    files = sorted(directory.glob("*.json"))
+    if not files:
+        raise SystemExit(f"no captured payloads in {directory}")
+    total = 0
+    for file in files:
+        item = json.loads(file.read_text(encoding="utf-8"))
+        result = ingest.post(item["path"], item["payload"])
+        total += int(result.get("upserted", 0))
+        print(f"{file.name} -> {result}")
+    return total
 
 
 def _mssql(server: str, user: str, password: str, database: str) -> pymssql.Connection:
@@ -296,15 +341,29 @@ def main() -> int:
         action="append",
         default=None,
     )
+    parser.add_argument("--dump", type=Path, default=None, help="write payloads here instead of POSTing")
+    parser.add_argument("--replay", type=Path, default=None, help="POST payloads captured by --dump")
+    parser.add_argument("--roster-file", type=Path, default=None, help="roster JSON, required with --dump")
     args = parser.parse_args()
+
+    if args.replay:
+        ingest = Ingest(_env("BAST_INGEST_URL"), _env("BAST_INGEST_TOKEN"))
+        print(f"replayed {replay(ingest, args.replay)} rows")
+        return 0
 
     end = args.until or date.today()  # noqa: DTZ011
     lookback = int(os.getenv("SYNC_LOOKBACK_DAYS", "14"))
     start = args.since or (end - timedelta(days=lookback))
     selected = set(args.only or ("attendance", "redmine", "iot"))
 
-    ingest = Ingest(_env("BAST_INGEST_URL"), _env("BAST_INGEST_TOKEN"))
-    roster = ingest.roster()
+    if args.dump:
+        if not args.roster_file:
+            raise SystemExit("--dump needs --roster-file: the roster lives on the VPS, which is unreachable")
+        ingest: Any = DumpIngest(args.dump)
+        roster = json.loads(args.roster_file.read_text(encoding="utf-8"))
+    else:
+        ingest = Ingest(_env("BAST_INGEST_URL"), _env("BAST_INGEST_TOKEN"))
+        roster = ingest.roster()
     print(f"window {start} .. {end}; roster {len(roster)} employees")
 
     failures: list[str] = []
