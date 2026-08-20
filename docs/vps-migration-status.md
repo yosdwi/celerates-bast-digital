@@ -1,27 +1,53 @@
 # VPS migration — deployment handover
 
-**State as of 2026-08-20: deployed and running.** The typed-table migration is
-live, the roster is seeded, Ollama and bot-bridge are up, nocodb-v2 is up. One
-commit (`c82b48c`) is written and verified locally but **not yet deployed** --
-see "Resume here" below.
+**State as of 2026-08-20 (late): deployed, data-live, and view-complete.**
+`c82b48c` shipped, the bridge has run for real (attendance + Redmine both
+land), timesheets are backfilled, nocodb-v2's `PAMAApps` source has full
+view parity with the legacy V1 NocoDB, all 25 V1 accounts were migrated in
+with their original passwords, and the WhatsApp bot's onboarding UX was
+fixed. This doc and `[[vps-access]]`/`[[vps-migration-progress]]` (Claude's
+own memory, this machine only) are the two sources of truth -- this file is
+the one that travels with the repo.
 
 Read this before touching the VPS.
 
 ## Resume here
 
-1. **Deploy `c82b48c`** (sync → `docker compose build web-blue` → `deploy.sh`).
-   It fixes `_as_date`, which silently discarded 100% of Redmine rows arriving
-   through `/internal/sync`. Until it ships, task ingest returns 200 with
-   `upserted: 0` and nothing lands.
-2. **Run the bridge.** All credentials are in `bridge/.env` (gitignored). Both
-   SQL Servers are reachable from the dev machine, so it can stand in for the
-   PAMA PC: `python pama_bridge.py --since 2026-07-01`. Verified data waiting:
-   1274 attendance punches, 80 Redmine tasks, all 17 roster members covered.
-3. **Connect nocodb-v2's data source** (browser step, see §6) and then write to
-   a `timesheets` row from it to confirm `origin` flips to `'manual'`.
-4. **IoT / Google Sheets has never been exercised** -- the service-account key
-   is dead. Two of the three source paths turned out to carry bugs that only
-   appeared when actually run; do not assume the third is clean.
+1. **nocodb-v2's `PAMAApps` source is connected and correct** (verified: its
+   config points at the real `digital_bast_app` Postgres, live pass-through,
+   not a copy). Group-by views matching V1 (`Employee Name` → `Year` →
+   `Month`, 3-level) exist on `attendance`, `tasks`, `timesheets`; `tasks`
+   additionally has `Developer`/`IoT Operations` filtered views. **If you
+   edit any `nc_grid_view_columns_v2`/`nc_columns_v2` row via raw SQL (the
+   API refuses schema writes on this source -- `ERR_FORBIDDEN`), you MUST
+   `docker restart digital-bast-v2-nocodb-v2-1` afterward** or the change
+   sits in Postgres but the API/UI keep serving a stale in-memory copy.
+2. **Still never exercised: IoT / Google Sheets.** The service-account key is
+   dead (`invalid_grant`). Two of the three source paths (PAMA attendance,
+   Redmine) carried real bugs that only surfaced when actually run against
+   live data -- do not assume the IoT path is clean until it's actually run.
+3. **The PAMA office network cannot reach this VPS at all** (SSH reset
+   network-wide, TLS SNI-blocked to every `*.celeratesapps.com` host) but
+   *can* reach both PAMA SQL Servers -- no single machine on that network can
+   do both halves of a sync. `bridge/pama_bridge.py --dump DIR
+   --roster-file employee_data.json` captures ingest payloads on the PAMA
+   network; `--replay DIR` posts them from any network that reaches the VPS.
+4. **Disk stays tight** (usually 85-95% full, `df -h /`) because an unrelated
+   legacy V1 stack (its own postgres, pgadmin, nocodb) shares this box and
+   is explicitly off-limits without asking first (see `[[vps-access]]`).
+   `scripts/preflight.sh`'s disk gate is 8GB (`AVAILABLE_MIN_GB`); before a
+   build, `sudo docker builder prune -f` alone usually recovers 1-5GB safely
+   -- do that first, and stop there unless the user has confirmed touching
+   anything from the legacy stack.
+5. **Deploying a code change** that isn't just a migration: sync the changed
+   files (this deploy dir is `rsync`-style, not a git checkout --
+   `tar czf - <paths> | ssh ... tar xzf - -C <deploy dir>` in one shot beats
+   per-file `sftp` badly over this link's ~250ms RTT), then
+   `docker compose build web-blue` **and** `docker compose build bot-bridge`
+   (bot-bridge is a separate image that also bundles `src/`, and it is not
+   part of the blue/green rotation -- `deploy.sh` never restarts it, you
+   must `docker compose up -d bot-bridge` yourself after every rebuild that
+   touches shared code), then `./scripts/deploy.sh`.
 
 ## What was already deployed and verified
 
@@ -53,6 +79,9 @@ Read this before touching the VPS.
 | `8396ff5` | `ATTENDANCE_QUERY` used columns that do not exist (`att_hour`/`att_type`); it had never been run |
 | `4949caf` | `active-slot.conf` was tracked in git *and* rewritten at runtime, so every sync reset the deploy scripts' idea of the live slot |
 | `c82b48c` | `_as_date` rejected string dates → 100% of ingested Redmine rows silently dropped |
+| `435e445` | preflight's 10GB disk gate was unreachable on this box even right after a full prune, because 1.3GB of headroom is permanently locked inside the running legacy V1 stack |
+| `61840a4` | WhatsApp bot's NRP-not-found reply was identical for blank input and a real-but-wrong attempt, so a mistyped NRP looked like the bot ignored the message entirely |
+| *(not committed -- nocodb-v2 meta only)* | a `Links` column NocoDB auto-detected from a real Postgres FK to a table outside the tracked source (`tasks.bot_conversations`) had a null `fk_related_model_id`, crashing every read of `tasks` (`Cannot read properties of null (reading 'onSection')`); the API refuses to delete columns on this source, fixed via direct SQL |
 
 The pattern worth remembering: every one of these was invisible to reading and
 to the test suite. They surfaced only by executing the real path against the
