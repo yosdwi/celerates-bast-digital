@@ -12,10 +12,17 @@ the business rules stay in one place instead of drifting between two codebases.
     python pama_bridge.py --only attendance   # attendance | redmine | iot
 
 Two-network split. The PAMA network reaches the SQL Servers but blocks SSH and
-blocks TLS to the ingest host, so one machine can rarely do both halves:
+blocks TLS to the ingest host entirely (and to Google's Drive/Dropbox storage
+APIs, though not Sheets), so one machine can rarely do both halves. Two ways
+to bridge that, manual or automatic:
 
     python pama_bridge.py --since 2026-07-01 --dump out --roster-file roster.json
     python pama_bridge.py --replay out       # from a network that reaches the VPS
+
+    python pama_bridge.py --dump out --roster-file roster.json --upload-sheet
+    # scripts/sheet_replay_poller.py on the VPS side reads and replays it --
+    # for a recurring Task Scheduler job, since Sheets is reachable from
+    # both sides and nothing needs a human to switch networks in between.
 
 Recovery model: a fixed overlapping lookback window re-sent every run, with
 idempotent upserts on the far side. PC offline, half-failed batch, duplicate
@@ -164,6 +171,62 @@ class DumpIngest:
         )
         rows = payload.get("rows")
         return {"upserted": len(rows) if isinstance(rows, list) else 0, "received": 0}
+
+
+def upload_dump_to_sheet(directory: Path) -> int:
+    """Push every payload in a --dump directory to a shared relay sheet.
+
+    The PAMA network cannot reach the VPS at all (SSH reset network-wide,
+    TLS SNI-blocked for every *.celeratesapps.com host) but Google's Sheets
+    API is reachable from it same as any other unblocked site (Drive's own
+    storage API, and Dropbox's, are NOT -- verified 2026-08-20; Sheets is
+    the one that got through). This is the relay leg that gets a dump off
+    this network. A separate poller on the VPS side
+    (scripts/sheet_replay_poller.py) reads rows from here and replays them,
+    deleting each once its replay succeeds; nothing here talks to the VPS.
+
+    The relay sheet must already exist and be shared Editor with the service
+    account -- a service account has no Drive storage quota of its own and
+    cannot create a new spreadsheet, only write into one a real account
+    already owns (verified 2026-08-20: creating a file 403s with
+    "Service Accounts do not have storage quota"; appending rows to an
+    existing one works fine).
+    """
+    from google.oauth2 import service_account  # noqa: PLC0415
+    from googleapiclient.discovery import build  # noqa: PLC0415
+
+    key_path = Path(_env("GOOGLE_SHEETS_RELAY_CREDENTIALS"))
+    if not key_path.is_absolute():
+        key_path = Path(__file__).resolve().parent / key_path
+    if not key_path.exists():
+        print(f"Sheets relay credentials not found: {key_path}", file=sys.stderr)
+        raise SystemExit(2)
+    credentials = service_account.Credentials.from_service_account_file(
+        str(key_path), scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    sheet_id = _env("GOOGLE_SHEETS_RELAY_SHEET_ID")
+
+    files = sorted(directory.glob("*.json"))
+    if not files:
+        print(f"nothing to upload in {directory}")
+        return 0
+    rows = [[file.name, file.read_text(encoding="utf-8")] for file in files]
+    _ = (
+        service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=sheet_id,
+            range="A1",
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body={"values": rows},
+        )
+        .execute()
+    )
+    for file in files:
+        print(f"uploaded {file.name}")
+    return len(files)
 
 
 def replay(ingest: Ingest, directory: Path) -> int:
@@ -341,10 +404,24 @@ def main() -> int:
         action="append",
         default=None,
     )
-    parser.add_argument("--dump", type=Path, default=None, help="write payloads here instead of POSTing")
-    parser.add_argument("--replay", type=Path, default=None, help="POST payloads captured by --dump")
-    parser.add_argument("--roster-file", type=Path, default=None, help="roster JSON, required with --dump")
+    parser.add_argument(
+        "--dump", type=Path, default=None, help="write payloads here instead of POSTing"
+    )
+    parser.add_argument(
+        "--replay", type=Path, default=None, help="POST payloads captured by --dump"
+    )
+    parser.add_argument(
+        "--roster-file", type=Path, default=None, help="roster JSON, required with --dump"
+    )
+    parser.add_argument(
+        "--upload-sheet",
+        action="store_true",
+        help="after --dump, push the captured payloads to the Sheets relay",
+    )
     args = parser.parse_args()
+
+    if args.upload_sheet and not args.dump:
+        raise SystemExit("--upload-sheet only makes sense together with --dump")
 
     if args.replay:
         ingest = Ingest(_env("BAST_INGEST_URL"), _env("BAST_INGEST_TOKEN"))
@@ -358,7 +435,10 @@ def main() -> int:
 
     if args.dump:
         if not args.roster_file:
-            raise SystemExit("--dump needs --roster-file: the roster lives on the VPS, which is unreachable")
+            message = (
+                "--dump needs --roster-file: the roster lives on the VPS, which is unreachable"
+            )
+            raise SystemExit(message)
         ingest: Any = DumpIngest(args.dump)
         roster = json.loads(args.roster_file.read_text(encoding="utf-8"))
     else:
@@ -373,6 +453,9 @@ def main() -> int:
         _run(failures, "redmine", lambda: sync_redmine(ingest, roster, start, end))
     if "iot" in selected:
         _run(failures, "iot", lambda: sync_iot_sheet(ingest, start, end))
+
+    if not failures and args.upload_sheet:
+        _run(failures, "upload-sheet", lambda: upload_dump_to_sheet(args.dump))
 
     if failures:
         print(f"FAILED: {', '.join(failures)}", file=sys.stderr)

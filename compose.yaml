@@ -38,6 +38,11 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
+    # scripts/sheet_replay_poller.py: a distinct credential and sheet from
+    # the IoT sheet's (that one is dead -- invalid_grant). Optional -- the
+    # poller is the only thing that reads it, and only when actually invoked.
+    GOOGLE_SHEETS_RELAY_CREDENTIALS: /run/secrets/google_sheets_relay_credentials
+    GOOGLE_SHEETS_RELAY_SHEET_ID: ${GOOGLE_SHEETS_RELAY_SHEET_ID:-}
   secrets: &app-secrets
     - session_secret
     - app_database_dsn
@@ -50,6 +55,7 @@ x-app: &app
     - google_service_account
     - sqlserver_connection_string
     - sync_ingest_token
+    - google_sheets_relay_credentials
   networks:
     - backend
     - egress
@@ -337,6 +343,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/sqlserver_connection_string
   sync_ingest_token:
     file: ${SECRETS_DIR:-./secrets}/sync_ingest_token
+  google_sheets_relay_credentials:
+    file: ${SECRETS_DIR:-./secrets}/google_sheets_relay_credentials.json
 
 networks:
   edge:
