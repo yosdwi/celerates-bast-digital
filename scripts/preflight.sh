@@ -16,10 +16,13 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
-# 10GB, not 20: the box holds ~30GB of Postgres volumes and never had 20GB
-# spare, so the old default blocked every deploy. A full deploy needs roughly
-# 4.5GB (nocodb-v2 ~1.5, Ollama llama3.2:3b ~2, bot-bridge ~1), leaving margin.
-available_min_gb=${AVAILABLE_MIN_GB:-10}
+# 8GB, not 10: the box also carries an unrelated legacy V1 stack (its own
+# postgres, pgadmin) that this deploy does not own and will not stop to free
+# space, so 10GB stopped being reachable even right after a full prune. A
+# deploy needs roughly 4.5GB (nocodb-v2 ~1.5, Ollama llama3.2:3b ~2,
+# bot-bridge ~1); 8GB keeps a margin above that without requiring space this
+# box does not have spare.
+available_min_gb=${AVAILABLE_MIN_GB:-8}
 root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')
 [ "$root_available_kb" -ge "$((available_min_gb * 1024 * 1024))" ] || die "root disk has less than ${available_min_gb}GB available" 70
 
