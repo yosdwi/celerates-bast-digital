@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Protocol, final
 
-from digital_bast.domain.completion import CheckState, evaluate_completion
+from digital_bast.domain.completion import CheckState, evaluate_completion, evaluate_employee
 from digital_bast.domain.models import EmployeeRole, EntityKind, Month, Task
 
 if TYPE_CHECKING:
@@ -157,8 +157,70 @@ class CommandCenterView:
     sources: tuple[SourceFreshness, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AttendanceDay:
+    work_date: date
+    is_off: bool
+    has_record: bool
+    has_clock_in: bool
+    has_clock_out: bool
+    has_evidence: bool
+    state: CheckState
+
+
+@dataclass(frozen=True, slots=True)
+class TimesheetDay:
+    work_date: date
+    is_off: bool
+    has_record: bool
+    has_remarks: bool
+    blocked_by_attendance: bool
+    state: CheckState
+
+
+@dataclass(frozen=True, slots=True)
+class TalentTask:
+    work_date: date
+    title: str
+    status: str
+    evidence_count: int
+    is_closed: bool
+    evidence_ready: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class TalentDataAvailability:
+    attendance: bool
+    evidence: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TalentDetailView:
+    period: PeriodView
+    nrp: str
+    name: str
+    role: EmployeeRole
+    overall_state: CheckState
+    checks: ReadinessChecks
+    blockers: tuple[Blocker, ...]
+    attendance_days: tuple[AttendanceDay, ...]
+    timesheet_days: tuple[TimesheetDay, ...]
+    tasks: tuple[TalentTask, ...]
+    availability: TalentDataAvailability
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _period_view(period: DateRange) -> PeriodView:
+    return PeriodView(
+        year=period.start.year,
+        month=period.start.month,
+        start=period.start.isoformat(),
+        end=period.end.isoformat(),
+        label=period.label(),
+    )
 
 
 def _summary(result: CheckResult) -> CheckSummary:
@@ -204,6 +266,86 @@ def _status_counts(tasks: tuple[Task, ...]) -> tuple[TaskStatusCount, ...]:
     )
 
 
+def _attendance_days(facts: EmployeeFacts, period: DateRange) -> tuple[AttendanceDay, ...]:
+    by_day = {record.work_date: record for record in facts.attendance}
+    result: list[AttendanceDay] = []
+    for work_date in period.days():
+        is_off = work_date in facts.off_days
+        record = by_day.get(work_date)
+        if is_off:
+            state = CheckState.COMPLETE
+        elif not facts.attendance_available:
+            state = CheckState.NEEDS_REVIEW
+        elif record is None:
+            state = CheckState.INCOMPLETE
+        elif (record.has_clock_in and record.has_clock_out) or record.has_evidence:
+            state = CheckState.COMPLETE
+        else:
+            state = CheckState.INCOMPLETE
+        result.append(
+            AttendanceDay(
+                work_date=work_date,
+                is_off=is_off,
+                has_record=record is not None,
+                has_clock_in=record.has_clock_in if record is not None else False,
+                has_clock_out=record.has_clock_out if record is not None else False,
+                has_evidence=record.has_evidence if record is not None else False,
+                state=state,
+            )
+        )
+    return tuple(result)
+
+
+def _timesheet_days(
+    facts: EmployeeFacts,
+    period: DateRange,
+    attendance_days: tuple[AttendanceDay, ...],
+) -> tuple[TimesheetDay, ...]:
+    by_day = {record.work_date: record for record in facts.timesheets}
+    attendance_by_day = {record.work_date: record for record in attendance_days}
+    result: list[TimesheetDay] = []
+    for work_date in period.days():
+        is_off = work_date in facts.off_days
+        record = by_day.get(work_date)
+        attendance = attendance_by_day[work_date]
+        blocked = not is_off and attendance.state is CheckState.INCOMPLETE
+        if is_off:
+            complete = record is not None and bool(record.remarks.strip())
+        elif blocked:
+            complete = False
+        else:
+            complete = record is not None
+        result.append(
+            TimesheetDay(
+                work_date=work_date,
+                is_off=is_off,
+                has_record=record is not None,
+                has_remarks=bool(record.remarks.strip()) if record is not None else False,
+                blocked_by_attendance=blocked,
+                state=CheckState.COMPLETE if complete else CheckState.INCOMPLETE,
+            )
+        )
+    return tuple(result)
+
+
+def _talent_tasks(facts: EmployeeFacts) -> tuple[TalentTask, ...]:
+    return tuple(
+        TalentTask(
+            work_date=task.work_date,
+            title=task.title,
+            status=task.status.strip() or "Unknown",
+            evidence_count=task.evidence_count,
+            is_closed=task.status.strip().casefold() == "closed",
+            evidence_ready=(task.evidence_count > 0) if facts.evidence_available else None,
+        )
+        for task in sorted(
+            facts.tasks,
+            key=lambda item: (item.work_date, item.title.casefold()),
+            reverse=True,
+        )
+    )
+
+
 @final
 class TalentOpsService:
     def __init__(
@@ -236,43 +378,58 @@ class TalentOpsService:
         tasks = await self._tasks(period)
         delivery = DeliverySummary(
             total_tasks=len(tasks),
-            closed_tasks=sum(
-                task.status.strip().casefold() == "closed"
-                for task in tasks
-            ),
-            non_closed_tasks=sum(
-                task.status.strip().casefold() != "closed"
-                for task in tasks
-            ),
+            closed_tasks=sum(task.status.strip().casefold() == "closed" for task in tasks),
+            non_closed_tasks=sum(task.status.strip().casefold() != "closed" for task in tasks),
             status_counts=_status_counts(tasks),
         )
         summary = CommandCenterSummary(
             active_talents=len(roster),
-            bast_ready=sum(
-                item.overall_state is CheckState.COMPLETE
-                for item in readiness
-            ),
+            bast_ready=sum(item.overall_state is CheckState.COMPLETE for item in readiness),
             need_attention=len(attention),
             open_tasks=delivery.non_closed_tasks,
             evidence_ready=sum(
-                item.checks.evidence.state is CheckState.COMPLETE
-                for item in readiness
+                item.checks.evidence.state is CheckState.COMPLETE for item in readiness
             ),
         )
         return CommandCenterView(
-            period=PeriodView(
-                year=period.start.year,
-                month=period.start.month,
-                start=period.start.isoformat(),
-                end=period.end.isoformat(),
-                label=period.label(),
-            ),
+            period=_period_view(period),
             summary=summary,
             attention=attention,
             readiness=readiness,
             teams=self._teams(readiness),
             delivery=delivery,
             sources=await self._sources(),
+        )
+
+    async def talent_detail(self, period: DateRange, nrp: str) -> TalentDetailView | None:
+        roster = await self._employees.load()
+        person = next(
+            (item for item in roster if item.external_id.casefold() == nrp.strip().casefold()),
+            None,
+        )
+        if person is None:
+            return None
+        loaded = await self._completion.load(period, person.name)
+        facts = next((item for item in loaded if item.employee_id == str(person.id)), None)
+        if facts is None:
+            return None
+        completion = evaluate_employee(facts, period)
+        attendance_days = _attendance_days(facts, period)
+        return TalentDetailView(
+            period=_period_view(period),
+            nrp=person.external_id,
+            name=person.name,
+            role=person.role,
+            overall_state=completion.state,
+            checks=_checks(completion),
+            blockers=_blockers(completion),
+            attendance_days=attendance_days,
+            timesheet_days=_timesheet_days(facts, period, attendance_days),
+            tasks=_talent_tasks(facts),
+            availability=TalentDataAvailability(
+                attendance=facts.attendance_available,
+                evidence=facts.evidence_available,
+            ),
         )
 
     @staticmethod
@@ -306,15 +463,11 @@ class TalentOpsService:
     async def _tasks(self, period: DateRange) -> tuple[Task, ...]:
         tasks: list[Task] = []
         for year, month in period.months():
-            records = await self._records.list_month(
-                EntityKind.TASK,
-                Month(year, month),
-            )
+            records = await self._records.list_month(EntityKind.TASK, Month(year, month))
             tasks.extend(
                 record
                 for record in records
-                if isinstance(record, Task)
-                and period.start <= record.work_date <= period.end
+                if isinstance(record, Task) and period.start <= record.work_date <= period.end
             )
         return tuple(tasks)
 
@@ -327,26 +480,19 @@ class TalentOpsService:
                 TeamReadiness(
                     role=role,
                     total=len(members),
-                    ready=sum(
-                        item.overall_state is CheckState.COMPLETE
-                        for item in members
-                    ),
+                    ready=sum(item.overall_state is CheckState.COMPLETE for item in members),
                     checks=TeamCheckCounts(
                         attendance_ready=sum(
-                            item.checks.attendance.state is CheckState.COMPLETE
-                            for item in members
+                            item.checks.attendance.state is CheckState.COMPLETE for item in members
                         ),
                         timesheet_ready=sum(
-                            item.checks.timesheet.state is CheckState.COMPLETE
-                            for item in members
+                            item.checks.timesheet.state is CheckState.COMPLETE for item in members
                         ),
                         task_ready=sum(
-                            item.checks.task.state is CheckState.COMPLETE
-                            for item in members
+                            item.checks.task.state is CheckState.COMPLETE for item in members
                         ),
                         evidence_ready=sum(
-                            item.checks.evidence.state is CheckState.COMPLETE
-                            for item in members
+                            item.checks.evidence.state is CheckState.COMPLETE for item in members
                         ),
                     ),
                 )
@@ -354,10 +500,7 @@ class TalentOpsService:
         return tuple(teams)
 
     async def _sources(self) -> tuple[SourceFreshness, ...]:
-        snapshots = {
-            item.source_key: item
-            for item in await self._source_sync.load()
-        }
+        snapshots = {item.source_key: item for item in await self._source_sync.load()}
         now = self._now()
         return tuple(
             self._freshness(source_key, snapshots.get(source_key), now)
@@ -377,10 +520,7 @@ class TalentOpsService:
                 last_success_at=None,
                 age_seconds=None,
             )
-        age_seconds = max(
-            0,
-            int((now - snapshot.last_success_at).total_seconds()),
-        )
+        age_seconds = max(0, int((now - snapshot.last_success_at).total_seconds()))
         return SourceFreshness(
             source_key=source_key,
             label=_SOURCE_LABELS[source_key],
