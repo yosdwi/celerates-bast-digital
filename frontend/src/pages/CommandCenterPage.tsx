@@ -1,4 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type {
   AttentionItem,
@@ -45,10 +46,10 @@ interface Props {
 
 const NAV_ITEMS = [
   { label: "Command Center", icon: GridIcon, active: true },
-  { label: "Talents", icon: PersonIcon },
-  { label: "Delivery", icon: TrendIcon },
-  { label: "BAST readiness", icon: CheckDocIcon },
-  { label: "Actions", icon: AlertIcon },
+  { label: "Talents", icon: PersonIcon, active: false },
+  { label: "Delivery", icon: TrendIcon, active: false },
+  { label: "BAST readiness", icon: CheckDocIcon, active: false },
+  { label: "Actions", icon: AlertIcon, active: false },
 ] as const;
 
 function initials(name: string): string {
