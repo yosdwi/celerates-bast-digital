@@ -12,6 +12,7 @@ from digital_bast.web.talentops_contracts import (
     AiCommandCenterResponse,
     CommandCenterResponse,
     SessionUserResponse,
+    TalentDetailResponse,
     TalentOpsSessionResponse,
 )
 
@@ -82,6 +83,33 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
         view = await deps.talentops.command_center(selected_period)
         return CommandCenterResponse.model_validate(view)
 
+    async def talent_detail(
+        request: Request,
+        nrp: str,
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    ) -> TalentDetailResponse:
+        _ = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        selected_period = _period(year, month, deps.now())
+        if deps.talentops is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="TalentOps service is unavailable",
+            )
+        view = await deps.talentops.talent_detail(selected_period, nrp)
+        if view is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Talent not found",
+            )
+        return TalentDetailResponse.model_validate(view)
+
     async def ask_command_center(
         request: Request,
         payload: AiCommandCenterInput,
@@ -120,6 +148,12 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
         command_center,
         methods=["GET"],
         response_model=CommandCenterResponse,
+    )
+    router.add_api_route(
+        "/talents/{nrp}",
+        talent_detail,
+        methods=["GET"],
+        response_model=TalentDetailResponse,
     )
     router.add_api_route(
         "/ai/command-center",
