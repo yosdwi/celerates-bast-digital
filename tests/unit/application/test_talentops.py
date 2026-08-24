@@ -19,7 +19,11 @@ DAY = date(2026, 8, 1)
 
 
 class FakeCompletionSource:
-    async def load(self, period: DateRange, employee: str | None = None) -> tuple[EmployeeFacts, ...]:
+    async def load(
+        self,
+        period: DateRange,
+        employee: str | None = None,
+    ) -> tuple[EmployeeFacts, ...]:
         assert period == DateRange(DAY, DAY)
         assert employee is None
         return (
