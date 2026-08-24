@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import require_session
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from digital_bast.web.dependencies import WebDependencies
 
 
 def talentops_page_router(
