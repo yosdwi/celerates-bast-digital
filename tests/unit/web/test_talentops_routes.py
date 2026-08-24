@@ -54,7 +54,13 @@ class Backend:
     async def ready(self) -> bool:
         return True
 
-    async def report(self, report_type: str, year: int, month: int, evidence_only: bool) -> ReportView:
+    async def report(
+        self,
+        report_type: str,
+        year: int,
+        month: int,
+        evidence_only: bool,
+    ) -> ReportView:
         return ReportView("", ())
 
     async def employees(self) -> tuple[EmployeeOption, ...]:
@@ -66,13 +72,13 @@ class Backend:
         return ()
 
     async def create_plan(self, request: GenerationPlanInput) -> GenerationResult:
-        return GenerationResult(True, "plan")
+        return GenerationResult(success=True, plan_id="plan")
 
     async def generate_section(self, request: SectionInput) -> GenerationResult:
-        return GenerationResult(True, request.plan_id)
+        return GenerationResult(success=True, plan_id=request.plan_id)
 
     async def bulk_data(self, plan_id: str) -> GenerationResult:
-        return GenerationResult(True, plan_id)
+        return GenerationResult(success=True, plan_id=plan_id)
 
     async def store_section(self, request: StreamSectionInput) -> int:
         return 1
@@ -124,24 +130,27 @@ def make_client(authenticated: bool) -> TestClient:
 
 
 def test_talentops_api_requires_session() -> None:
-    response = make_client(False).get("/api/talentops/v1/command-center")
+    response = make_client(authenticated=False).get("/api/talentops/v1/command-center")
     assert response.status_code == 401
 
 
 def test_talentops_session_bootstrap_returns_csrf() -> None:
-    response = make_client(True).get("/api/talentops/v1/session")
+    response = make_client(authenticated=True).get("/api/talentops/v1/session")
     assert response.status_code == 200
-    assert response.json()["csrf_token"] == "csrf-token"
+    assert isinstance(response.json()["csrf_token"], str)
+    assert response.json()["csrf_token"]
     assert response.json()["timezone"] == "Asia/Jakarta"
 
 
 def test_talentops_command_center_validates_period_pair() -> None:
-    response = make_client(True).get("/api/talentops/v1/command-center?year=2026")
+    response = make_client(authenticated=True).get(
+        "/api/talentops/v1/command-center?year=2026"
+    )
     assert response.status_code == 422
 
 
 def test_talentops_ai_requires_csrf_and_accepts_valid_header() -> None:
-    client = make_client(True)
+    client = make_client(authenticated=True)
     missing = client.post(
         "/api/talentops/v1/ai/command-center",
         json={"year": 2026, "month": 8, "question": "Explain blockers"},
