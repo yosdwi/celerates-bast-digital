@@ -4,6 +4,7 @@ import "./styles/global.css";
 import "./styles/slice2.css";
 import "./styles/slice3.css";
 import "./styles/slice4.css";
+import "./styles/slice5.css";
 
 const root = document.getElementById("root");
 if (!root) {
