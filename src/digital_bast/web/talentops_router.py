@@ -44,7 +44,6 @@ def _period(
 def talentops_router(deps: WebDependencies) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX, tags=["talentops"])
 
-    @router.get("/session", response_model=TalentOpsSessionResponse)
     async def session(request: Request) -> TalentOpsSessionResponse:
         _, record = await require_session(
             request,
@@ -62,7 +61,6 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             timezone=_TIMEZONE_NAME,
         )
 
-    @router.get("/command-center", response_model=CommandCenterResponse)
     async def command_center(
         request: Request,
         year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
@@ -84,10 +82,6 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
         view = await deps.talentops.command_center(selected_period)
         return CommandCenterResponse.model_validate(view)
 
-    @router.post(
-        "/ai/command-center",
-        response_model=AiCommandCenterResponse,
-    )
     async def ask_command_center(
         request: Request,
         payload: AiCommandCenterInput,
@@ -115,4 +109,22 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             return AiCommandCenterResponse(status="unavailable", answer=None)
         return AiCommandCenterResponse(status="ok", answer=answer)
 
+    router.add_api_route(
+        "/session",
+        session,
+        methods=["GET"],
+        response_model=TalentOpsSessionResponse,
+    )
+    router.add_api_route(
+        "/command-center",
+        command_center,
+        methods=["GET"],
+        response_model=CommandCenterResponse,
+    )
+    router.add_api_route(
+        "/ai/command-center",
+        ask_command_center,
+        methods=["POST"],
+        response_model=AiCommandCenterResponse,
+    )
     return router
