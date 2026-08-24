@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { AiResponse, CommandCenterResponse, TalentOpsSession } from "./types";
+import type { AiResponse, CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "./types";
 
 const BASE = "/api/talentops/v1";
 
@@ -10,6 +10,11 @@ export function getSession(): Promise<TalentOpsSession> {
 export function getCommandCenter(year?: number, month?: number): Promise<CommandCenterResponse> {
   const query = year !== undefined && month !== undefined ? `?year=${year}&month=${month}` : "";
   return apiFetch<CommandCenterResponse>(`${BASE}/command-center${query}`);
+}
+
+export function getTalentDetail(nrp: string, year: number, month: number): Promise<TalentDetailResponse> {
+  const query = new URLSearchParams({ year: String(year), month: String(month) });
+  return apiFetch<TalentDetailResponse>(`${BASE}/talents/${encodeURIComponent(nrp)}?${query.toString()}`);
 }
 
 export function askCommandCenter(
