@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import "./styles/global.css";
 import "./styles/slice2.css";
+import "./styles/slice3.css";
 
 const root = document.getElementById("root");
 if (!root) {
