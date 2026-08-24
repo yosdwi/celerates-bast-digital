@@ -3,8 +3,19 @@ from datetime import date
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
+from digital_bast.application.talentops import TalentOpsService
+from digital_bast.application.talentops_ai import TalentOpsAiService
 from digital_bast.config import get_settings
+from digital_bast.infrastructure.completion_source import CompletionSource
+from digital_bast.infrastructure.local_completion_source import (
+    PostgresAttendanceFactReader,
+    PostgresTaskEvidenceReader,
+)
+from digital_bast.infrastructure.ollama_chat import OllamaChatClient
+from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.redis_url import parse_redis_url
+from digital_bast.infrastructure.repositories import PostgresDomainRepository
+from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
 from digital_bast.web.contracts import (
     AttendanceRow,
     AuthenticatedUser,
@@ -18,6 +29,7 @@ from digital_bast.web.contracts import (
     SessionRecord,
     SessionStore,
     StreamSectionInput,
+    WebBackend,
 )
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.errors import (
@@ -123,16 +135,45 @@ def production_dependencies() -> WebDependencies:
             settings.nocodb_database_dsn.get_secret_value(),
             settings.nocodb_base_id,
         )
-    backend = (
-        PostgresWebBackend(settings.database_dsn.get_secret_value())
-        if settings.database_dsn is not None
-        else UnavailableWebBackend()
-    )
+
+    backend: WebBackend = UnavailableWebBackend()
+    talentops: TalentOpsService | None = None
+    talentops_ai: TalentOpsAiService | None = None
+    source_sync_state: PostgresSourceSyncStateStore | None = None
+    if settings.database_dsn is not None:
+        dsn = settings.database_dsn.get_secret_value()
+        backend = PostgresWebBackend(dsn)
+        employees = PostgresEmployeeSource(dsn)
+        records = PostgresDomainRepository(dsn)
+        completion = CompletionSource(
+            employees,
+            records,
+            PostgresAttendanceFactReader(dsn),
+            PostgresTaskEvidenceReader(dsn),
+        )
+        source_sync_state = PostgresSourceSyncStateStore(dsn)
+        talentops = TalentOpsService(
+            completion,
+            employees,
+            records,
+            source_sync_state,
+        )
+        if settings.bot_llm_url is not None:
+            talentops_ai = TalentOpsAiService(
+                OllamaChatClient(
+                    str(settings.bot_llm_url),
+                    settings.bot_llm_model,
+                )
+            )
+
     return WebDependencies(
         authenticator=authenticator,
         sessions=sessions,
         backend=backend,
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
+        talentops=talentops,
+        talentops_ai=talentops_ai,
+        source_sync_state=source_sync_state,
     )
 
 
