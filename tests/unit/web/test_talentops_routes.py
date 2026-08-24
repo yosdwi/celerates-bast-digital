@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from digital_bast.application.talentops import (
     AttendanceDay,
+    CheckSummary,
     CommandCenterSummary,
     CommandCenterView,
     DeliverySummary,
@@ -13,7 +14,6 @@ from digital_bast.application.talentops import (
     TalentDetailView,
     TalentTask,
     TimesheetDay,
-    CheckSummary,
 )
 from digital_bast.domain.completion import CheckState
 from digital_bast.domain.models import EmployeeRole
