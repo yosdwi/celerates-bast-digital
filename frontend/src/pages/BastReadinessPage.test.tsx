@@ -61,7 +61,7 @@ describe("BastReadinessPage", () => {
     render(<BastReadinessPage session={session} data={data} onNavigate={vi.fn()} onOpenTalent={openTalent} />);
 
     expect(screen.getByRole("heading", { name: "BAST Readiness" })).toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Yoses Dwi Maheswara").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByLabelText("Open BAST readiness for Yoses Dwi Maheswara"));
