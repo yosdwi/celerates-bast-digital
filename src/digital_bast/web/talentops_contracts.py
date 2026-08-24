@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime  # noqa: TC003
 from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from digital_bast.domain.completion import CheckState
-from digital_bast.domain.models import EmployeeRole
+from digital_bast.domain.completion import CheckState  # noqa: TC001
+from digital_bast.domain.models import EmployeeRole  # noqa: TC001
 
 
 class _FrozenModel(BaseModel):
