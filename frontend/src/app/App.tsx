@@ -4,6 +4,7 @@ import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } fr
 import ActionCenterPage from "../pages/ActionCenterPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
+import DeliveryPage from "../pages/DeliveryPage";
 import Talent360Page from "../pages/Talent360Page";
 import TalentsPage from "../pages/TalentsPage";
 
@@ -12,6 +13,7 @@ type Route =
   | { page: "talents" }
   | { page: "actions" }
   | { page: "bast" }
+  | { page: "delivery" }
   | { page: "talent"; nrp: string };
 
 function parseRoute(pathname: string): Route {
@@ -27,6 +29,7 @@ function parseRoute(pathname: string): Route {
   if (clean === "/admin/talentops/talents") return { page: "talents" };
   if (clean === "/admin/talentops/actions") return { page: "actions" };
   if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
+  if (clean === "/admin/talentops/delivery") return { page: "delivery" };
   return { page: "command-center" };
 }
 
@@ -135,17 +138,10 @@ export default function App() {
     );
   }
 
-  if (route.page === "talents") {
-    return <TalentsPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
-  }
-
-  if (route.page === "actions") {
-    return <ActionCenterPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
-  }
-
-  if (route.page === "bast") {
-    return <BastReadinessPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
-  }
+  if (route.page === "talents") return <TalentsPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  if (route.page === "actions") return <ActionCenterPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  if (route.page === "bast") return <BastReadinessPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  if (route.page === "delivery") return <DeliveryPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
 
   if (route.page === "talent") {
     if (talentLoading) return <LoadingScreen />;
