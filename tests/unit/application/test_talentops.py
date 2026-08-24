@@ -1,7 +1,13 @@
 from datetime import UTC, date, datetime
 
 from digital_bast.application.talentops import SourceSyncSnapshot, TalentOpsService
-from digital_bast.domain.completion import CheckState, DateRange, EmployeeFacts, TaskFact, TimesheetFact
+from digital_bast.domain.completion import (
+    CheckState,
+    DateRange,
+    EmployeeFacts,
+    TaskFact,
+    TimesheetFact,
+)
 from digital_bast.domain.models import (
     Employee,
     EmployeeId,
