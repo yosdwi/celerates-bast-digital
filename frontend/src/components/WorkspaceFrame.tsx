@@ -17,7 +17,7 @@ import {
 
 interface Props {
   session: TalentOpsSession;
-  active: "command-center" | "talents";
+  active: "command-center" | "talents" | "actions";
   attentionCount: number;
   search: string;
   onSearch: (value: string) => void;
@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   { key: "talents", label: "Talents", icon: PersonIcon, path: "/admin/talentops/talents" },
   { key: "delivery", label: "Delivery", icon: TrendIcon, path: null },
   { key: "bast", label: "BAST readiness", icon: CheckDocIcon, path: null },
-  { key: "actions", label: "Actions", icon: AlertIcon, path: null },
+  { key: "actions", label: "Actions", icon: AlertIcon, path: "/admin/talentops/actions" },
 ] as const;
 
 function initials(name: string): string {
