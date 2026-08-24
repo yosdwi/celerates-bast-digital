@@ -3,11 +3,20 @@ from datetime import UTC, date, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from digital_bast.application.talentops import (
+    AttendanceDay,
     CommandCenterSummary,
     CommandCenterView,
     DeliverySummary,
     PeriodView,
+    ReadinessChecks,
+    TalentDataAvailability,
+    TalentDetailView,
+    TalentTask,
+    TimesheetDay,
+    CheckSummary,
 )
+from digital_bast.domain.completion import CheckState
+from digital_bast.domain.models import EmployeeRole
 from digital_bast.web import (
     AttendanceRow,
     AuthenticatedUser,
@@ -96,6 +105,57 @@ class TalentOps:
             sources=(),
         )
 
+    async def talent_detail(self, period: object, nrp: str) -> TalentDetailView | None:
+        if nrp != "JIMT24002":
+            return None
+        checks = ReadinessChecks(
+            attendance=CheckSummary(CheckState.INCOMPLETE, 1),
+            timesheet=CheckSummary(CheckState.INCOMPLETE, 1),
+            task=CheckSummary(CheckState.COMPLETE, 0),
+            evidence=CheckSummary(CheckState.COMPLETE, 0),
+        )
+        return TalentDetailView(
+            period=PeriodView(2026, 8, "2026-08-01", "2026-08-31", "1-31 Agustus 2026"),
+            nrp="JIMT24002",
+            name="Yoses Dwi Maheswara",
+            role=EmployeeRole.DEVELOPER,
+            overall_state=CheckState.INCOMPLETE,
+            checks=checks,
+            blockers=(),
+            attendance_days=(
+                AttendanceDay(
+                    work_date=date(2026, 8, 1),
+                    is_off=False,
+                    has_record=False,
+                    has_clock_in=False,
+                    has_clock_out=False,
+                    has_evidence=False,
+                    state=CheckState.INCOMPLETE,
+                ),
+            ),
+            timesheet_days=(
+                TimesheetDay(
+                    work_date=date(2026, 8, 1),
+                    is_off=False,
+                    has_record=False,
+                    has_remarks=False,
+                    blocked_by_attendance=True,
+                    state=CheckState.INCOMPLETE,
+                ),
+            ),
+            tasks=(
+                TalentTask(
+                    work_date=date(2026, 8, 1),
+                    title="Task",
+                    status="Closed",
+                    evidence_count=1,
+                    is_closed=True,
+                    evidence_ready=True,
+                ),
+            ),
+            availability=TalentDataAvailability(attendance=True, evidence=True),
+        )
+
 
 class TalentOpsAi:
     async def answer(self, question: str, view: CommandCenterView) -> str | None:
@@ -147,6 +207,29 @@ def test_talentops_command_center_validates_period_pair() -> None:
         "/api/talentops/v1/command-center?year=2026"
     )
     assert response.status_code == 422
+
+
+def test_talentops_talent_detail_requires_session_and_returns_grounded_payload() -> None:
+    unauthenticated = make_client(authenticated=False).get(
+        "/api/talentops/v1/talents/JIMT24002?year=2026&month=8"
+    )
+    response = make_client(authenticated=True).get(
+        "/api/talentops/v1/talents/JIMT24002?year=2026&month=8"
+    )
+
+    assert unauthenticated.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["nrp"] == "JIMT24002"
+    assert response.json()["attendance_days"][0]["state"] == "incomplete"
+    assert response.json()["timesheet_days"][0]["blocked_by_attendance"] is True
+    assert response.json()["tasks"][0]["evidence_ready"] is True
+
+
+def test_talentops_talent_detail_returns_404_for_unknown_nrp() -> None:
+    response = make_client(authenticated=True).get(
+        "/api/talentops/v1/talents/UNKNOWN?year=2026&month=8"
+    )
+    assert response.status_code == 404
 
 
 def test_talentops_ai_requires_csrf_and_accepts_valid_header() -> None:
