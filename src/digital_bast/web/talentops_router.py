@@ -19,6 +19,7 @@ from digital_bast.web.talentops_contracts import (
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from digital_bast.application.talentops import TalentOpsService
     from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1"
@@ -40,6 +41,15 @@ def _period(
     selected_month = local_now.month if month is None else month
     dates = month_dates(selected_year, selected_month)
     return DateRange(dates[0], dates[-1])
+
+
+def _service(deps: WebDependencies) -> TalentOpsService:
+    if deps.talentops is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TalentOps service is unavailable",
+        )
+    return deps.talentops
 
 
 def talentops_router(deps: WebDependencies) -> APIRouter:
@@ -75,12 +85,7 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             api=True,
         )
         selected_period = _period(year, month, deps.now())
-        if deps.talentops is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="TalentOps service is unavailable",
-            )
-        view = await deps.talentops.command_center(selected_period)
+        view = await _service(deps).command_center(selected_period)
         return CommandCenterResponse.model_validate(view)
 
     async def talent_detail(
@@ -97,12 +102,7 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             api=True,
         )
         selected_period = _period(year, month, deps.now())
-        if deps.talentops is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="TalentOps service is unavailable",
-            )
-        view = await deps.talentops.talent_detail(selected_period, nrp)
+        view = await _service(deps).talent_detail(selected_period, nrp)
         if view is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -124,14 +124,10 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
         )
         verify_csrf(record, csrf_token)
         selected_period = _period(payload.year, payload.month, deps.now())
-        if deps.talentops is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="TalentOps service is unavailable",
-            )
+        service = _service(deps)
         if deps.talentops_ai is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
-        view = await deps.talentops.command_center(selected_period)
+        view = await service.command_center(selected_period)
         answer = await deps.talentops_ai.answer(payload.question, view)
         if answer is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
