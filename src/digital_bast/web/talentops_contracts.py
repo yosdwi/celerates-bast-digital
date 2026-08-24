@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003
+from datetime import date, datetime  # noqa: TC003
 from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -120,6 +120,53 @@ class CommandCenterResponse(_FrozenModel):
     teams: tuple[TeamReadinessResponse, ...]
     delivery: DeliverySummaryResponse
     sources: tuple[SourceFreshnessResponse, ...]
+
+
+class AttendanceDayResponse(_FrozenModel):
+    work_date: date
+    is_off: bool
+    has_record: bool
+    has_clock_in: bool
+    has_clock_out: bool
+    has_evidence: bool
+    state: CheckState
+
+
+class TimesheetDayResponse(_FrozenModel):
+    work_date: date
+    is_off: bool
+    has_record: bool
+    has_remarks: bool
+    blocked_by_attendance: bool
+    state: CheckState
+
+
+class TalentTaskResponse(_FrozenModel):
+    work_date: date
+    title: str
+    status: str
+    evidence_count: int
+    is_closed: bool
+    evidence_ready: bool | None
+
+
+class TalentDataAvailabilityResponse(_FrozenModel):
+    attendance: bool
+    evidence: bool
+
+
+class TalentDetailResponse(_FrozenModel):
+    period: PeriodResponse
+    nrp: str
+    name: str
+    role: EmployeeRole
+    overall_state: CheckState
+    checks: ReadinessChecksResponse
+    blockers: tuple[BlockerResponse, ...]
+    attendance_days: tuple[AttendanceDayResponse, ...]
+    timesheet_days: tuple[TimesheetDayResponse, ...]
+    tasks: tuple[TalentTaskResponse, ...]
+    availability: TalentDataAvailabilityResponse
 
 
 class AiCommandCenterInput(_FrozenModel):
