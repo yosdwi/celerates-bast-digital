@@ -27,7 +27,16 @@ const data: CommandCenterResponse = {
 
 describe("CommandCenterPage", () => {
   it("renders values from the API contract and readiness states", () => {
-    render(<CommandCenterPage session={session} data={data} refreshing={false} onRefresh={vi.fn()} />);
+    render(
+      <CommandCenterPage
+        session={session}
+        data={data}
+        refreshing={false}
+        onRefresh={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenTalent={vi.fn()}
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "Command Center" })).toBeInTheDocument();
     expect(screen.getAllByText("1 / 2").length).toBeGreaterThan(0);
