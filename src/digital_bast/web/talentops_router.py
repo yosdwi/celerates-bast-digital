@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
-from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
@@ -16,6 +14,11 @@ from digital_bast.web.talentops_contracts import (
     SessionUserResponse,
     TalentOpsSessionResponse,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1"
 _TIMEZONE_NAME = "Asia/Jakarta"
