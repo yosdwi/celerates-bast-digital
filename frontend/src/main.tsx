@@ -3,6 +3,7 @@ import App from "./app/App";
 import "./styles/global.css";
 import "./styles/slice2.css";
 import "./styles/slice3.css";
+import "./styles/slice4.css";
 
 const root = document.getElementById("root");
 if (!root) {
