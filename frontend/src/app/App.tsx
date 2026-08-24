@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCommandCenter, getSession, getTalentDetail } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
 import ActionCenterPage from "../pages/ActionCenterPage";
+import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import Talent360Page from "../pages/Talent360Page";
 import TalentsPage from "../pages/TalentsPage";
@@ -10,6 +11,7 @@ type Route =
   | { page: "command-center" }
   | { page: "talents" }
   | { page: "actions" }
+  | { page: "bast" }
   | { page: "talent"; nrp: string };
 
 function parseRoute(pathname: string): Route {
@@ -24,6 +26,7 @@ function parseRoute(pathname: string): Route {
   }
   if (clean === "/admin/talentops/talents") return { page: "talents" };
   if (clean === "/admin/talentops/actions") return { page: "actions" };
+  if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
   return { page: "command-center" };
 }
 
@@ -138,6 +141,10 @@ export default function App() {
 
   if (route.page === "actions") {
     return <ActionCenterPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  }
+
+  if (route.page === "bast") {
+    return <BastReadinessPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
   }
 
   if (route.page === "talent") {
