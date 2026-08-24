@@ -1,3 +1,11 @@
+FROM node:20.18.1-bookworm-slim AS frontend-builder
+
+WORKDIR /frontend
+COPY frontend/package.json ./
+RUN npm install --no-audit --no-fund
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.12.11-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
@@ -38,6 +46,7 @@ RUN /opt/digital-bast/.venv/bin/playwright install --with-deps chromium \
 COPY --chown=10001:10001 src /opt/digital-bast/src
 COPY --chown=10001:10001 templates /opt/digital-bast/templates
 COPY --chown=10001:10001 static /opt/digital-bast/static
+COPY --from=frontend-builder --chown=10001:10001 /frontend/dist /opt/digital-bast/frontend/dist
 COPY --chown=10001:10001 migrations /opt/digital-bast/migrations
 COPY --chown=10001:10001 alembic.ini /opt/digital-bast/alembic.ini
 # Operational one-offs run inside the container: the roster seed, the schedule
