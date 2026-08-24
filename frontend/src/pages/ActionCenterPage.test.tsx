@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
 import ActionCenterPage from "./ActionCenterPage";
 
@@ -35,6 +35,8 @@ const data: CommandCenterResponse = {
   delivery: { total_tasks: 1, closed_tasks: 0, non_closed_tasks: 1, status_counts: [{ status: "Open", count: 1 }] },
   sources: [],
 };
+
+afterEach(() => cleanup());
 
 describe("ActionCenterPage", () => {
   it("renders a grounded queue and opens Talent 360 by NRP", () => {
