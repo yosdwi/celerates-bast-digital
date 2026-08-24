@@ -40,6 +40,11 @@ COPY --from=builder --chown=10001:10001 /opt/digital-bast/.venv /opt/digital-bas
 # has no writable HOME cache of its own.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN /opt/digital-bast/.venv/bin/playwright install --with-deps chromium \
+    # Playwright installs a broad Debian dependency set. Refresh all installed
+    # packages afterwards so the final image receives the latest Bookworm
+    # security fixes rather than retaining versions baked into the base image.
+    && apt-get update \
+    && apt-get upgrade -y \
     && chmod -R a+rX /opt/playwright \
     && rm -rf /var/lib/apt/lists/*
 
