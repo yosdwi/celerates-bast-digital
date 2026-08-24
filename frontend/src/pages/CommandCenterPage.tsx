@@ -51,7 +51,7 @@ const NAV_ITEMS = [
   { label: "Talents", icon: PersonIcon, active: false, path: "/admin/talentops/talents" },
   { label: "Delivery", icon: TrendIcon, active: false, path: null },
   { label: "BAST readiness", icon: CheckDocIcon, active: false, path: null },
-  { label: "Actions", icon: AlertIcon, active: false, path: null },
+  { label: "Actions", icon: AlertIcon, active: false, path: "/admin/talentops/actions" },
 ] as const;
 
 function initials(name: string): string {
