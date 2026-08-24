@@ -38,6 +38,8 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
+    BOT_LLM_URL: ${BOT_LLM_URL:-http://ollama:11434}
+    BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
     # scripts/sheet_replay_poller.py: a distinct credential and sheet from
     # the IoT sheet's (that one is dead -- invalid_grant). Optional -- the
     # poller is the only thing that reads it, and only when actually invoked.
