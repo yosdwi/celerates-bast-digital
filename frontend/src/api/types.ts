@@ -107,6 +107,53 @@ export interface CommandCenterResponse {
   sources: SourceFreshness[];
 }
 
+export interface AttendanceDay {
+  work_date: string;
+  is_off: boolean;
+  has_record: boolean;
+  has_clock_in: boolean;
+  has_clock_out: boolean;
+  has_evidence: boolean;
+  state: CheckState;
+}
+
+export interface TimesheetDay {
+  work_date: string;
+  is_off: boolean;
+  has_record: boolean;
+  has_remarks: boolean;
+  blocked_by_attendance: boolean;
+  state: CheckState;
+}
+
+export interface TalentTask {
+  work_date: string;
+  title: string;
+  status: string;
+  evidence_count: number;
+  is_closed: boolean;
+  evidence_ready: boolean | null;
+}
+
+export interface TalentDataAvailability {
+  attendance: boolean;
+  evidence: boolean;
+}
+
+export interface TalentDetailResponse {
+  period: PeriodView;
+  nrp: string;
+  name: string;
+  role: EmployeeRole;
+  overall_state: CheckState;
+  checks: ReadinessChecks;
+  blockers: Blocker[];
+  attendance_days: AttendanceDay[];
+  timesheet_days: TimesheetDay[];
+  tasks: TalentTask[];
+  availability: TalentDataAvailability;
+}
+
 export interface AiResponse {
   status: "ok" | "unavailable";
   answer: string | null;
