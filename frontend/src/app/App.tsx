@@ -5,6 +5,8 @@ import ActionCenterPage from "../pages/ActionCenterPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import DeliveryPage from "../pages/DeliveryPage";
+import SettingsPage from "../pages/SettingsPage";
+import SystemSyncPage from "../pages/SystemSyncPage";
 import Talent360Page from "../pages/Talent360Page";
 import TalentsPage from "../pages/TalentsPage";
 
@@ -14,6 +16,8 @@ type Route =
   | { page: "actions" }
   | { page: "bast" }
   | { page: "delivery" }
+  | { page: "system" }
+  | { page: "settings" }
   | { page: "talent"; nrp: string };
 
 function parseRoute(pathname: string): Route {
@@ -30,6 +34,8 @@ function parseRoute(pathname: string): Route {
   if (clean === "/admin/talentops/actions") return { page: "actions" };
   if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
   if (clean === "/admin/talentops/delivery") return { page: "delivery" };
+  if (clean === "/admin/talentops/system-sync") return { page: "system" };
+  if (clean === "/admin/talentops/settings") return { page: "settings" };
   return { page: "command-center" };
 }
 
@@ -67,20 +73,14 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    void bootstrap();
-  }, [bootstrap]);
-
+  useEffect(() => { void bootstrap(); }, [bootstrap]);
   useEffect(() => {
     const handlePopState = () => setRoute(parseRoute(window.location.pathname));
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const detailKey = useMemo(
-    () => route.page === "talent" && data ? `${route.nrp}:${data.period.year}:${data.period.month}` : null,
-    [data, route],
-  );
+  const detailKey = useMemo(() => route.page === "talent" && data ? `${route.nrp}:${data.period.year}:${data.period.month}` : null, [data, route]);
 
   useEffect(() => {
     if (route.page !== "talent" || !data) {
@@ -94,15 +94,9 @@ export default function App() {
     setTalentError(null);
     setTalent(null);
     void getTalentDetail(route.nrp, data.period.year, data.period.month)
-      .then((nextTalent) => {
-        if (!cancelled) setTalent(nextTalent);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setTalentError(reason instanceof Error ? reason.message : "Unable to load talent detail.");
-      })
-      .finally(() => {
-        if (!cancelled) setTalentLoading(false);
-      });
+      .then((nextTalent) => { if (!cancelled) setTalent(nextTalent); })
+      .catch((reason: unknown) => { if (!cancelled) setTalentError(reason instanceof Error ? reason.message : "Unable to load talent detail."); })
+      .finally(() => { if (!cancelled) setTalentLoading(false); });
     return () => { cancelled = true; };
   }, [data, detailKey, route]);
 
@@ -111,54 +105,32 @@ export default function App() {
     setRoute(parseRoute(path));
   }
 
-  function openTalent(nrp: string) {
-    navigate(`/admin/talentops/talents/${encodeURIComponent(nrp)}`);
-  }
+  function openTalent(nrp: string) { navigate(`/admin/talentops/talents/${encodeURIComponent(nrp)}`); }
 
   async function refresh() {
     if (!data || refreshing) return;
     setRefreshing(true);
     setError(null);
-    try {
-      setData(await getCommandCenter(data.period.year, data.period.month));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to refresh Command Center.");
-    } finally {
-      setRefreshing(false);
-    }
+    try { setData(await getCommandCenter(data.period.year, data.period.month)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to refresh Command Center."); }
+    finally { setRefreshing(false); }
   }
 
   if (loading) return <LoadingScreen />;
-
-  if (!session || !data) {
-    return (
-      <main className="fatal-state">
-        <div><h1>TalentOps unavailable</h1><p>{error ?? "TalentOps could not load the current data."}</p><button className="primary-button" type="button" onClick={() => void bootstrap()}>Retry</button></div>
-      </main>
-    );
-  }
+  if (!session || !data) return <main className="fatal-state"><div><h1>TalentOps unavailable</h1><p>{error ?? "TalentOps could not load the current data."}</p><button className="primary-button" type="button" onClick={() => void bootstrap()}>Retry</button></div></main>;
 
   if (route.page === "talents") return <TalentsPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
   if (route.page === "actions") return <ActionCenterPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
   if (route.page === "bast") return <BastReadinessPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
   if (route.page === "delivery") return <DeliveryPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  if (route.page === "system") return <SystemSyncPage session={session} data={data} onNavigate={navigate} />;
+  if (route.page === "settings") return <SettingsPage session={session} data={data} onNavigate={navigate} />;
 
   if (route.page === "talent") {
     if (talentLoading) return <LoadingScreen />;
-    if (!talent) {
-      return (
-        <main className="fatal-state">
-          <div><h1>Talent detail unavailable</h1><p>{talentError ?? "The selected talent could not be loaded."}</p><button className="primary-button" type="button" onClick={() => navigate("/admin/talentops/talents")}>Back to Talents</button></div>
-        </main>
-      );
-    }
+    if (!talent) return <main className="fatal-state"><div><h1>Talent detail unavailable</h1><p>{talentError ?? "The selected talent could not be loaded."}</p><button className="primary-button" type="button" onClick={() => navigate("/admin/talentops/talents")}>Back to Talents</button></div></main>;
     return <Talent360Page session={session} commandCenter={data} talent={talent} onNavigate={navigate} onBack={() => navigate("/admin/talentops/talents")} />;
   }
 
-  return (
-    <>
-      {error ? <div className="refresh-error" role="status">{error}</div> : null}
-      <CommandCenterPage session={session} data={data} refreshing={refreshing} onRefresh={() => void refresh()} onNavigate={navigate} onOpenTalent={openTalent} />
-    </>
-  );
+  return <>{error ? <div className="refresh-error" role="status">{error}</div> : null}<CommandCenterPage session={session} data={data} refreshing={refreshing} onRefresh={() => void refresh()} onNavigate={navigate} onOpenTalent={openTalent} /></>;
 }
