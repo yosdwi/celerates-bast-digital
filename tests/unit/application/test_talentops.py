@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 
 from digital_bast.application.talentops import SourceSyncSnapshot, TalentOpsService
-from digital_bast.domain.completion import DateRange, EmployeeFacts, TaskFact, TimesheetFact
+from digital_bast.domain.completion import CheckState, DateRange, EmployeeFacts, TaskFact, TimesheetFact
 from digital_bast.domain.models import (
     Employee,
     EmployeeId,
@@ -25,8 +25,7 @@ class FakeCompletionSource:
         employee: str | None = None,
     ) -> tuple[EmployeeFacts, ...]:
         assert period == DateRange(DAY, DAY)
-        assert employee is None
-        return (
+        facts = (
             EmployeeFacts(
                 employee_id="e-ready",
                 name="Ready Talent",
@@ -48,6 +47,9 @@ class FakeCompletionSource:
                 attendance_available=True,
             ),
         )
+        if employee is None:
+            return facts
+        return tuple(item for item in facts if item.name == employee)
 
 
 class FakeEmployees:
@@ -99,8 +101,8 @@ def _task(key: str, employee_id: str, status: str) -> Task:
     )
 
 
-async def test_command_center_uses_shared_completion_and_real_task_states() -> None:
-    service = TalentOpsService(
+def _service() -> TalentOpsService:
+    return TalentOpsService(
         FakeCompletionSource(),
         FakeEmployees(),
         FakeRecords(),  # type: ignore[arg-type]
@@ -108,7 +110,9 @@ async def test_command_center_uses_shared_completion_and_real_task_states() -> N
         now=lambda: datetime(2026, 8, 1, 0, 2, tzinfo=UTC),
     )
 
-    result = await service.command_center(DateRange(DAY, DAY))
+
+async def test_command_center_uses_shared_completion_and_real_task_states() -> None:
+    result = await _service().command_center(DateRange(DAY, DAY))
 
     assert result.summary.active_talents == 2
     assert result.summary.bast_ready == 1
@@ -121,3 +125,25 @@ async def test_command_center_uses_shared_completion_and_real_task_states() -> N
     assert result.delivery.non_closed_tasks == 1
     assert result.sources[0].age_seconds == 120
     assert result.sources[1].last_success_at is None
+
+
+async def test_talent_detail_uses_nrp_and_exposes_rule_grounded_daily_states() -> None:
+    result = await _service().talent_detail(DateRange(DAY, DAY), "nrp2")
+
+    assert result is not None
+    assert result.nrp == "NRP2"
+    assert result.name == "Blocked Talent"
+    assert result.overall_state is CheckState.INCOMPLETE
+    assert result.checks.attendance.issue_count == 1
+    assert result.attendance_days[0].state is CheckState.INCOMPLETE
+    assert result.attendance_days[0].has_record is False
+    assert result.timesheet_days[0].blocked_by_attendance is True
+    assert result.timesheet_days[0].state is CheckState.INCOMPLETE
+    assert result.tasks[0].title == "Open task"
+    assert result.tasks[0].is_closed is False
+    assert result.availability.attendance is True
+    assert result.availability.evidence is True
+
+
+async def test_talent_detail_returns_none_for_unknown_nrp() -> None:
+    assert await _service().talent_detail(DateRange(DAY, DAY), "missing") is None
