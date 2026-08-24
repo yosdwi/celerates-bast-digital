@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCommandCenter, getSession, getTalentDetail } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
+import ActionCenterPage from "../pages/ActionCenterPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import Talent360Page from "../pages/Talent360Page";
 import TalentsPage from "../pages/TalentsPage";
@@ -8,6 +9,7 @@ import TalentsPage from "../pages/TalentsPage";
 type Route =
   | { page: "command-center" }
   | { page: "talents" }
+  | { page: "actions" }
   | { page: "talent"; nrp: string };
 
 function parseRoute(pathname: string): Route {
@@ -21,6 +23,7 @@ function parseRoute(pathname: string): Route {
     }
   }
   if (clean === "/admin/talentops/talents") return { page: "talents" };
+  if (clean === "/admin/talentops/actions") return { page: "actions" };
   return { page: "command-center" };
 }
 
@@ -131,6 +134,10 @@ export default function App() {
 
   if (route.page === "talents") {
     return <TalentsPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
+  }
+
+  if (route.page === "actions") {
+    return <ActionCenterPage session={session} data={data} onNavigate={navigate} onOpenTalent={openTalent} />;
   }
 
   if (route.page === "talent") {
