@@ -100,4 +100,4 @@ def test_prefect_tasks_do_not_hash_non_serializable_run_context() -> None:
 def test_current_period_uses_jakarta_calendar_independent_of_source_offset() -> None:
     context = FakeContext()
 
-    assert current_period(context) == Period.parse("2024-03")
+    assert current_period(context) == Period(year=2024, month=3, lookback_months=1)
