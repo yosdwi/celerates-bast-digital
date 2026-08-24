@@ -28,11 +28,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from digital_bast.config import get_settings
 from digital_bast.domain.identity import daily_key
 from digital_bast.domain.transforms import transform_iot_task, transform_redmine_task
-
-# JsonValue is imported at runtime on purpose, and TC001 is suppressed for it:
-# pydantic must resolve this symbol to finish building RedmineBatch and
-# IoTSheetBatch. Deferring it to TYPE_CHECKING leaves those models half-built,
-# and the failure surfaces as a 500 on every request rather than at import.
 from digital_bast.infrastructure.json_types import JsonValue  # noqa: TC001
 from digital_bast.infrastructure.pama_attendance import (
     bucket_punches,
@@ -42,14 +37,12 @@ from digital_bast.infrastructure.pama_attendance import (
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.production_sources import parse_iot_sheet, parse_redmine_rows
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
+from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
 
 if TYPE_CHECKING:
     from digital_bast.domain.models import DomainRecord, Employee
 
 _LOGGER = logging.getLogger(__name__)
-
-# One batch is one transaction; the cap keeps a single request's memory and
-# lock footprint bounded rather than trusting the client to be reasonable.
 _MAX_ROWS: Final = 1000
 
 router = APIRouter(prefix="/internal/sync", tags=["sync"], include_in_schema=False)
@@ -57,11 +50,7 @@ router = APIRouter(prefix="/internal/sync", tags=["sync"], include_in_schema=Fal
 
 @dataclass(frozen=True, slots=True)
 class _Window:
-    """The arbitrary date range the bridge sends, satisfying `DateWindow`.
-
-    `Period` cannot express it -- it is year/month based, and the bridge's
-    lookback window routinely straddles a month boundary.
-    """
+    """The arbitrary date range the bridge sends, satisfying `DateWindow`."""
 
     start: date
     end: date
@@ -129,8 +118,6 @@ def _authorize(authorization: str | None) -> None:
             detail="ingest is not configured",
         )
     scheme, _, token = (authorization or "").partition(" ")
-    # compare_digest on both halves so a wrong scheme and a wrong token take
-    # the same path and neither leaks length through timing.
     if scheme.casefold() != "bearer" or not secrets.compare_digest(
         token, expected.get_secret_value()
     ):
@@ -163,6 +150,10 @@ async def _store(records: tuple[DomainRecord, ...], dsn: str) -> int:
     for record in records:
         await repository.upsert(record)
     return len(records)
+
+
+async def _record_success(source_key: str, dsn: str) -> None:
+    await PostgresSourceSyncStateStore(dsn).record_success(source_key)
 
 
 @router.get("/roster", response_model=RosterResponse)
@@ -206,6 +197,7 @@ async def ingest_attendance(
 
     upserted = await run_sync(_write_attendance, dsn, by_nrp, punches)
     _report_unmatched("attendance", unmatched)
+    await _record_success("attendance", dsn)
     return IngestResult(
         received=len(batch.rows),
         upserted=upserted,
@@ -219,16 +211,7 @@ def _write_attendance(
     by_nrp: dict[str, Employee],
     punches: dict[tuple[str, date], list[str]],
 ) -> int:
-    """One transaction for the whole batch, so a failure part-way cannot leave
-    half a day's attendance visible to a report.
-
-    Attendance is written directly rather than through the domain repository:
-    the flat presentation columns (shift, schedule window, Keterangan) are not
-    fields of the domain Attendance record, and splitting them across two
-    statements would make the row briefly inconsistent.
-    """
-    # Merged into a plain dict: country_holidays takes one year, and a plain
-    # mapping is all derive_day's HolidayLookup needs.
+    """Write one attendance bridge batch in a single transaction."""
     id_holidays: dict[date, str] = {}
     for year in sorted({work_date.year for _nrp, work_date in punches}):
         id_holidays.update(
@@ -298,6 +281,7 @@ async def ingest_redmine(
     records = tuple(transform_redmine_task(row) for row in parsed.rows)
     upserted = await _store(records, dsn)
     _report_unmatched("redmine", set(parsed.unmatched_nrps))
+    await _record_success("redmine", dsn)
     return IngestResult(
         received=len(batch.rows),
         upserted=upserted,
@@ -318,6 +302,7 @@ async def ingest_iot_sheet(
     _guard_size(len(rows))
     records = tuple(transform_iot_task(row) for row in rows)
     upserted = await _store(records, dsn)
+    await _record_success("iot_sheet", dsn)
     return IngestResult(received=len(rows), upserted=upserted)
 
 
