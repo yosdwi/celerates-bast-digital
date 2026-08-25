@@ -17,7 +17,7 @@ def upgrade() -> None:
             id                  text PRIMARY KEY,
             idempotency_key     text NOT NULL UNIQUE,
             employee_id         text NOT NULL
-                REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE CASCADE,
+                REFERENCES employees(employee_id) ON UPDATE CASCADE,
             period_start        date NOT NULL,
             period_end          date NOT NULL,
             channel             text NOT NULL DEFAULT 'whatsapp',
