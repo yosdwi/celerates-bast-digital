@@ -90,29 +90,46 @@ jobs:
         run: |
           test "$(docker image inspect digital-bast-bot-bridge:ci --format '{{.Config.User}}')" = "10001:10001"
           docker run --rm --entrypoint node digital-bast-bot-bridge:ci -e "require('/opt/digital-bast/bot-bridge/outbound.js')"
-      - name: Report fixable high and critical image vulnerabilities
+      - name: Verify secure runtime dependency floors
+        run: >-
+          docker run --rm --entrypoint python digital-bast:ci -c
+          "from importlib.metadata import version;
+          from packaging.version import Version;
+          minimum={'h2':'4.3.0','requests':'2.32.5','urllib3':'2.6.3'};
+          actual={name:version(name) for name in minimum};
+          print(actual);
+          assert all(Version(actual[name]) >= Version(required) for name, required in minimum.items()), (actual, minimum)"
+      - name: Trivy vulnerability gate
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
           format: table
+          scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          scanners: vuln
-          exit-code: "0"
-      - name: Gate high and critical image vulnerabilities
+          exit-code: "1"
+      - name: Trivy SARIF report
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
           format: sarif
           output: trivy.sarif
+          scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          scanners: vuln
-          exit-code: "1"
+          exit-code: "0"
       - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy.sarif') != ''
         with:
           sarif_file: trivy.sarif
+      - name: Preserve Trivy findings
+        if: always() && hashFiles('trivy.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: trivy.sarif
+          retention-days: 1
 
   migration-smoke:
     runs-on: ubuntu-24.04

@@ -34,7 +34,7 @@ fi
 
 secrets_dir=${SECRETS_DIR:-./secrets}
 secrets_gid=${SECRETS_GID:?SECRETS_GID is required}
-for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string; do
+for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string groq_api_key; do
     require_file "$secrets_dir/$name"
     mode=$(stat -c '%a' "$secrets_dir/$name")
     [ "$mode" = 640 ] || die "secret must have mode 0640: $secrets_dir/$name" 77

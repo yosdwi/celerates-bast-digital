@@ -10,28 +10,33 @@ class _ChatMessage(BaseModel):
     content: str = ""
 
 
-class _ChatResponse(BaseModel):
+class _ChatChoice(BaseModel):
     message: _ChatMessage = Field(default_factory=_ChatMessage)
 
 
+class _ChatResponse(BaseModel):
+    choices: list[_ChatChoice] = Field(default_factory=list)
+
+
 @final
-class OllamaChatClient:
+class GroqChatClient:
+    """TalentOpsChatClient backed by Groq's OpenAI-compatible chat API.
+
+    Groq's LPU inference is fast enough that the generous timeout Ollama
+    needs on this CPU-only box is unnecessary here -- kept well under
+    nginx's proxy_read_timeout regardless, same as Ollama's client.
+    """
+
     def __init__(
         self,
-        base_url: str,
+        api_key: str,
         model: str,
-        # 110s, not 25s: this box runs Ollama CPU-only, no GPU. A real
-        # command-center prompt (~3.7k tokens once the JSON context is
-        # included) measured 81s end-to-end -- 25s guaranteed every real
-        # question timed out silently (complete() catches httpx.HTTPError,
-        # including ReadTimeout, and returns None, which the router reports
-        # as {"status":"unavailable"} indistinguishably from Ollama being
-        # down). Kept under nginx's 115s proxy_read_timeout so this timeout
-        # fires first and the app still returns its own JSON.
-        timeout_seconds: float = 110.0,
+        base_url: str = "https://api.groq.com/openai/v1",
+        timeout_seconds: float = 30.0,
     ) -> None:
-        self._base_url = base_url
+        self._api_key = api_key
         self._model = model
+        self._base_url = base_url
         self._timeout_seconds = timeout_seconds
 
     async def complete(
@@ -45,18 +50,24 @@ class OllamaChatClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "stream": False,
-            "options": {"temperature": 0},
+            "temperature": 0,
         }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout_seconds,
             ) as client:
-                response = await client.post("/api/chat", json=payload)
+                response = await client.post(
+                    "/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
                 _ = response.raise_for_status()
                 parsed = _ChatResponse.model_validate(response.json())
         except (httpx.HTTPError, ValidationError):
             return None
-        content = parsed.message.content.strip()
+        if not parsed.choices:
+            return None
+        content = parsed.choices[0].message.content.strip()
         return content or None
