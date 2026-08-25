@@ -14,6 +14,16 @@ class _BridgeResponse(BaseModel):
 
 
 @final
+class UnavailableWhatsAppOutboundGateway:
+    async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt:
+        _ = (jid, text, request_id)
+        return WhatsAppSendReceipt(
+            status="bridge_unavailable",
+            error_code="bridge_not_configured",
+        )
+
+
+@final
 class BotBridgeWhatsAppOutboundGateway:
     def __init__(
         self,
