@@ -1,0 +1,17 @@
+# Production/default Compose overlay for TalentOps web AI.
+# The WhatsApp bot already uses BOT_LLM_URL/BOT_LLM_MODEL. Web slots receive
+# the same settings so all AI surfaces use the same local Ollama instance.
+services:
+  web-blue:
+    environment:
+      BOT_LLM_URL: ${BOT_LLM_URL:-}
+      BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web-green:
+    environment:
+      BOT_LLM_URL: ${BOT_LLM_URL:-}
+      BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
