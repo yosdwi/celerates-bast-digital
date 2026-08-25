@@ -1,4 +1,4 @@
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -12,12 +12,13 @@ from digital_bast.application.talentops import (
 )
 from digital_bast.application.talentops_followups import (
     FollowUpRecord,
+    FollowUpSendCommand,
+    FollowUpWrite,
     TalentOpsFollowUpService,
     WhatsAppSendReceipt,
 )
 from digital_bast.domain.completion import CheckState, DateRange
 from digital_bast.domain.models import Employee, EmployeeId, EmployeeRole
-
 
 PERIOD = DateRange(date(2026, 8, 1), date(2026, 8, 31))
 
@@ -98,28 +99,24 @@ class Repo:
         values = [item for item in self.records.values() if item.employee_id == employee_id]
         return values[-1] if values else None
 
-    async def record(self, **kwargs: object) -> FollowUpRecord:
-        key = str(kwargs["idempotency_key"])
-        sent_at = kwargs["sent_at"]
+    async def record(self, write: FollowUpWrite) -> FollowUpRecord:
         record = FollowUpRecord(
             id=f"delivery-{len(self.records) + 1}",
-            idempotency_key=key,
-            employee_id=str(kwargs["employee_id"]),
-            period_start="2026-08-01",
-            period_end="2026-08-31",
+            idempotency_key=write.idempotency_key,
+            employee_id=write.employee_id,
+            period_start=write.period.start.isoformat(),
+            period_end=write.period.end.isoformat(),
             channel="whatsapp",
-            message=str(kwargs["message"]),
-            source=str(kwargs["source"]),
-            status=str(kwargs["status"]),
-            provider_message_id=(
-                None if kwargs["provider_message_id"] is None else str(kwargs["provider_message_id"])
-            ),
-            created_by=str(kwargs["created_by"]),
+            message=write.message,
+            source=write.source,
+            status=write.status,
+            provider_message_id=write.provider_message_id,
+            created_by=write.created_by,
             created_at=datetime(2026, 8, 25, tzinfo=UTC),
-            sent_at=sent_at if isinstance(sent_at, datetime) else None,
-            error_code=None if kwargs["error_code"] is None else str(kwargs["error_code"]),
+            sent_at=write.sent_at,
+            error_code=write.error_code,
         )
-        self.records[key] = record
+        self.records[write.idempotency_key] = record
         return record
 
 
@@ -148,6 +145,17 @@ def service(
     return result, outbound, repo
 
 
+def send_command(key: str, message: str = "Please review the blocker") -> FollowUpSendCommand:
+    return FollowUpSendCommand(
+        period=PERIOD,
+        nrp="JIMT24002",
+        message=message,
+        idempotency_key=key,
+        created_by="owner@example.com",
+        source="edited",
+    )
+
+
 @pytest.mark.asyncio
 async def test_draft_is_deterministic_without_ai_and_reports_binding() -> None:
     followups, _, _ = service(ai=None)
@@ -173,14 +181,7 @@ async def test_ai_may_improve_draft_but_not_send_it() -> None:
 @pytest.mark.asyncio
 async def test_send_requires_bound_whatsapp_identity() -> None:
     followups, outbound, repo = service(jid=None)
-    result = await followups.send(
-        period=PERIOD,
-        nrp="JIMT24002",
-        message="Please review the blocker",
-        idempotency_key="11111111-1111-4111-8111-111111111111",
-        created_by="owner@example.com",
-        source="edited",
-    )
+    result = await followups.send(send_command("11111111-1111-4111-8111-111111111111"))
 
     assert result is not None
     assert result.status == "not_bound"
@@ -191,27 +192,15 @@ async def test_send_requires_bound_whatsapp_identity() -> None:
 @pytest.mark.asyncio
 async def test_send_is_idempotent_and_records_provider_receipt() -> None:
     followups, outbound, _ = service()
-    key = "22222222-2222-4222-8222-222222222222"
-    first = await followups.send(
-        period=PERIOD,
-        nrp="JIMT24002",
-        message="Please review the blocker",
-        idempotency_key=key,
-        created_by="owner@example.com",
-        source="edited",
-    )
-    second = await followups.send(
-        period=PERIOD,
-        nrp="JIMT24002",
-        message="Please review the blocker",
-        idempotency_key=key,
-        created_by="owner@example.com",
-        source="edited",
-    )
+    command = send_command("22222222-2222-4222-8222-222222222222")
+    first = await followups.send(command)
+    second = await followups.send(command)
 
-    assert first is not None and first.status == "sent"
+    assert first is not None
+    assert first.status == "sent"
     assert first.provider_message_id == "wa-1"
-    assert second is not None and second.duplicate is True
+    assert second is not None
+    assert second.duplicate is True
     assert len(outbound.calls) == 1
 
 
@@ -219,12 +208,7 @@ async def test_send_is_idempotent_and_records_provider_receipt() -> None:
 async def test_send_rechecks_current_blockers_before_delivery() -> None:
     followups, outbound, _ = service(blocked=False)
     result = await followups.send(
-        period=PERIOD,
-        nrp="JIMT24002",
-        message="Stale reminder",
-        idempotency_key="33333333-3333-4333-8333-333333333333",
-        created_by="owner@example.com",
-        source="edited",
+        send_command("33333333-3333-4333-8333-333333333333", message="Stale reminder")
     )
 
     assert result is not None
