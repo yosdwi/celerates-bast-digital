@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Literal, final
 
 import httpx
@@ -52,17 +53,17 @@ class BotBridgeWhatsAppOutboundGateway:
                 error_code="bridge_request_failed",
             )
 
-        if response.status_code == 503:
+        if response.status_code == HTTPStatus.SERVICE_UNAVAILABLE:
             return WhatsAppSendReceipt(
                 status="bridge_unavailable",
                 error_code="whatsapp_not_connected",
             )
-        if response.status_code in {401, 403}:
+        if response.status_code in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}:
             return WhatsAppSendReceipt(
                 status="failed",
                 error_code="bridge_auth_failed",
             )
-        if response.status_code >= 400:
+        if response.status_code >= HTTPStatus.BAD_REQUEST:
             return WhatsAppSendReceipt(
                 status="failed",
                 error_code=f"bridge_http_{response.status_code}",
