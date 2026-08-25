@@ -11,6 +11,10 @@ from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
     AiCommandCenterResponse,
     CommandCenterResponse,
+    FollowUpDraftInput,
+    FollowUpDraftResponse,
+    FollowUpSendInput,
+    FollowUpSendResponse,
     SessionUserResponse,
     TalentDetailResponse,
     TalentOpsSessionResponse,
@@ -20,6 +24,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from digital_bast.application.talentops import TalentOpsService
+    from digital_bast.application.talentops_followups import TalentOpsFollowUpService
     from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1"
@@ -50,6 +55,15 @@ def _service(deps: WebDependencies) -> TalentOpsService:
             detail="TalentOps service is unavailable",
         )
     return deps.talentops
+
+
+def _followups(deps: WebDependencies) -> TalentOpsFollowUpService:
+    if deps.talentops_followups is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="TalentOps follow-up service is unavailable",
+        )
+    return deps.talentops_followups
 
 
 def talentops_router(deps: WebDependencies) -> APIRouter:
@@ -133,6 +147,78 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             return AiCommandCenterResponse(status="unavailable", answer=None)
         return AiCommandCenterResponse(status="ok", answer=answer)
 
+    async def ask_talent(
+        request: Request,
+        nrp: str,
+        payload: AiCommandCenterInput,
+        csrf_token: HeaderCsrf = None,
+    ) -> AiCommandCenterResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        selected_period = _period(payload.year, payload.month, deps.now())
+        view = await _service(deps).talent_detail(selected_period, nrp)
+        if view is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
+        if deps.talentops_ai is None:
+            return AiCommandCenterResponse(status="unavailable", answer=None)
+        answer = await deps.talentops_ai.answer_talent(payload.question, view)
+        if answer is None:
+            return AiCommandCenterResponse(status="unavailable", answer=None)
+        return AiCommandCenterResponse(status="ok", answer=answer)
+
+    async def follow_up_draft(
+        request: Request,
+        nrp: str,
+        payload: FollowUpDraftInput,
+        csrf_token: HeaderCsrf = None,
+    ) -> FollowUpDraftResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        selected_period = _period(payload.year, payload.month, deps.now())
+        draft = await _followups(deps).draft(selected_period, nrp)
+        if draft is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
+        return FollowUpDraftResponse.model_validate(draft)
+
+    async def send_follow_up(
+        request: Request,
+        nrp: str,
+        payload: FollowUpSendInput,
+        csrf_token: HeaderCsrf = None,
+    ) -> FollowUpSendResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        selected_period = _period(payload.year, payload.month, deps.now())
+        result = await _followups(deps).send(
+            period=selected_period,
+            nrp=nrp,
+            message=payload.message,
+            idempotency_key=str(payload.idempotency_key),
+            created_by=record.user.email,
+            source=payload.source,
+        )
+        if result is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
+        return FollowUpSendResponse.model_validate(result)
+
     router.add_api_route(
         "/session",
         session,
@@ -156,5 +242,23 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
         ask_command_center,
         methods=["POST"],
         response_model=AiCommandCenterResponse,
+    )
+    router.add_api_route(
+        "/ai/talents/{nrp}",
+        ask_talent,
+        methods=["POST"],
+        response_model=AiCommandCenterResponse,
+    )
+    router.add_api_route(
+        "/talents/{nrp}/follow-up-draft",
+        follow_up_draft,
+        methods=["POST"],
+        response_model=FollowUpDraftResponse,
+    )
+    router.add_api_route(
+        "/talents/{nrp}/follow-ups",
+        send_follow_up,
+        methods=["POST"],
+        response_model=FollowUpSendResponse,
     )
     return router
