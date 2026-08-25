@@ -182,7 +182,8 @@ class TalentOpsAiService:
     async def draft_follow_up(self, view: TalentDetailView) -> str | None:
         user_prompt = (
             "Buat pesan follow-up untuk talent berdasarkan blocker readiness yang masih aktif. "
-            "Jika tidak ada blocker, katakan pada PMO bahwa tidak ada follow-up yang perlu dibuat.\n"
+            "Jika tidak ada blocker, katakan pada PMO bahwa tidak ada follow-up "
+            "yang perlu dibuat.\n"
             f"Fakta aplikasi: {_talent_context(view)}"
         )
         return await self._client.complete(_FOLLOW_UP_SYSTEM_PROMPT, user_prompt)
