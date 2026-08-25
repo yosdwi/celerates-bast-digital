@@ -115,5 +115,9 @@ jobs:
           # .env. The symlink above makes .env present in this directory, but
           # something still has to source it for the non-compose scripts.
           if [ -f .env ]; then set -a; . ./.env; set +a; fi
-          SECRETS_DIR="${SECRETS_DIR:-$DEPLOY_PATH/secrets}" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
+          # .env's own SECRETS_DIR=./secrets is only correct relative to
+          # DEPLOY_PATH itself, not this release directory -- override
+          # unconditionally rather than with ${VAR:-default}, since sourcing
+          # .env above already set it to that (now-wrong-here) relative value.
+          SECRETS_DIR="$DEPLOY_PATH/secrets" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
           REMOTE
