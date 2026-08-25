@@ -69,6 +69,15 @@ trap cleanup_failed_target EXIT HUP INT TERM
 switched=0
 
 app_image=${APP_IMAGE:-digital-bast:local}
+bridge_image=${BOT_BRIDGE_IMAGE:-digital-bast-bot-bridge:local}
+previous_bridge_image=""
+if [ "$DRY_RUN" = "0" ]; then
+    bridge_container=$(compose ps -q bot-bridge 2>/dev/null || true)
+    if [ -n "$bridge_container" ]; then
+        previous_bridge_image=$(docker inspect --format '{{.Image}}' "$bridge_container" 2>/dev/null || true)
+    fi
+fi
+
 if docker image inspect "$app_image" >/dev/null 2>&1; then
     printf '%s\n' "using local app image: $app_image"
     run compose pull postgres redis reverse-proxy
@@ -82,6 +91,14 @@ fi
 run compose build bot-bridge
 run compose up -d postgres redis prefect-server prefect-services reverse-proxy
 run compose up -d --no-deps "web-$target"
+
+rollback_bridge() {
+    [ -n "$previous_bridge_image" ] || return 1
+    docker image inspect "$previous_bridge_image" >/dev/null 2>&1 || return 1
+    docker tag "$previous_bridge_image" "$bridge_image" || return 1
+    compose up -d --no-deps --force-recreate bot-bridge || return 1
+    return 0
+}
 
 if [ "$DRY_RUN" = "0" ]; then
     timeout_seconds=${HEALTH_TIMEOUT_SECONDS:-180}
@@ -103,10 +120,15 @@ if [ "$DRY_RUN" = "0" ]; then
     # Only replace the shared bridge after the candidate web + schema passed.
     # Its volume keeps the paired WhatsApp session; the HTTP health check
     # proves the new Node process and packaged modules actually started.
-    compose up -d --no-deps bot-bridge
+    compose up -d --no-deps --force-recreate bot-bridge
     elapsed=0
-    until [ "$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q bot-bridge)" 2>/dev/null || true)" = "healthy" ]; do
-        [ "$elapsed" -lt "$timeout_seconds" ] || die "bot bridge failed health gate; active web slot preserved" 1
+    while [ "$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q bot-bridge)" 2>/dev/null || true)" != "healthy" ]; do
+        if [ "$elapsed" -ge "$timeout_seconds" ]; then
+            if rollback_bridge; then
+                die "bot bridge failed health gate; previous bridge restored; active web slot preserved" 1
+            fi
+            die "bot bridge failed health gate and bridge rollback failed; active web slot preserved" 1
+        fi
         sleep 5
         elapsed=$((elapsed + 5))
     done
@@ -138,7 +160,7 @@ else
     printf '%s\n' "DRY-RUN health web-$target"
     printf '%s\n' "DRY-RUN shadow web-$target"
     printf '%s\n' "DRY-RUN migration alembic upgrade head"
-    printf '%s\n' "DRY-RUN restart + health bot-bridge"
+    printf '%s\n' "DRY-RUN restart + health bot-bridge (restore previous image on failure)"
     printf '%s\n' "DRY-RUN switch $current to $target"
     printf '%s\n' "DRY-RUN public health and rollback on failure"
     printf '%s\n' "DRY-RUN restart worker runner"
