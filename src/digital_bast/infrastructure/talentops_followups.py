@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import TYPE_CHECKING, final
+from datetime import datetime
+from typing import final
 from uuid import uuid4
 
 import psycopg
 from anyio.to_thread import run_sync
 
-from digital_bast.application.talentops_followups import FollowUpRecord
+from digital_bast.application.talentops_followups import FollowUpRecord, FollowUpWrite
 from digital_bast.infrastructure.errors import InfrastructureError
 
-if TYPE_CHECKING:
-    from digital_bast.application.talentops_followups import FollowUpSource, FollowUpStatus
-    from digital_bast.domain.completion import DateRange
+_SELECT_FIELDS = """
+    id, idempotency_key, employee_id, period_start, period_end,
+    channel, message, source, status, provider_message_id,
+    created_by, created_at, sent_at, error_code
+"""
 
 
 @final
@@ -27,37 +29,15 @@ class PostgresTalentOpsFollowUpRepository:
     async def latest_for_employee(self, employee_id: str) -> FollowUpRecord | None:
         return await run_sync(self._latest_for_employee, employee_id)
 
-    async def record(
-        self,
-        *,
-        idempotency_key: str,
-        employee_id: str,
-        period: DateRange,
-        message: str,
-        source: FollowUpSource,
-        status: FollowUpStatus,
-        provider_message_id: str | None,
-        created_by: str,
-        sent_at: datetime | None,
-        error_code: str | None,
-    ) -> FollowUpRecord:
-        return await run_sync(
-            self._record,
-            idempotency_key,
-            employee_id,
-            period.start,
-            period.end,
-            message,
-            source,
-            status,
-            provider_message_id,
-            created_by,
-            sent_at,
-            error_code,
-        )
+    async def record(self, write: FollowUpWrite) -> FollowUpRecord:
+        return await run_sync(self._record, write)
 
     def _connect(self) -> psycopg.Connection[tuple[object, ...]]:
         return psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds)
+
+    @staticmethod
+    def _as_datetime(value: object) -> datetime:
+        return value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
 
     @staticmethod
     def _row(row: tuple[object, ...] | None) -> FollowUpRecord | None:
@@ -75,11 +55,11 @@ class PostgresTalentOpsFollowUpRepository:
             status=str(row[8]),
             provider_message_id=None if row[9] is None else str(row[9]),
             created_by=str(row[10]),
-            created_at=row[11] if isinstance(row[11], datetime) else datetime.fromisoformat(str(row[11])),
+            created_at=PostgresTalentOpsFollowUpRepository._as_datetime(row[11]),
             sent_at=(
-                row[12]
-                if isinstance(row[12], datetime)
-                else (None if row[12] is None else datetime.fromisoformat(str(row[12])))
+                None
+                if row[12] is None
+                else PostgresTalentOpsFollowUpRepository._as_datetime(row[12])
             ),
             error_code=None if row[13] is None else str(row[13]),
         )
@@ -88,13 +68,11 @@ class PostgresTalentOpsFollowUpRepository:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
-                    """
-                    SELECT id, idempotency_key, employee_id, period_start, period_end,
-                           channel, message, source, status, provider_message_id,
-                           created_by, created_at, sent_at, error_code
+                    f"""
+                    SELECT {_SELECT_FIELDS}
                     FROM talentops_followups
                     WHERE idempotency_key = %s
-                    """,
+                    """,  # noqa: S608 - constant field list, values remain parameterized
                     (idempotency_key,),
                 )
                 row = cursor.fetchone()
@@ -108,15 +86,13 @@ class PostgresTalentOpsFollowUpRepository:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
-                    """
-                    SELECT id, idempotency_key, employee_id, period_start, period_end,
-                           channel, message, source, status, provider_message_id,
-                           created_by, created_at, sent_at, error_code
+                    f"""
+                    SELECT {_SELECT_FIELDS}
                     FROM talentops_followups
                     WHERE employee_id = %s
                     ORDER BY created_at DESC
                     LIMIT 1
-                    """,
+                    """,  # noqa: S608 - constant field list, values remain parameterized
                     (employee_id,),
                 )
                 row = cursor.fetchone()
@@ -126,20 +102,7 @@ class PostgresTalentOpsFollowUpRepository:
             ) from error
         return self._row(row)
 
-    def _record(
-        self,
-        idempotency_key: str,
-        employee_id: str,
-        period_start: date,
-        period_end: date,
-        message: str,
-        source: FollowUpSource,
-        status: FollowUpStatus,
-        provider_message_id: str | None,
-        created_by: str,
-        sent_at: datetime | None,
-        error_code: str | None,
-    ) -> FollowUpRecord:
+    def _record(self, write: FollowUpWrite) -> FollowUpRecord:
         record_id = str(uuid4())
         try:
             with self._connect() as connection, connection.cursor() as cursor:
@@ -161,30 +124,28 @@ class PostgresTalentOpsFollowUpRepository:
                     """,
                     (
                         record_id,
-                        idempotency_key,
-                        employee_id,
-                        period_start,
-                        period_end,
-                        message,
-                        source,
-                        status,
-                        provider_message_id,
-                        created_by,
-                        sent_at,
-                        error_code,
+                        write.idempotency_key,
+                        write.employee_id,
+                        write.period.start,
+                        write.period.end,
+                        write.message,
+                        write.source,
+                        write.status,
+                        write.provider_message_id,
+                        write.created_by,
+                        write.sent_at,
+                        write.error_code,
                     ),
                 )
                 row = cursor.fetchone()
                 if row is None:
                     _ = cursor.execute(
-                        """
-                        SELECT id, idempotency_key, employee_id, period_start, period_end,
-                               channel, message, source, status, provider_message_id,
-                               created_by, created_at, sent_at, error_code
+                        f"""
+                        SELECT {_SELECT_FIELDS}
                         FROM talentops_followups
                         WHERE idempotency_key = %s
-                        """,
-                        (idempotency_key,),
+                        """,  # noqa: S608 - constant field list, values remain parameterized
+                        (write.idempotency_key,),
                     )
                     row = cursor.fetchone()
         except psycopg.Error as error:
