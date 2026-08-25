@@ -136,6 +136,35 @@ class BotCommandDraft(BaseModel):
         return value
 
 
+# DM's own deterministic keyword fast-paths (cli.py's _SUMMARY_WORDS /
+# _ATTENDANCE_SUMMARY_WORDS) already cover the common, literal phrasings at
+# zero latency -- this only runs as a last-resort fallback, after those and
+# after _dm_llm_pick's task-title match both come up empty, for messages
+# like "yang belum closed apa" or "clock in aku yang belum lengkap" that
+# never contain the literal trigger words. Its own short schema/prompt for
+# the same reason _PERSONA_SYSTEM_PROMPT is separate: a shared schema would
+# slow down every other call for a field only this path needs.
+_DM_INTENT_SYSTEM_PROMPT: Final = (
+    "Kamu mengklasifikasi satu pesan WhatsApp dari chat pribadi (DM) seorang talent ke "
+    "sistem Digital BAST. Balas HANYA satu objek JSON, tanpa teks lain, sesuai skema:\n"
+    '{"intent": "tasklist|attendance|unknown"}\n'
+    '"tasklist" untuk pertanyaan soal Task List/Evidence milik PENGIRIM SENDIRI: task mana '
+    "yang belum Closed, task mana yang belum ada evidence, progress task list pribadi. "
+    '"attendance" untuk pertanyaan soal Attendance/kehadiran milik PENGIRIM SENDIRI: hari '
+    "mana yang clock in/out-nya belum lengkap, hari mana yang butuh evidence attendance. "
+    '"unknown" kalau pesan tidak berkaitan dengan keduanya (basa-basi, pertanyaan lain, '
+    "menanyakan orang lain, dsb).\n"
+    'Contoh: "yang belum closed apa aja" -> {"intent":"tasklist"}. '
+    '"evidence yang kurang apa" -> {"intent":"tasklist"}. '
+    '"clock in aku yang belum lengkap yang mana" -> {"intent":"attendance"}. '
+    '"absensi aku gimana" -> {"intent":"attendance"}.'
+)
+
+
+class _DmIntentDraft(BaseModel):
+    intent: Literal["tasklist", "attendance", "unknown"]
+
+
 class _ChoiceDraft(BaseModel):
     choice: int | None = Field(default=None)
 
@@ -223,6 +252,16 @@ class LlmInterpreter:
         if draft.choice is None or not (1 <= draft.choice <= len(candidates)):
             return None
         return draft.choice
+
+    async def classify_dm_intent(self, text: str) -> Literal["tasklist", "attendance"] | None:
+        content = await self._chat_json(_DM_INTENT_SYSTEM_PROMPT, text)
+        if content is None:
+            return None
+        try:
+            draft = _DmIntentDraft.model_validate_json(content)
+        except ValidationError:
+            return None
+        return draft.intent if draft.intent != "unknown" else None
 
     async def persona_reply(self, message: str) -> str | None:
         """Free-text conversational reply (greetings/intro/capability

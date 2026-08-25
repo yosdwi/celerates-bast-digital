@@ -101,6 +101,13 @@ MISSING_REPORT_TYPE_REPLY: Final = (
     "Mohon sertakan jenis laporan: `developer` atau `shifting`. Contoh: "
     "`export attendance developer 1 sampai 31 Agustus`."
 )
+EVIDENCE_UPLOAD_IN_GROUP_REPLY: Final = (
+    "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 "
+    "Tinggal kirim foto/dokumennya langsung ke DM aku."
+)
+GROUP_ONLY_COMMAND_IN_DM_REPLY: Final = (
+    "Perintah itu cuma jalan di grup kerja ya, coba ketik lagi di sana sambil mention @conform 🙏"
+)
 HELP_REPLY: Final = (
     "*@conform — daftar perintah*\n\n"
     "• *Export absensi* (kirim file CSV)\n"
@@ -171,6 +178,20 @@ _CONVERSATION_WORDS: Final = (
     "fungsi kamu",
     "tolong apa",
 )
+# "evidence" alone routes to EVIDENCE_RESUME (a period report -- see
+# _INTENT_RULES below), which is the wrong flow for someone who actually
+# wants to *send* a file: upload only works over DM (§ help text), so a
+# group message asking to upload needs its own deterministic redirect,
+# checked before intent/period resolution ever runs.
+_EVIDENCE_UPLOAD_VERBS: Final = ("upload", "kirim", "submit", "send", "unggah")
+_EVIDENCE_UPLOAD_NOUNS: Final = ("evidence", "bukti")
+
+
+def wants_evidence_upload(text: str) -> bool:
+    lowered = text.casefold()
+    return any(verb in lowered for verb in _EVIDENCE_UPLOAD_VERBS) and any(
+        noun in lowered for noun in _EVIDENCE_UPLOAD_NOUNS
+    )
 
 
 class Intent(StrEnum):
@@ -182,6 +203,15 @@ class Intent(StrEnum):
     UNSUPPORTED_MUTATION = "unsupported-mutation"
     CONVERSATION = "conversation"
     UNKNOWN = "unknown"
+
+
+# Deterministic, group-only business intents that make no sense from a DM --
+# COMPLETION_STATUS and EVIDENCE_RESUME are deliberately excluded: both are
+# overloaded to also mean "my own" status/evidence in a DM (see
+# cli.py::_SUMMARY_WORDS), so redirecting them to the group would be wrong.
+GROUP_ONLY_DM_INTENTS: Final = frozenset(
+    {Intent.EXPORT_ATTENDANCE, Intent.GENERATE_BAST, Intent.SYSTEM_STATUS}
+)
 
 
 @dataclass(frozen=True, slots=True)

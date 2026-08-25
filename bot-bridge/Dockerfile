@@ -22,7 +22,7 @@ WORKDIR /opt/digital-bast/bot-bridge
 COPY bot-bridge/package.json bot-bridge/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY bot-bridge/server.js bot-bridge/mention.js ./
+COPY bot-bridge/server.js bot-bridge/mention.js bot-bridge/greeting.js ./
 
 # The Baileys auth session and generated exports live on a volume so the
 # paired WhatsApp session survives redeploys -- re-pairing by QR would take

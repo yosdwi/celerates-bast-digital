@@ -41,9 +41,7 @@ def test_fingerprint_changes_when_a_task_version_bumps() -> None:
 
 def test_fingerprint_changes_when_an_evidence_row_is_added() -> None:
     before = compute_fingerprint(_durable(), _evidence())
-    after = compute_fingerprint(
-        _durable(), (*_evidence(), ("evidence-id-2", "hash2"))
-    )
+    after = compute_fingerprint(_durable(), (*_evidence(), ("evidence-id-2", "hash2")))
 
     assert before != after
 

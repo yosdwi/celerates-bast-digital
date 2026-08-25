@@ -17,7 +17,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import date  # noqa: TC003
-from typing import TYPE_CHECKING, Annotated, ClassVar, Final
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Final
 
 import holidays
 import psycopg
@@ -28,6 +28,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from digital_bast.config import get_settings
 from digital_bast.domain.identity import daily_key
 from digital_bast.domain.transforms import transform_iot_task, transform_redmine_task
+
+# JsonValue is imported at runtime on purpose, and TC001 is suppressed for it:
+# pydantic must resolve this symbol to finish building RedmineBatch and
+# IoTSheetBatch. Deferring it to TYPE_CHECKING leaves those models half-built,
+# and the failure surfaces as a 500 on every request rather than at import.
 from digital_bast.infrastructure.json_types import JsonValue  # noqa: TC001
 from digital_bast.infrastructure.pama_attendance import (
     bucket_punches,
@@ -43,6 +48,9 @@ if TYPE_CHECKING:
     from digital_bast.domain.models import DomainRecord, Employee
 
 _LOGGER = logging.getLogger(__name__)
+
+# One batch is one transaction; the cap keeps a single request's memory and
+# lock footprint bounded rather than trusting the client to be reasonable.
 _MAX_ROWS: Final = 1000
 
 router = APIRouter(prefix="/internal/sync", tags=["sync"], include_in_schema=False)
@@ -50,7 +58,11 @@ router = APIRouter(prefix="/internal/sync", tags=["sync"], include_in_schema=Fal
 
 @dataclass(frozen=True, slots=True)
 class _Window:
-    """The arbitrary date range the bridge sends, satisfying `DateWindow`."""
+    """The arbitrary date range the bridge sends, satisfying `DateWindow`.
+
+    `Period` cannot express it -- it is year/month based, and the bridge's
+    lookback window routinely straddles a month boundary.
+    """
 
     start: date
     end: date
@@ -118,6 +130,8 @@ def _authorize(authorization: str | None) -> None:
             detail="ingest is not configured",
         )
     scheme, _, token = (authorization or "").partition(" ")
+    # compare_digest on both halves so a wrong scheme and a wrong token take
+    # the same path and neither leaks length through timing.
     if scheme.casefold() != "bearer" or not secrets.compare_digest(
         token, expected.get_secret_value()
     ):
@@ -206,12 +220,46 @@ async def ingest_attendance(
     )
 
 
+def _load_shift_codes(
+    cursor: psycopg.Cursor[tuple[Any, ...]],
+    employee_ids: list[str],
+    work_dates: list[date],
+) -> dict[tuple[str, date], str]:
+    """(employee_id, work_date) -> schedules.shift_name, for IoT Operations'
+    roster (scripts/import_schedule_csv.py -- the Google Sheet import, the
+    only thing that ever writes a real value there). Empty string ('' -- the
+    nightly reference-data placeholder, see repositories.py's Schedule case)
+    is dropped so it reads the same as "no schedule" to derive_day, same as
+    a genuinely missing row.
+    """
+    if not employee_ids or not work_dates:
+        return {}
+    _ = cursor.execute(
+        """
+        SELECT employee_id, work_date, shift_name
+        FROM schedules
+        WHERE employee_id = ANY(%s) AND work_date = ANY(%s) AND shift_name <> ''
+        """,
+        (employee_ids, work_dates),
+    )
+    return {(row[0], row[1]): row[2] for row in cursor.fetchall()}
+
+
 def _write_attendance(
     dsn: str,
     by_nrp: dict[str, Employee],
     punches: dict[tuple[str, date], list[str]],
 ) -> int:
-    """Write one attendance bridge batch in a single transaction."""
+    """One transaction for the whole batch, so a failure part-way cannot leave
+    half a day's attendance visible to a report.
+
+    Attendance is written directly rather than through the domain repository:
+    the flat presentation columns (shift, schedule window, Keterangan) are not
+    fields of the domain Attendance record, and splitting them across two
+    statements would make the row briefly inconsistent.
+    """
+    # Merged into a plain dict: country_holidays takes one year, and a plain
+    # mapping is all derive_day's HolidayLookup needs.
     id_holidays: dict[date, str] = {}
     for year in sorted({work_date.year for _nrp, work_date in punches}):
         id_holidays.update(
@@ -219,6 +267,11 @@ def _write_attendance(
         )
     written = 0
     with psycopg.connect(dsn, connect_timeout=5) as connection, connection.cursor() as cursor:
+        shift_codes = _load_shift_codes(
+            cursor,
+            list({str(by_nrp[nrp].id) for nrp, _work_date in punches}),
+            list({work_date for _nrp, work_date in punches}),
+        )
         for (nrp, work_date), labels in sorted(punches.items()):
             person = by_nrp[nrp]
             check_in, check_out = bucket_punches(labels)
@@ -228,7 +281,7 @@ def _write_attendance(
                 work_date,
                 check_in,
                 check_out,
-                None,
+                shift_codes.get((str(person.id), work_date)),
                 id_holidays,
             )
             _ = cursor.execute(

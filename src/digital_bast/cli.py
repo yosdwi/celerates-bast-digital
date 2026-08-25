@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from contextlib import nullcontext
 from dataclasses import asdict
@@ -21,6 +22,9 @@ from digital_bast.bot.evidence import (
 )
 from digital_bast.bot.identity import ActivationOutcome, resolve_employee_by_nrp
 from digital_bast.bot.whatsapp import (
+    EVIDENCE_UPLOAD_IN_GROUP_REPLY,
+    GROUP_ONLY_COMMAND_IN_DM_REPLY,
+    GROUP_ONLY_DM_INTENTS,
     HELP_REPLY,
     MISSING_PERIOD_REPLY,
     MISSING_REPORT_TYPE_REPLY,
@@ -36,6 +40,7 @@ from digital_bast.bot.whatsapp import (
     parse_command,
     parse_period,
     strip_mentions,
+    wants_evidence_upload,
 )
 from digital_bast.domain.completion import (
     CheckState,
@@ -57,6 +62,7 @@ from digital_bast.operations import (
     OperationConfigurationError,
     completion_status,
     create_activation_service,
+    create_attendance_evidence_service,
     create_evidence_service,
     create_llm_interpreter,
     export_attendance,
@@ -70,7 +76,12 @@ from digital_bast.operations import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from digital_bast.bot.attendance_evidence import (
+        AttendanceEvidenceCandidate,
+        AttendanceEvidenceService,
+    )
     from digital_bast.bot.evidence import EvidenceCandidate, EvidenceService
+    from digital_bast.domain.models import Employee
     from digital_bast.flows.contracts import RunContextFactory
     from digital_bast.flows.models import RunSummary
 
@@ -459,6 +470,29 @@ _UPLOAD_OUTCOME_REPLY: Final = {
     UploadOutcome.TOO_LARGE: "Ukuran file lebih dari 5 MB.",
     UploadOutcome.UNSUPPORTED_TYPE: "Format file tidak didukung. Kirim PNG, JPEG, atau WebP.",
 }
+_ATTENDANCE_EMPTY_REPLY: Final = (
+    "Attendance kamu lengkap, nggak ada yang butuh evidence. \U0001f44d"
+)
+_ATTENDANCE_SELECT_INVALID: Final = (
+    "Nomor tidak valid. Kirim `attendance` untuk melihat daftar ulang."
+)
+_ATTENDANCE_HELP_REPLY: Final = (
+    "Nggak nemu attendance yang cocok. Kirim `attendance` untuk melihat daftar ulang, "
+    "lalu balas nomornya."
+)
+# Own DM keyword, separate from _SUMMARY_WORDS below -- Task List evidence and
+# Attendance evidence are deliberately two non-overlapping upload flows, never
+# merged into one ambiguous list (see plan discussion).
+_ATTENDANCE_SUMMARY_WORDS: Final = ("attendance", "absen", "absensi")
+
+
+def _other_employee_reply(name: str) -> str:
+    return (
+        f'DM ini cuma nampilin data kamu sendiri, bukan punya "{name}". '
+        "Kalau mau cek talent lain, coba di grup: `detail <nama>`."
+    )
+
+
 # NRP-based onboarding (§1): talent know their NRP and name, never the
 # internal Employee ID -- that stays purely an internal key from here on.
 _NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
@@ -472,6 +506,32 @@ _YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi",
 _NO_WORDS: Final = frozenset({"bukan", "tidak", "no", "salah", "nggak", "gak", "ga"})
 _SUMMARY_WORDS: Final = ("tasklist", "task list", "kurang", "progress", "evidence")
 _MIN_AMBIGUOUS_MATCHES: Final = 2
+_MIN_NAME_TOKEN_LENGTH: Final = 4
+_NAME_TOKEN_PATTERN: Final = re.compile(r"[a-z]+")
+
+
+def _other_employee_mentioned(
+    text: str, roster: tuple[Employee, ...], own_employee_id: str
+) -> str | None:
+    """DM's personal summary (_format_personal_summary) always shows the
+    *sender's* own data -- it has no concept of "someone else's tasklist".
+    Silently substituting the sender's own data when the message actually
+    names a different colleague (e.g. "tasklist ovianto") reads as if it
+    were that person's data, which is actively misleading, not just
+    unhelpful. This flags that case so the caller can redirect instead.
+    Word-boundary match on tokens >= _MIN_NAME_TOKEN_LENGTH chars only, to
+    avoid a short/common name fragment false-matching unrelated chatter.
+    """
+    words = set(_NAME_TOKEN_PATTERN.findall(canonical_text(text)))
+    for employee in roster:
+        if str(employee.id) == own_employee_id:
+            continue
+        tokens = [
+            t for t in canonical_text(employee.name).split() if len(t) >= _MIN_NAME_TOKEN_LENGTH
+        ]
+        if any(token in words for token in tokens):
+            return employee.name
+    return None
 
 
 def _confirm_prompt(name: str, nrp: str) -> str:
@@ -548,8 +608,10 @@ def _format_evidence_list(candidates: tuple[EvidenceCandidate, ...]) -> str:
     return "\n".join(lines)
 
 
-def _format_ambiguous_choice(matches: tuple[EvidenceCandidate, ...]) -> str:
-    lines = [f"Aku menemukan {len(matches)} task yang cocok:", ""]
+def _format_ambiguous_choice(
+    matches: tuple[EvidenceCandidate, ...] | tuple[AttendanceEvidenceCandidate, ...],
+) -> str:
+    lines = [f"Aku menemukan {len(matches)} yang cocok:", ""]
     lines.extend(f"{index}. {c.title}" for index, c in enumerate(matches, start=1))
     lines.append("")
     lines.append("Foto ini untuk yang mana? Balas nomornya.")
@@ -569,6 +631,79 @@ def _format_upload_success(
         f"Progress Evidence kamu: {done}/{total} Closed Task lengkap.",
         "",
         "Masih kurang:",
+    ]
+    lines.extend(f"• {c.title}" for c in remaining)
+    return "\n".join(lines)
+
+
+def _format_attendance_list(
+    mine: EmployeeCompletion,
+    period: DateRange,
+    candidates: tuple[AttendanceEvidenceCandidate, ...],
+) -> str:
+    # Same shape as _format_personal_summary's Task List block on purpose --
+    # range in the header, colon-aligned Total/Lengkap/Belum Lengkap/Evidence
+    # stat lines, then the numbered pick list. One consistent pattern across
+    # both DM flows instead of the attendance side reading like a different
+    # feature.
+    missing_data_days = mine.log_1_pama_missing_data_days
+    belum_lengkap = len(mine.log_1_pama.issues)
+    lengkap = max(mine.total_work_days - belum_lengkap, 0)
+    lines = [
+        f"*Attendance kamu — {period.label()}*",
+        "",
+        f"{'Total':<13}: {mine.total_work_days}",
+        f"{'Lengkap':<13}: {lengkap}",
+        f"{'Belum Lengkap':<13}: {belum_lengkap}",
+    ]
+    if candidates:
+        lines.append(f"{'Evidence':<13}: {len(candidates)} hari belum ada evidence")
+        lines.append("")
+        lines.append("Belum ada evidence:")
+        lines.extend(
+            f"{index}. {format_day(c.work_date)}" for index, c in enumerate(candidates, start=1)
+        )
+        lines.append("")
+        lines.append("Balas nomornya, lalu kirim foto/dokumen evidence-nya.")
+        lines.append(
+            "Tips: kirim sebagai *Dokumen* (bukan Foto) supaya kualitas gambar tidak dikompres "
+            "WhatsApp."
+        )
+    else:
+        lines.append(f"{'Evidence':<13}: lengkap ✅")
+    if missing_data_days:
+        # Read-only on purpose -- there's no attendance row to attach a photo
+        # to, so this can never be an upload candidate (see
+        # EmployeeCompletion.log_1_pama_missing_data_days). Shown so "cuma 1
+        # yang muncul" doesn't read as broken/empty data when it's actually
+        # a different, non-upload-fixable gap.
+        lines.append("")
+        lines.append("Data attendance belum ada sama sekali (bukan bisa di-upload dari sini):")
+        lines.extend(f"• {format_day(day)}" for day in missing_data_days)
+        lines.append(
+            "Ini bukan soal evidence -- datanya memang belum masuk sistem. Hubungi admin ya."
+        )
+    return "\n".join(lines).strip()
+
+
+def _format_attendance_upload_success(
+    title: str, remaining: tuple[AttendanceEvidenceCandidate, ...]
+) -> str:
+    # No done/total fraction here (unlike _format_upload_success): tasks have
+    # a stable "all Closed tasks" superset to count against, but attendance's
+    # domain field (log_1_pama_evidence_days) tracks only the outstanding
+    # set directly -- there's no separate "total that ever needed evidence"
+    # to divide by, so a plain remaining-count is the honest framing.
+    if not remaining:
+        return (
+            f"✅ Evidence tersimpan untuk:\n\n{title}\n\nAttendance kamu bulan ini sudah lengkap."
+        )
+    lines = [
+        "✅ Evidence tersimpan untuk:",
+        "",
+        title,
+        "",
+        f"Masih ada {len(remaining)} hari lagi yang butuh evidence:",
     ]
     lines.extend(f"• {c.title}" for c in remaining)
     return "\n".join(lines)
@@ -640,6 +775,79 @@ async def _pick_task(
     return f'Oke, dipilih: "{picked.title}". Kirim foto/dokumen evidence-nya sekarang.'
 
 
+async def _attendance_completion(employee_id: str, today: date) -> EmployeeCompletion | None:
+    # Month-to-date, same default _SUMMARY_WORDS uses for the Task List
+    # personal summary -- attendance is inherently periodic (one row per
+    # day), unlike Closed tasks which list_candidates scans unbounded.
+    period = DateRange(today.replace(day=1), today)
+    report = await completion_status(period)
+    return next((e for e in report.employees if e.employee_id == employee_id), None)
+
+
+async def _attendance_evidence_candidates(
+    employee_id: str, attendance: AttendanceEvidenceService, today: date
+) -> tuple[AttendanceEvidenceCandidate, ...]:
+    mine = await _attendance_completion(employee_id, today)
+    if mine is None or not mine.log_1_pama_evidence_days:
+        return ()
+    return await attendance.list_candidates(employee_id, frozenset(mine.log_1_pama_evidence_days))
+
+
+async def _complete_attendance_upload(  # noqa: PLR0913, PLR0917
+    attendance: AttendanceEvidenceService,
+    employee_id: str,
+    jid: str,
+    target: AttendanceEvidenceCandidate,
+    image: bytes,
+    caption: str,
+) -> str:
+    result = await attendance.upload(employee_id, target.attendance_key, image, caption)
+    if result.outcome is not UploadOutcome.STORED:
+        return _UPLOAD_OUTCOME_REPLY[result.outcome]
+    await attendance.clear_pending_attendance(jid)
+    today = datetime.now(JAKARTA).date()
+    remaining = await _attendance_evidence_candidates(employee_id, attendance, today)
+    return _format_attendance_upload_success(target.title, remaining)
+
+
+async def _pick_attendance_day(
+    evidence: EvidenceService,
+    attendance: AttendanceEvidenceService,
+    employee_id: str,
+    jid: str,
+    picked: AttendanceEvidenceCandidate,
+) -> str:
+    stashed = await evidence.stashed_image(jid)
+    if stashed is not None:
+        image, _content_type, caption = stashed
+        await evidence.clear_stashed_image(jid)
+        return await _complete_attendance_upload(
+            attendance, employee_id, jid, picked, image, caption
+        )
+    await attendance.set_pending_attendance(jid, picked.attendance_key)
+    return f'Oke, dipilih: "{picked.title}". Kirim foto/dokumen evidence-nya sekarang.'
+
+
+async def _attendance_list_reply(
+    employee_id: str, jid: str, attendance: AttendanceEvidenceService
+) -> str:
+    today = datetime.now(JAKARTA).date()
+    mine = await _attendance_completion(employee_id, today)
+    if mine is None:
+        return _ATTENDANCE_EMPTY_REPLY
+    candidates: tuple[AttendanceEvidenceCandidate, ...] = ()
+    if mine.log_1_pama_evidence_days:
+        candidates = await attendance.list_candidates(
+            employee_id, frozenset(mine.log_1_pama_evidence_days)
+        )
+    if not candidates and not mine.log_1_pama_missing_data_days:
+        return _ATTENDANCE_EMPTY_REPLY
+    if candidates:
+        await attendance.mark_active(jid)
+    period = DateRange(today.replace(day=1), today)
+    return _format_attendance_list(mine, period, candidates)
+
+
 async def _dm_llm_pick(
     evidence: EvidenceService, employee_id: str, jid: str, text: str
 ) -> str | None:
@@ -656,20 +864,92 @@ async def _dm_llm_pick(
     return await _pick_task(evidence, employee_id, jid, candidates[choice - 1])
 
 
-async def _dm_reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 -- a resolution priority chain
+async def _dm_llm_intent_reply(
+    employee_id: str,
+    jid: str,
+    evidence: EvidenceService,
+    attendance: AttendanceEvidenceService,
+    text: str,
+) -> str | None:
+    """Last-resort fallback: the keyword fast-paths above and _dm_llm_pick's
+    task-title match both came up empty, so ask the LLM which of the two DM
+    views ("yang belum closed apa", "clock in aku yang belum lengkap") this
+    message is actually asking about, rather than giving up straight to
+    _DM_HELP_REPLY with no attempt at understanding it.
+    """
+    interpreter = create_llm_interpreter()
+    if interpreter is None:
+        return None
+    intent = await interpreter.classify_dm_intent(text)
+    if intent == "tasklist":
+        today = datetime.now(JAKARTA).date()
+        period = parse_period(text, today) or DateRange(today.replace(day=1), today)
+        await evidence.mark_active(jid)
+        return await _format_personal_summary(employee_id, period, evidence)
+    if intent == "attendance":
+        return await _attendance_list_reply(employee_id, jid, attendance)
+    return None
+
+
+async def _dm_reply(  # noqa: C901, PLR0911, PLR0912 -- a resolution priority chain
+    text: str, jid: str
+) -> str:
     activation = create_activation_service()
     employee_id = await activation.resolve(jid)
     if employee_id is None:
         return await _dm_onboarding(text, jid)
     evidence = create_evidence_service()
+    attendance = create_attendance_evidence_service()
     normalized = strip_mentions(text)
     lowered = normalized.strip().casefold()
     if not lowered:
         return _DM_HELP_REPLY
+    # Own keyword, checked first -- Task List evidence and Attendance
+    # evidence are two deliberately separate, non-overlapping DM flows (see
+    # _ATTENDANCE_SUMMARY_WORDS), never merged into one ambiguous list.
+    # "attendance" alone as a substring also appears inside "export
+    # attendance ..." (a group-only command, see GROUP_ONLY_DM_INTENTS
+    # below) -- parse_command's more specific multi-word intent rules
+    # (whatsapp.py::_INTENT_RULES checks "export"/"absen" before "evidence")
+    # disambiguate that case so it still redirects to the group instead of
+    # being swallowed here.
+    if any(word in lowered for word in _ATTENDANCE_SUMMARY_WORDS):
+        today = datetime.now(JAKARTA).date()
+        if parse_command(normalized, today).intent not in GROUP_ONLY_DM_INTENTS:
+            return await _attendance_list_reply(employee_id, jid, attendance)
     if any(word in lowered for word in _SUMMARY_WORDS):
+        roster = await load_roster()
+        other = _other_employee_mentioned(normalized, roster, employee_id)
+        if other is not None:
+            return _other_employee_reply(other)
         today = datetime.now(JAKARTA).date()
         period = parse_period(normalized, today) or DateRange(today.replace(day=1), today)
+        await evidence.mark_active(jid)
         return await _format_personal_summary(employee_id, period, evidence)
+    # A bare number or free-text reply is ambiguous once two independently-
+    # numbered lists exist (Closed tasks vs attendance days) -- active_kind
+    # (bot_conversations.pending_evidence_kind) records which one was shown
+    # most recently, so it's consulted before falling into the task-pool
+    # resolution below. Absent/'task' preserves today's exact behavior.
+    if await evidence.active_kind(jid) == "attendance":
+        # Index-only on purpose -- no caption/word-overlap fallback here
+        # (unlike the task pool below). Attendance titles in the same month
+        # only differ by the day number, which _keywords() filters out as
+        # too short (< _MIN_KEYWORD_LENGTH) -- so with few candidates left,
+        # word overlap on a generic shared word ("agustus") can match an
+        # unrelated message that was never meant as a selection reply at
+        # all. A bare, explicit index has no such false-positive risk.
+        index = extract_index(normalized)
+        if index is None:
+            return _ATTENDANCE_HELP_REPLY
+        today = datetime.now(JAKARTA).date()
+        attendance_candidates = await _attendance_evidence_candidates(
+            employee_id, attendance, today
+        )
+        picked_attendance = select_by_index(attendance_candidates, str(index))
+        if picked_attendance is None:
+            return _ATTENDANCE_SELECT_INVALID
+        return await _pick_attendance_day(evidence, attendance, employee_id, jid, picked_attendance)
     index = extract_index(normalized)
     if index is not None:
         # An explicit index may refer to the narrowed subset shown by a prior
@@ -694,8 +974,20 @@ async def _dm_reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 -- a res
         return await _pick_task(evidence, employee_id, jid, narrowed[0])
     if len(narrowed) >= _MIN_AMBIGUOUS_MATCHES:
         return _format_ambiguous_choice(narrowed)
+    # No real task title matched -- before burning an LLM round-trip trying
+    # to guess one, check deterministically whether this is actually a
+    # group-only command (export/generate/system-status) typed into the DM
+    # by mistake. Runs after the candidate-title checks above so it can
+    # never shadow a genuine task-title answer that happens to contain one
+    # of those words.
+    today = datetime.now(JAKARTA).date()
+    if parse_command(normalized, today).intent in GROUP_ONLY_DM_INTENTS:
+        return GROUP_ONLY_COMMAND_IN_DM_REPLY
     picked_reply = await _dm_llm_pick(evidence, employee_id, jid, normalized)
-    return picked_reply if picked_reply is not None else _DM_HELP_REPLY
+    if picked_reply is not None:
+        return picked_reply
+    intent_reply = await _dm_llm_intent_reply(employee_id, jid, evidence, attendance, normalized)
+    return intent_reply if intent_reply is not None else _DM_HELP_REPLY
 
 
 async def _resolve_evidence_target(  # noqa: C901 -- a sequential priority chain, not nested branching
@@ -745,6 +1037,30 @@ async def bot_evidence(jid: str, file_path: Path, caption: str) -> str:
     if employee_id is None:
         return _NRP_HELP
     evidence = create_evidence_service()
+    attendance = create_attendance_evidence_service()
+
+    # A pending attendance-day pick (set by _pick_attendance_day) takes
+    # priority over the task-pool default below -- unambiguous, since only
+    # one of pending_task_id/pending_attendance_id can ever be set at a time
+    # (bot/evidence.py's _set_pending and attendance_evidence.py's
+    # set_pending_attendance each clear the other in the same UPDATE). No
+    # pending attendance target falls straight through to the task flow,
+    # completely unchanged from before this feature existed.
+    pending_attendance_key = await attendance.pending_attendance(jid)
+    if pending_attendance_key is not None:
+        today = datetime.now(JAKARTA).date()
+        attendance_candidates = await _attendance_evidence_candidates(
+            employee_id, attendance, today
+        )
+        target = next(
+            (c for c in attendance_candidates if c.attendance_key == pending_attendance_key), None
+        )
+        if target is not None:
+            image = await run_sync(file_path.read_bytes)
+            return await _complete_attendance_upload(
+                attendance, employee_id, jid, target, image, caption
+            )
+
     candidates = outstanding(await evidence.list_candidates(employee_id))
     if not candidates:
         return _EVIDENCE_EMPTY_REPLY
@@ -757,6 +1073,7 @@ async def bot_evidence(jid: str, file_path: Path, caption: str) -> str:
         # this sender, and consume it from _dm_reply/_pick_task once they
         # answer the clarifying question.
         await evidence.stash_image(jid, image, content_type, caption)
+        await evidence.mark_active(jid)
         if len(narrowed) >= _MIN_AMBIGUOUS_MATCHES:
             return _format_ambiguous_choice(narrowed)
         return _format_evidence_list(candidates)
@@ -799,8 +1116,15 @@ def _group_reply(text: str) -> str:  # noqa: PLR0911 -- one short-circuit per in
     # whatsapp.py::_INTENT_RULES), so this can never mask a real business
     # request as conversation. Anything NOT keyword-matched still goes
     # through the normal LLM-primary path below (rare free-form smalltalk).
-    if parse_command(strip_mentions(text), today).intent is Intent.CONVERSATION:
+    normalized = strip_mentions(text)
+    if parse_command(normalized, today).intent is Intent.CONVERSATION:
         return PERSONA_FALLBACK_REPLY
+    # Same deterministic, no-LLM-round-trip treatment as the conversation
+    # fast-path above: "evidence" alone would otherwise resolve to
+    # EVIDENCE_RESUME (a period report) and dead-end on MISSING_PERIOD_REPLY,
+    # which reads as a non-sequitur to someone who just wants to send a file.
+    if wants_evidence_upload(normalized):
+        return EVIDENCE_UPLOAD_IN_GROUP_REPLY
     command = _resolve_command(text, today)
     match command.intent:
         case Intent.UNSUPPORTED_MUTATION:

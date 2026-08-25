@@ -90,9 +90,7 @@ def facts(name: str, *, closed: bool) -> EmployeeFacts:
         name=name,
         off_days=frozenset(),
         attendance=(
-            AttendanceFact(
-                period.start, has_clock_in=True, has_clock_out=True, has_evidence=False
-            ),
+            AttendanceFact(period.start, has_clock_in=True, has_clock_out=True, has_evidence=False),
         ),
         timesheets=(TimesheetFact(period.start, "Shift Pagi"),),
         tasks=(TaskFact(period.start, "CCTV Gate 2", "Closed" if closed else "Open", 1),),

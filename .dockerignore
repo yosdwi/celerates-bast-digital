@@ -12,7 +12,6 @@ coverage.xml
 htmlcov
 build
 dist
-node_modules
 *.egg-info
 .env
 .env.*

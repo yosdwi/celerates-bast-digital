@@ -47,6 +47,16 @@ def test_work_day_with_both_clocks_is_complete() -> None:
 
     assert result.log_1_pama.state is CheckState.COMPLETE
     assert result.state is CheckState.COMPLETE
+    assert result.total_work_days == len(PERIOD.days())
+
+
+def test_total_work_days_excludes_off_days() -> None:
+    result = evaluate_employee(
+        facts(off_days=frozenset({WORK_DAY}), attendance=complete_attendance()[1:]),
+        PERIOD,
+    )
+
+    assert result.total_work_days == len(PERIOD.days()) - 1
 
 
 def test_missing_clock_out_without_evidence_is_incomplete() -> None:
@@ -89,6 +99,58 @@ def test_off_day_without_attendance_row_is_valid() -> None:
     assert result.log_1_pama.state is CheckState.COMPLETE
 
 
+def test_missing_clock_out_without_evidence_is_an_evidence_upload_candidate() -> None:
+    # The attendance row exists here (unlike the "no row at all" case below),
+    # so there's something a WhatsApp evidence-photo upload can attach to --
+    # this is exactly the set bot/attendance_evidence.py's DM flow lists.
+    attendance = (
+        AttendanceFact(WORK_DAY, has_clock_in=True, has_clock_out=False, has_evidence=False),
+        *complete_attendance()[1:],
+    )
+
+    result = evaluate_employee(facts(attendance=attendance), PERIOD)
+
+    assert result.log_1_pama_evidence_days == (WORK_DAY,)
+
+
+def test_day_already_carrying_evidence_is_not_an_upload_candidate() -> None:
+    attendance = (
+        AttendanceFact(WORK_DAY, has_clock_in=False, has_clock_out=False, has_evidence=True),
+        *complete_attendance()[1:],
+    )
+
+    result = evaluate_employee(facts(attendance=attendance), PERIOD)
+
+    assert result.log_1_pama_evidence_days == ()
+
+
+def test_day_with_no_attendance_row_at_all_is_not_an_upload_candidate() -> None:
+    # No attendance.id to attach a photo to -- a pipeline/data-sync gap, not
+    # something the talent's own upload can resolve.
+    result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
+
+    assert result.log_1_pama_evidence_days == ()
+
+
+def test_day_with_no_attendance_row_at_all_is_flagged_read_only() -> None:
+    # Surfaced separately from log_1_pama_evidence_days (which only lists
+    # upload-fixable gaps) so the DM summary can show it without offering it
+    # as something a photo can resolve -- see cli.py::_format_attendance_list.
+    result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
+
+    assert result.log_1_pama_missing_data_days == (WORK_DAY,)
+
+
+def test_off_day_is_never_an_upload_candidate() -> None:
+    result = evaluate_employee(
+        facts(off_days=frozenset({WORK_DAY}), attendance=complete_attendance()[1:]),
+        PERIOD,
+    )
+
+    assert result.log_1_pama_evidence_days == ()
+    assert result.log_1_pama_missing_data_days == ()
+
+
 def test_unmapped_attendance_requests_review() -> None:
     result = evaluate_employee(facts(attendance_available=False), PERIOD)
 
@@ -106,9 +168,10 @@ def test_timesheet_cannot_be_complete_when_log_1_pama_is_incomplete() -> None:
 
 
 def test_off_day_timesheet_requires_remarks() -> None:
-    timesheets = (TimesheetFact(WORK_DAY, "  "), *tuple(
-        TimesheetFact(day, "Shift Pagi") for day in PERIOD.days()[1:]
-    ))
+    timesheets = (
+        TimesheetFact(WORK_DAY, "  "),
+        *tuple(TimesheetFact(day, "Shift Pagi") for day in PERIOD.days()[1:]),
+    )
 
     result = evaluate_employee(
         facts(
@@ -196,9 +259,7 @@ def test_single_task_evidence_completes_evidence_check() -> None:
 def test_missing_task_evidence_is_incomplete() -> None:
     tasks = (TaskFact(WORK_DAY, "CCTV Gate 2", "Closed", 0),)
 
-    result = evaluate_employee(
-        facts(attendance=complete_attendance(), tasks=tasks), PERIOD
-    )
+    result = evaluate_employee(facts(attendance=complete_attendance(), tasks=tasks), PERIOD)
 
     assert result.evidence.state is CheckState.INCOMPLETE
     assert result.evidence.issues == ('Task "CCTV Gate 2" belum ada evidence.',)
@@ -211,9 +272,7 @@ def test_evidence_names_only_the_closed_tasks_missing_it() -> None:
         TaskFact(WORK_DAY, "Datalog", "In Progress", 0),
     )
 
-    result = evaluate_employee(
-        facts(attendance=complete_attendance(), tasks=tasks), PERIOD
-    )
+    result = evaluate_employee(facts(attendance=complete_attendance(), tasks=tasks), PERIOD)
 
     assert result.evidence.state is CheckState.INCOMPLETE
     assert result.evidence.issues == ('Task "CCTV Gate 2" belum ada evidence.',)

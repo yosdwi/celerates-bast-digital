@@ -5,10 +5,10 @@ in `simulasi shifting(Schedule Shifting).csv`: a legend block, then a month
 header row, a weekday row, a day-number row, and one row per IoT Operations
 employee whose first cell contains their name.
 
-The parser is lifted from scripts/load_pama_attendance.py::load_roster rather
-than re-derived, because the column-block arithmetic (month blocks laid out
-side by side, starting March 2024) is the fiddly part and one copy of it is
-enough.
+The row-parsing itself lives in
+digital_bast.infrastructure.production_sources.parse_schedule_rows, not here
+-- this script is just the CSV-reading + Postgres-writing wrapper around it,
+so there is exactly one place that understands this layout.
 
     python scripts/import_schedule_csv.py \
         --csv "simulasi shifting(Schedule Shifting).csv" \
@@ -21,8 +21,8 @@ import argparse
 import csv
 import os
 import sys
-from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import psycopg
 
@@ -30,13 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from digital_bast.domain.identity import daily_key
 from digital_bast.infrastructure.pama_attendance import SHIFT_LEGEND
+from digital_bast.infrastructure.production_sources import parse_schedule_rows
 
-_ROSTER_START_YEAR = 2024
-_ROSTER_START_MONTH = 3  # the sheet's first month block is March 2024
-_MONTH_HEADER_ROW = 10
-_DAY_NUMBER_ROW = 12
-_FIRST_DATA_ROW = 13
-_MONTHS_PER_YEAR = 12
+if TYPE_CHECKING:
+    from datetime import date
 
 
 def load_employees(dsn: str) -> dict[str, str]:
@@ -58,38 +55,7 @@ def load_employees(dsn: str) -> dict[str, str]:
 def parse_csv(path: Path, names: dict[str, str]) -> dict[tuple[str, date], str]:
     with path.open(newline="", encoding="utf-8-sig") as handle:
         rows = list(csv.reader(handle))
-    month_header = rows[_MONTH_HEADER_ROW]
-    month_columns = [index for index, value in enumerate(month_header) if value.strip()]
-    day_row = rows[_DAY_NUMBER_ROW]
-    schedule: dict[tuple[str, date], str] = {}
-    for row in rows[_FIRST_DATA_ROW:]:
-        if not row or not row[0].strip():
-            continue
-        label = row[0].strip()
-        # Row labels carry a suffix, e.g. "Titin Ervina Sari (P)".
-        matched = next((name for name in names if name.lower() in label.lower()), None)
-        if matched is None:
-            continue
-        if not any(value.strip() for value in row[1:]):
-            continue
-        boundaries = list(zip(month_columns, [*month_columns[1:], len(row)], strict=True))
-        for block_index, (col_index, col_end) in enumerate(boundaries):
-            total_month = (_ROSTER_START_MONTH - 1) + block_index
-            year_num = _ROSTER_START_YEAR + total_month // _MONTHS_PER_YEAR
-            month_num = total_month % _MONTHS_PER_YEAR + 1
-            for offset in range(col_index, min(col_end, len(row))):
-                day_text = day_row[offset].strip()
-                if not day_text.isdigit():
-                    continue
-                code = row[offset].strip()
-                if not code:
-                    continue
-                try:
-                    work_date = date(year_num, month_num, int(day_text))
-                except ValueError:
-                    continue
-                schedule[(names[matched], work_date)] = code
-    return schedule
+    return parse_schedule_rows(rows, names)
 
 
 def write(dsn: str, schedule: dict[tuple[str, date], str]) -> int:

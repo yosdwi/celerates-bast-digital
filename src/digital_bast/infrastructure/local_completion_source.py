@@ -52,21 +52,30 @@ class LocalEmployeeSource:
 
 
 class _AttendanceFactRow:
-    __slots__ = ("check_in", "check_out", "employee_id", "evidence_note", "work_date")
+    __slots__ = (
+        "check_in",
+        "check_out",
+        "employee_id",
+        "evidence_note",
+        "evidence_photo_count",
+        "work_date",
+    )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 -- one field per selected column
         self,
         employee_id: str,
         work_date: date,
         check_in: str,
         check_out: str,
         evidence_note: str,
+        evidence_photo_count: int,
     ) -> None:
         self.employee_id = employee_id
         self.work_date = work_date
         self.check_in = check_in
         self.check_out = check_out
         self.evidence_note = evidence_note
+        self.evidence_photo_count = evidence_photo_count
 
 
 @final
@@ -74,8 +83,9 @@ class PostgresAttendanceFactReader:
     """Derives AttendanceFact from the `attendance` table.
 
     `evidence_note` is the human-maintained column NocoDB edits (it carries the
-    old NocoDB "Evidence" text field), so attendance evidence is a real signal
-    now rather than the hardcoded False this reader used to return.
+    old NocoDB "Evidence" text field). `evidence_photo_count` is the WhatsApp
+    DM upload path (bot/attendance_evidence.py, attendance_evidence table) --
+    either one satisfies has_evidence.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -95,13 +105,16 @@ class PostgresAttendanceFactReader:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT employee_id,
-                           work_date,
-                           COALESCE(to_char(check_in, 'HH24:MI'), '') AS check_in,
-                           COALESCE(to_char(check_out, 'HH24:MI'), '') AS check_out,
-                           evidence_note
-                    FROM attendance
-                    WHERE work_date BETWEEN %s AND %s
+                    SELECT a.employee_id,
+                           a.work_date,
+                           COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
+                           COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
+                           a.evidence_note,
+                           COUNT(ae.id) AS evidence_photo_count
+                    FROM attendance a
+                    LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
+                    WHERE a.work_date BETWEEN %s AND %s
+                    GROUP BY a.id
                     """,
                     (period.start, period.end),
                 )
@@ -113,7 +126,7 @@ class PostgresAttendanceFactReader:
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=bool(row.evidence_note.strip()),
+                has_evidence=bool(row.evidence_note.strip()) or row.evidence_photo_count > 0,
             )
             for row in rows
         }
