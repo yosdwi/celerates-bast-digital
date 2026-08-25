@@ -110,6 +110,13 @@ jobs:
           if test -f "$DEPLOY_PATH/.env"; then ln -s "$DEPLOY_PATH/.env" "$release_dir/.env"; fi
           ln -s "$DEPLOY_PATH/config/nginx/active-slot.conf" "$release_dir/config/nginx/active-slot.conf"
           cd "$release_dir"
+          # Capture before sourcing .env below: .env has its own
+          # APP_IMAGE=digital-bast:local (the manual/local-build default),
+          # which would otherwise clobber the digest-pinned release image
+          # this script was invoked with -- deploy.sh silently falls back to
+          # the stale local image instead of failing, so this has to be
+          # gotten right, not just left to be caught by a health check.
+          release_app_image=$APP_IMAGE
           # preflight.sh/deploy.sh read SECRETS_GID (and other config) as plain
           # shell variables -- only `docker compose` subcommands auto-load
           # .env. The symlink above makes .env present in this directory, but
@@ -119,5 +126,5 @@ jobs:
           # DEPLOY_PATH itself, not this release directory -- override
           # unconditionally rather than with ${VAR:-default}, since sourcing
           # .env above already set it to that (now-wrong-here) relative value.
-          SECRETS_DIR="$DEPLOY_PATH/secrets" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
+          SECRETS_DIR="$DEPLOY_PATH/secrets" APP_IMAGE="$release_app_image" scripts/deploy.sh
           REMOTE
