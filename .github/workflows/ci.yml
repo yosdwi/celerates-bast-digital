@@ -73,6 +73,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: test "$(docker image inspect digital-bast:ci --format '{{.Config.User}}')" = "10001:10001"
+      - name: Verify security override versions
+        run: >-
+          docker run --rm --entrypoint python digital-bast:ci -c
+          "from importlib.metadata import version;
+          expected={'h2':'4.3.0','requests':'2.32.5','urllib3':'2.6.3'};
+          actual={name:version(name) for name in expected};
+          print(actual);
+          assert actual == expected, (actual, expected)"
       - name: Trivy vulnerability report
         uses: aquasecurity/trivy-action@v0.36.0
         with:
