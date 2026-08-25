@@ -82,7 +82,7 @@ jobs:
           actual={name:version(name) for name in minimum};
           print(actual);
           assert all(Version(actual[name]) >= Version(required) for name, required in minimum.items()), (actual, minimum)"
-      - name: Trivy vulnerability report
+      - name: Trivy vulnerability gate
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
@@ -90,8 +90,9 @@ jobs:
           scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "0"
-      - name: Trivy vulnerability gate
+          exit-code: "1"
+      - name: Trivy SARIF report
+        if: always()
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
@@ -100,7 +101,7 @@ jobs:
           scanners: vuln
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-          exit-code: "1"
+          exit-code: "0"
       - uses: github/codeql-action/upload-sarif@v3
         if: always() && hashFiles('trivy.sarif') != ''
         with:
