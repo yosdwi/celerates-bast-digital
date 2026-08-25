@@ -18,6 +18,7 @@ from digital_bast.application.talentops import (
 )
 from digital_bast.application.talentops_followups import (
     FollowUpDraftView,
+    FollowUpSendCommand,
     FollowUpSendView,
 )
 from digital_bast.domain.completion import CheckState
@@ -191,8 +192,8 @@ class FollowUps:
             last_follow_up=None,
         )
 
-    async def send(self, **kwargs: object) -> FollowUpSendView | None:
-        if kwargs.get("nrp") != "JIMT24002":
+    async def send(self, command: FollowUpSendCommand) -> FollowUpSendView | None:
+        if command.nrp != "JIMT24002":
             return None
         return FollowUpSendView(
             status="sent",
