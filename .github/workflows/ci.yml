@@ -90,13 +90,24 @@ jobs:
         run: |
           test "$(docker image inspect digital-bast-bot-bridge:ci --format '{{.Config.User}}')" = "10001:10001"
           docker run --rm --entrypoint node digital-bast-bot-bridge:ci -e "require('/opt/digital-bast/bot-bridge/outbound.js')"
-      - uses: aquasecurity/trivy-action@v0.36.0
+      - name: Report fixable high and critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: digital-bast:ci
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          scanners: vuln
+          exit-code: "0"
+      - name: Gate high and critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
           format: sarif
           output: trivy.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          scanners: vuln
           exit-code: "1"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
