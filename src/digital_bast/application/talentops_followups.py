@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Protocol, final
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal, Protocol, cast, final
 
 if TYPE_CHECKING:
     from digital_bast.application.talentops import RosterSource, TalentDetailView, TalentOpsService
@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 FollowUpSource = Literal["deterministic", "ai", "edited"]
 FollowUpStatus = Literal["sent", "not_bound", "bridge_unavailable", "failed", "no_blockers"]
+_VALID_STATUSES = frozenset({"sent", "not_bound", "bridge_unavailable", "failed", "no_blockers"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +86,10 @@ class FollowUpRepository(Protocol):
         sent_at: datetime | None,
         error_code: str | None,
     ) -> FollowUpRecord: ...
+
+
+def _known_status(value: str) -> FollowUpStatus:
+    return cast("FollowUpStatus", value if value in _VALID_STATUSES else "failed")
 
 
 def _deterministic_draft(view: TalentDetailView) -> str:
@@ -168,7 +173,7 @@ class TalentOpsFollowUpService:
         previous = await self._repository.by_idempotency(idempotency_key)
         if previous is not None:
             return FollowUpSendView(
-                status=previous.status,  # type: ignore[arg-type]
+                status=_known_status(previous.status),
                 delivery_id=previous.id,
                 provider_message_id=previous.provider_message_id,
                 sent_at=previous.sent_at,
@@ -201,7 +206,7 @@ class TalentOpsFollowUpService:
 
         receipt = await self._outbound.send(jid, message.strip(), idempotency_key)
         status: FollowUpStatus = receipt.status
-        sent_at = datetime.now().astimezone() if status == "sent" else None
+        sent_at = datetime.now(UTC) if status == "sent" else None
         stored = await self._repository.record(
             idempotency_key=idempotency_key,
             employee_id=employee_id,
