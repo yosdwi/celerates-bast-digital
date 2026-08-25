@@ -142,7 +142,8 @@ if [ "$DRY_RUN" = "0" ]; then
         dd if="$active_config.next" of="$active_config" conv=notrunc status=none
         truncate -s "$(wc -c < "$active_config.next")" "$active_config"
         rm -f "$active_config.next"
-        die "proxy configuration gate failed; active slot preserved" 1
+        rollback_bridge >/dev/null 2>&1 || true
+        die "proxy configuration gate failed; active slot and previous bridge preserved" 1
     }
     compose exec -T reverse-proxy nginx -s reload
     switched=1
@@ -152,8 +153,9 @@ if [ "$DRY_RUN" = "0" ]; then
         truncate -s "$(wc -c < "$active_config.next")" "$active_config"
         rm -f "$active_config.next"
         compose exec -T reverse-proxy nginx -s reload
+        rollback_bridge >/dev/null 2>&1 || true
         switched=0
-        die "public health gate failed; proxy rolled back" 1
+        die "public health gate failed; proxy and bridge rolled back" 1
     }
     compose up -d --no-deps worker runner
 else
@@ -162,7 +164,7 @@ else
     printf '%s\n' "DRY-RUN migration alembic upgrade head"
     printf '%s\n' "DRY-RUN restart + health bot-bridge (restore previous image on failure)"
     printf '%s\n' "DRY-RUN switch $current to $target"
-    printf '%s\n' "DRY-RUN public health and rollback on failure"
+    printf '%s\n' "DRY-RUN public health and rollback web + bridge on failure"
     printf '%s\n' "DRY-RUN restart worker runner"
 fi
 
