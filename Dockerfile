@@ -14,7 +14,16 @@ ENV UV_FROZEN=1 UV_NO_DEV=1 UV_NO_EDITABLE=1 UV_PYTHON_DOWNLOADS=0 UV_PROJECT_EN
 WORKDIR /build
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN uv sync
+RUN uv sync \
+    # The frozen lock currently resolves three transitive packages to releases
+    # with published HIGH-severity CVEs. Keep the application resolution frozen,
+    # then apply exact security-only runtime overrides until the next lock refresh.
+    # Do not suppress Trivy: the final image must contain the fixed releases.
+    && uv pip install --python /opt/digital-bast/.venv/bin/python \
+        "h2==4.3.0" \
+        "requests==2.32.5" \
+        "urllib3==2.6.3" \
+    && uv pip check --python /opt/digital-bast/.venv/bin/python
 
 FROM python:3.12.11-slim-bookworm AS runtime
 
