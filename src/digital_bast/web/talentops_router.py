@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from digital_bast.application.talentops_followups import FollowUpSendCommand
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
@@ -66,7 +67,9 @@ def _followups(deps: WebDependencies) -> TalentOpsFollowUpService:
     return deps.talentops_followups
 
 
-def talentops_router(deps: WebDependencies) -> APIRouter:
+def talentops_router(  # noqa: C901, PLR0915 - one composition root for related API routes
+    deps: WebDependencies,
+) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX, tags=["talentops"])
 
     async def session(request: Request) -> TalentOpsSessionResponse:
@@ -206,14 +209,15 @@ def talentops_router(deps: WebDependencies) -> APIRouter:
             api=True,
         )
         verify_csrf(record, csrf_token)
-        selected_period = _period(payload.year, payload.month, deps.now())
         result = await _followups(deps).send(
-            period=selected_period,
-            nrp=nrp,
-            message=payload.message,
-            idempotency_key=str(payload.idempotency_key),
-            created_by=record.user.email,
-            source=payload.source,
+            FollowUpSendCommand(
+                period=_period(payload.year, payload.month, deps.now()),
+                nrp=nrp,
+                message=payload.message,
+                idempotency_key=str(payload.idempotency_key),
+                created_by=record.user.email,
+                source=payload.source,
+            )
         )
         if result is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
