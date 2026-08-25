@@ -59,6 +59,30 @@ class FollowUpSendView:
     duplicate: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class FollowUpSendCommand:
+    period: DateRange
+    nrp: str
+    message: str
+    idempotency_key: str
+    created_by: str
+    source: FollowUpSource
+
+
+@dataclass(frozen=True, slots=True)
+class FollowUpWrite:
+    idempotency_key: str
+    employee_id: str
+    period: DateRange
+    message: str
+    source: FollowUpSource
+    status: FollowUpStatus
+    provider_message_id: str | None
+    created_by: str
+    sent_at: datetime | None
+    error_code: str | None
+
+
 class WhatsAppIdentityResolver(Protocol):
     async def jid_for_employee(self, employee_id: str) -> str | None: ...
 
@@ -72,20 +96,7 @@ class FollowUpRepository(Protocol):
 
     async def latest_for_employee(self, employee_id: str) -> FollowUpRecord | None: ...
 
-    async def record(
-        self,
-        *,
-        idempotency_key: str,
-        employee_id: str,
-        period: DateRange,
-        message: str,
-        source: FollowUpSource,
-        status: FollowUpStatus,
-        provider_message_id: str | None,
-        created_by: str,
-        sent_at: datetime | None,
-        error_code: str | None,
-    ) -> FollowUpRecord: ...
+    async def record(self, write: FollowUpWrite) -> FollowUpRecord: ...
 
 
 def _known_status(value: str) -> FollowUpStatus:
@@ -122,7 +133,7 @@ def _deterministic_draft(view: TalentDetailView) -> str:
 
 @final
 class TalentOpsFollowUpService:
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - explicit ports keep side effects visible
         self,
         talentops: TalentOpsService,
         roster: RosterSource,
@@ -160,17 +171,8 @@ class TalentOpsFollowUpService:
             last_follow_up=await self._repository.latest_for_employee(employee_id),
         )
 
-    async def send(
-        self,
-        *,
-        period: DateRange,
-        nrp: str,
-        message: str,
-        idempotency_key: str,
-        created_by: str,
-        source: FollowUpSource,
-    ) -> FollowUpSendView | None:
-        previous = await self._repository.by_idempotency(idempotency_key)
+    async def send(self, command: FollowUpSendCommand) -> FollowUpSendView | None:
+        previous = await self._repository.by_idempotency(command.idempotency_key)
         if previous is not None:
             return FollowUpSendView(
                 status=_known_status(previous.status),
@@ -181,7 +183,7 @@ class TalentOpsFollowUpService:
                 duplicate=True,
             )
 
-        resolved = await self._resolve(period, nrp)
+        resolved = await self._resolve(command.period, command.nrp)
         if resolved is None:
             return None
         employee_id, view = resolved
@@ -204,20 +206,23 @@ class TalentOpsFollowUpService:
                 error_code="whatsapp_identity_not_bound",
             )
 
-        receipt = await self._outbound.send(jid, message.strip(), idempotency_key)
+        message = command.message.strip()
+        receipt = await self._outbound.send(jid, message, command.idempotency_key)
         status: FollowUpStatus = receipt.status
         sent_at = datetime.now(UTC) if status == "sent" else None
         stored = await self._repository.record(
-            idempotency_key=idempotency_key,
-            employee_id=employee_id,
-            period=period,
-            message=message.strip(),
-            source=source,
-            status=status,
-            provider_message_id=receipt.provider_message_id,
-            created_by=created_by,
-            sent_at=sent_at,
-            error_code=receipt.error_code,
+            FollowUpWrite(
+                idempotency_key=command.idempotency_key,
+                employee_id=employee_id,
+                period=command.period,
+                message=message,
+                source=command.source,
+                status=status,
+                provider_message_id=receipt.provider_message_id,
+                created_by=command.created_by,
+                sent_at=sent_at,
+                error_code=receipt.error_code,
+            )
         )
         return FollowUpSendView(
             status=status,
