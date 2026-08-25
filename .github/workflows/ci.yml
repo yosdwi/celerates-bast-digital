@@ -58,7 +58,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: test "$(docker image inspect digital-bast:ci --format '{{.Config.User}}')" = "10001:10001"
-      - uses: aquasecurity/trivy-action@0.30.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
           format: sarif
