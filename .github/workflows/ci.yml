@@ -105,6 +105,13 @@ jobs:
         if: always() && hashFiles('trivy.sarif') != ''
         with:
           sarif_file: trivy.sarif
+      - name: Preserve Trivy findings
+        if: always() && hashFiles('trivy.sarif') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: trivy.sarif
+          retention-days: 1
 
   migration-smoke:
     runs-on: ubuntu-24.04
