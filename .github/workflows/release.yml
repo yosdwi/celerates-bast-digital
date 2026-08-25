@@ -1,13 +1,7 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    branches:
-      - main
-    types:
-      - completed
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,12 +14,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-  IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha }}
+  RELEASE_SHA: ${{ github.sha }}
+  IMAGE_TAG: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
 jobs:
   publish:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.build.outputs.digest }}
