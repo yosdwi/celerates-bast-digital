@@ -29,8 +29,22 @@ function ownUserIds(sock) {
   return ids;
 }
 
+// contextInfo (which carries mentionedJid) lives on whichever message type
+// is actually present -- a photo/document sent with a tap-to-mention tag
+// carries it on imageMessage/documentMessage, not extendedTextMessage.
+function contextInfoOf(message) {
+  const content = message.message || {};
+  return (
+    content.extendedTextMessage?.contextInfo ||
+    content.imageMessage?.contextInfo ||
+    content.videoMessage?.contextInfo ||
+    content.documentMessage?.contextInfo ||
+    null
+  );
+}
+
 function isForUs(message, text, ownIds) {
-  const mentioned = message.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+  const mentioned = contextInfoOf(message)?.mentionedJid || [];
   const mentionsUs = mentioned.some((jid) => {
     const decoded = jidDecode(jid);
     return !!decoded?.user && ownIds.has(decoded.user);
@@ -55,4 +69,31 @@ function looksLikeConversation(text) {
   return !BUSINESS_WORDS.test(stripped) && CONVERSATION_WORDS.test(stripped);
 }
 
-module.exports = { TRIGGER, ownUserIds, isForUs, looksLikeConversation };
+// Keep in sync with src/digital_bast/cli.py's _SUMMARY_WORDS /
+// _ATTENDANCE_SUMMARY_WORDS -- another client-side proxy, same rationale as
+// looksLikeConversation above: cli.py::_dm_reply is the actual authority.
+// These are DM's keyword fast paths that resolve with zero LLM round-trip;
+// anything else now falls through to _dm_llm_intent_reply (~10-20s), so
+// this decides whether the "give me a sec" notice is worth sending for a DM
+// message before the CLI runs. A bare index reply or empty text is also
+// fast (index resolution / _DM_HELP_REPLY, no LLM), so those skip the notice
+// too; everything else defaults to showing it -- conservative on purpose,
+// same as looksLikeConversation.
+const DM_FAST_PATH_WORDS =
+  /\b(attendance|absen|absensi|tasklist|task list|kurang|progress|evidence)\b/i;
+
+function looksLikeDmFastPath(text) {
+  const stripped = text.replace(/@[\w.-]+/g, " ").trim();
+  if (!stripped) return true;
+  if (/^\d+$/.test(stripped)) return true;
+  return DM_FAST_PATH_WORDS.test(stripped);
+}
+
+module.exports = {
+  TRIGGER,
+  ownUserIds,
+  isForUs,
+  looksLikeConversation,
+  looksLikeDmFastPath,
+  contextInfoOf,
+};

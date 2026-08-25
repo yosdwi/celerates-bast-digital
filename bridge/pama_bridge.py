@@ -16,16 +16,13 @@ blocks TLS to the ingest host entirely (and to Google's Drive/Dropbox storage
 APIs, though not Sheets), so one machine can rarely do both halves. Two ways
 to bridge that, manual or automatic:
 
-    python pama_bridge.py --since 2026-07-01 --dump out
+    python pama_bridge.py --since 2026-07-01 --dump out --roster-file roster.json
     python pama_bridge.py --replay out       # from a network that reaches the VPS
 
-    python pama_bridge.py --dump out --upload-sheet
+    python pama_bridge.py --dump out --roster-file roster.json --upload-sheet
     # scripts/sheet_replay_poller.py on the VPS side reads and replays it --
     # for a recurring Task Scheduler job, since Sheets is reachable from
     # both sides and nothing needs a human to switch networks in between.
-    # --dump always reads its roster from the Sheets relay's Roster tab
-    # (scripts/push_roster_to_sheet.py keeps it current) -- no local roster
-    # file, so it can't silently run against a stale one.
 
 Recovery model: a fixed overlapping lookback window re-sent every run, with
 idempotent upserts on the far side. PC offline, half-failed batch, duplicate
@@ -184,37 +181,6 @@ class DumpIngest:
         return {"upserted": len(rows) if isinstance(rows, list) else 0, "received": 0}
 
 
-def fetch_roster_from_sheet() -> list[dict[str, str]]:
-    """Read the roster snapshot scripts/push_roster_to_sheet.py keeps current.
-
-    --dump can't ask the VPS for a live roster (that's the whole reason it
-    exists). There is deliberately no local-file fallback: a static roster
-    someone has to remember to update by hand is exactly the failure shape
-    that let a leading-"L" NRP typo silently drop three people's attendance
-    and tasks for months. If the Sheets relay isn't configured or the Roster
-    tab is empty, this raises rather than quietly running against old data.
-    """
-    from google.oauth2 import service_account  # noqa: PLC0415
-    from googleapiclient.discovery import build  # noqa: PLC0415
-
-    key_path = Path(_env("GOOGLE_SHEETS_RELAY_CREDENTIALS"))
-    if not key_path.is_absolute():
-        key_path = Path(__file__).resolve().parent / key_path
-    credentials = service_account.Credentials.from_service_account_file(
-        str(key_path), scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
-    service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
-    sheet_id = _env("GOOGLE_SHEETS_RELAY_SHEET_ID")
-    result = (
-        service.spreadsheets().values().get(spreadsheetId=sheet_id, range="Roster!A:D").execute()
-    )
-    values = result.get("values", [])
-    if not values:
-        raise SystemExit("Roster tab is empty -- has scripts/push_roster_to_sheet.py run yet?")
-    header, *data_rows = values
-    return [dict(zip(header, row, strict=False)) for row in data_rows if row]
-
-
 def upload_dump_to_sheet(directory: Path) -> int:
     """Push every payload in a --dump directory to a shared relay sheet.
 
@@ -267,11 +233,6 @@ def upload_dump_to_sheet(directory: Path) -> int:
         .execute()
     )
     for file in files:
-        # Safely uploaded (the append above didn't raise), so the local copy
-        # is redundant -- delete it or a scheduled run leaves one more file
-        # on disk forever. The row is the source of truth from here; the
-        # VPS-side poller deletes it in turn once replayed.
-        file.unlink()
         print(f"uploaded {file.name}")
     return len(files)
 
@@ -472,6 +433,9 @@ def main() -> int:
         "--replay", type=Path, default=None, help="POST payloads captured by --dump"
     )
     parser.add_argument(
+        "--roster-file", type=Path, default=None, help="roster JSON, required with --dump"
+    )
+    parser.add_argument(
         "--upload-sheet",
         action="store_true",
         help="after --dump, push the captured payloads to the Sheets relay",
@@ -492,13 +456,13 @@ def main() -> int:
     selected = set(args.only or ("attendance", "redmine", "iot"))
 
     if args.dump:
+        if not args.roster_file:
+            message = (
+                "--dump needs --roster-file: the roster lives on the VPS, which is unreachable"
+            )
+            raise SystemExit(message)
         ingest: Any = DumpIngest(args.dump)
-        # No file fallback, on purpose: a silent fallback to a local snapshot
-        # is exactly how the roster went stale before (the leading-"L" NRP
-        # typo went unnoticed for months). If the Sheets relay isn't
-        # configured or unreachable, this raises instead of quietly running
-        # against old data.
-        roster = fetch_roster_from_sheet()
+        roster = json.loads(args.roster_file.read_text(encoding="utf-8"))
     else:
         ingest = Ingest(_env("BAST_INGEST_URL"), _env("BAST_INGEST_TOKEN"))
         roster = ingest.roster()

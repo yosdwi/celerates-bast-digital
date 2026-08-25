@@ -182,6 +182,16 @@ def _upsert_statement(record: DomainRecord) -> tuple[LiteralString, tuple[Any, .
                 ),
             )
         case Schedule():
+            # shift_name = COALESCE(NULLIF(EXCLUDED..., ''), schedules...): the
+            # nightly reference-data sync (ScheduleSyncOperation) only ever
+            # generates blank placeholder rows (domain/reference.py's
+            # generate_iot_schedules never has real roster data -- that comes
+            # from scripts/import_schedule_csv.py, run separately against the
+            # Google Sheet export). Before this guard, that nightly run
+            # unconditionally overwrote shift_name with '', wiping out
+            # whatever the CSV import had written earlier the same day.
+            # work_date is exempt (never blank) since it's part of the
+            # conflict target's identity, not optional data.
             return (
                 """
                 INSERT INTO schedules (
@@ -189,7 +199,7 @@ def _upsert_statement(record: DomainRecord) -> tuple[LiteralString, tuple[Any, .
                 ) VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (record_key) DO UPDATE SET
                     work_date = EXCLUDED.work_date,
-                    shift_name = EXCLUDED.shift_name
+                    shift_name = COALESCE(NULLIF(EXCLUDED.shift_name, ''), schedules.shift_name)
                 WHERE schedules.origin <> 'manual'
                 """,
                 (

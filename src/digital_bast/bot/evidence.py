@@ -13,7 +13,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final, final
+from typing import TYPE_CHECKING, Final, Protocol, final
 
 import psycopg
 from anyio.to_thread import run_sync
@@ -25,7 +25,7 @@ from digital_bast.infrastructure.errors import InfrastructureError
 if TYPE_CHECKING:
     from datetime import date
 
-_MAX_IMAGE_BYTES: Final = 5 * 1024 * 1024
+MAX_IMAGE_BYTES: Final = 5 * 1024 * 1024
 
 
 def sniff_content_type(data: bytes) -> str | None:
@@ -91,10 +91,22 @@ def _keywords(text: str) -> frozenset[str]:
     )
 
 
-def select_by_caption_all(
-    candidates: tuple[EvidenceCandidate, ...],
+class _TitledCandidate(Protocol):
+    # Structural, not inherited -- both EvidenceCandidate (task evidence) and
+    # AttendanceEvidenceCandidate (bot/attendance_evidence.py) satisfy this
+    # just by having a `title` field, so caption/index selection is shared
+    # between the two DM flows without either depending on the other.
+    # Read-only (a property, not a plain attribute) so a frozen dataclass's
+    # immutable field -- which the type checker otherwise treats as
+    # invariant, not covariant -- structurally matches this Protocol.
+    @property
+    def title(self) -> str: ...
+
+
+def select_by_caption_all[T: _TitledCandidate](
+    candidates: tuple[T, ...],
     caption: str,
-) -> tuple[EvidenceCandidate, ...]:
+) -> tuple[T, ...]:
     # Word-overlap, not substring containment: a caption is free text around
     # a title reference ("ini buat CCTV Gate" for title "CCTV Gate
     # Validation"), so the caption is neither a substring of the title nor
@@ -105,17 +117,15 @@ def select_by_caption_all(
     return tuple(candidate for candidate in candidates if words & _keywords(candidate.title))
 
 
-def select_by_caption(
-    candidates: tuple[EvidenceCandidate, ...],
+def select_by_caption[T: _TitledCandidate](
+    candidates: tuple[T, ...],
     caption: str,
-) -> EvidenceCandidate | None:
+) -> T | None:
     matches = select_by_caption_all(candidates, caption)
     return matches[0] if len(matches) == 1 else None
 
 
-def select_by_index(
-    candidates: tuple[EvidenceCandidate, ...], text: str
-) -> EvidenceCandidate | None:
+def select_by_index[T](candidates: tuple[T, ...], text: str) -> T | None:
     stripped = text.strip()
     if not stripped.isdigit():
         return None
@@ -164,6 +174,13 @@ class _PendingRow:
     def __init__(self, pending_task_source: str | None, pending_task_key: str | None) -> None:
         self.pending_task_source = pending_task_source
         self.pending_task_key = pending_task_key
+
+
+class _KindRow:
+    __slots__ = ("pending_evidence_kind",)
+
+    def __init__(self, pending_evidence_kind: str | None) -> None:
+        self.pending_evidence_kind = pending_evidence_kind
 
 
 class _TaskRow:
@@ -220,6 +237,12 @@ class EvidenceService:
 
     async def clear_pending(self, wa_jid: str) -> None:
         await run_sync(self._clear_pending, wa_jid)
+
+    async def mark_active(self, wa_jid: str) -> None:
+        await run_sync(self._mark_active, wa_jid, "task")
+
+    async def active_kind(self, wa_jid: str) -> str | None:
+        return await run_sync(self._active_kind, wa_jid)
 
     async def stash_image(self, wa_jid: str, image: bytes, content_type: str, caption: str) -> None:
         await run_sync(self._stash_image, wa_jid, image, content_type, caption)
@@ -298,18 +321,71 @@ class EvidenceService:
     def _set_pending(self, wa_jid: str, task_key: str) -> None:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
+                # A talent only ever has one outstanding "waiting for a
+                # photo" target -- picking a task clears any pending
+                # attendance-day selection (bot/attendance_evidence.py sets
+                # the reverse), so cli.py's resolution never has to guess
+                # which of the two pending columns is the live one.
                 _ = cursor.execute(
                     """
                     INSERT INTO bot_conversations (wa_jid, pending_task_id)
                     SELECT %s, id FROM tasks WHERE record_key = %s
                     ON CONFLICT (wa_jid) DO UPDATE SET
                         pending_task_id = EXCLUDED.pending_task_id,
+                        pending_attendance_id = NULL,
+                        pending_evidence_kind = 'task',
                         updated_at = now()
                     """,
                     (wa_jid, task_key),
                 )
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="set_pending_task") from error
+
+    def _mark_active(self, wa_jid: str, kind: str) -> None:
+        """Records which list (task vs attendance) was most recently shown,
+        so a bare number reply that arrives before a specific pick is made
+        (see _set_pending/attendance_evidence.py's set_pending_attendance,
+        which also set this once a pick *is* made) resolves against the
+        right one -- see the migration adding pending_evidence_kind for why
+        this is needed now that two independently-numbered lists exist.
+        """
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    INSERT INTO bot_conversations (wa_jid, pending_evidence_kind)
+                    VALUES (%s, %s)
+                    ON CONFLICT (wa_jid) DO UPDATE SET
+                        pending_evidence_kind = EXCLUDED.pending_evidence_kind,
+                        updated_at = now()
+                    """,
+                    (wa_jid, kind),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="mark_active_evidence"
+            ) from error
+
+    def _active_kind(self, wa_jid: str) -> str | None:
+        try:
+            with (
+                self._connect() as connection,
+                connection.cursor(row_factory=class_row(_KindRow)) as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT pending_evidence_kind
+                    FROM bot_conversations
+                    WHERE wa_jid = %s AND updated_at > now() - interval '15 minutes'
+                    """,
+                    (wa_jid,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="active_evidence_kind"
+            ) from error
+        return None if row is None else row.pending_evidence_kind
 
     def _clear_pending(self, wa_jid: str) -> None:
         try:
@@ -393,7 +469,7 @@ class EvidenceService:
         image: bytes,
         caption: str,
     ) -> UploadResult:
-        if len(image) > _MAX_IMAGE_BYTES:
+        if len(image) > MAX_IMAGE_BYTES:
             return UploadResult(UploadOutcome.TOO_LARGE)
         content_type = sniff_content_type(image)
         if content_type is None:

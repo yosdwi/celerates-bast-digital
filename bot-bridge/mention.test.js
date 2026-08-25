@@ -8,7 +8,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ownUserIds, isForUs, looksLikeConversation } = require("./mention");
+const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 
 const SOCK = {
   user: { id: "62881080735871:1@s.whatsapp.net", lid: "250758209531984:1@lid", name: "conform" },
@@ -52,6 +52,23 @@ test("mentioning someone else does not trigger the bot", () => {
   assert.equal(isForUs(message, "gimana progress kamu?", ownUserIds(SOCK)), false);
 });
 
+test("real @mention on a photo caption is accepted (contextInfo lives on imageMessage, not extendedTextMessage)", () => {
+  const message = {
+    message: {
+      imageMessage: {
+        caption: "evidence-nya nih",
+        contextInfo: { mentionedJid: ["250758209531984@lid"] },
+      },
+    },
+  };
+  assert.equal(isForUs(message, "evidence-nya nih", ownUserIds(SOCK)), true);
+});
+
+test("photo sent with no caption and no mention is not for us", () => {
+  const message = { message: { imageMessage: {} } };
+  assert.equal(isForUs(message, "", ownUserIds(SOCK)), false);
+});
+
 test("bot display-name change does not affect mention detection", () => {
   const renamed = { user: { ...SOCK.user, name: "BAST Bot v2" } };
   const message = textMessage("status bast", ["250758209531984@lid"]);
@@ -68,4 +85,17 @@ test("business commands are never treated as conversation, even if casual", () =
   assert.equal(looksLikeConversation("@conform generate bast developer"), false);
   assert.equal(looksLikeConversation("@conform export attendance shifting"), false);
   assert.equal(looksLikeConversation("@conform restart postgres dong"), false);
+});
+
+test("DM keyword fast paths skip the wait notice", () => {
+  assert.equal(looksLikeDmFastPath("tasklist aku bulan ini"), true);
+  assert.equal(looksLikeDmFastPath("attendance"), true);
+  assert.equal(looksLikeDmFastPath("evidence yang kurang apa"), true);
+  assert.equal(looksLikeDmFastPath("1"), true);
+  assert.equal(looksLikeDmFastPath(""), true);
+});
+
+test("DM free-form questions get the wait notice (LLM fallback)", () => {
+  assert.equal(looksLikeDmFastPath("yang belum closed apa aja"), false);
+  assert.equal(looksLikeDmFastPath("clock in aku yang belum lengkap yang mana"), false);
 });

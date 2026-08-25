@@ -108,9 +108,7 @@ to silently skip a day.
 
 ## Scheduling — only after one clean manual run
 
-If the PAMA network can reach the VPS directly (test:
-`curl https://conform-v2-web.celeratesapps.com/health/ready`), schedule the
-plain form:
+Task Scheduler → Create Task → trigger every 5 minutes, action:
 
 ```
 Program:   C:\digital-bast\bridge\.venv\Scripts\python.exe
@@ -121,26 +119,3 @@ Start in:  C:\digital-bast\bridge
 Tick "Run whether user is logged on or not". The service-account path resolves
 against the script's own folder, so a missing "Start in" will not break the
 Google read.
-
-### If the PAMA network can't reach the VPS at all
-
-This is the normal case (SSH is reset network-wide, TLS to every
-`*.celeratesapps.com` host is SNI-blocked) — schedule the relay form instead,
-every 30 minutes:
-
-```
-Arguments: pama_bridge.py --dump out --upload-sheet
-```
-
-Requires `SYNC_LOOKBACK_DAYS` set short (e.g. `2`) in `.env` and
-`GOOGLE_SHEETS_RELAY_CREDENTIALS` / `GOOGLE_SHEETS_RELAY_SHEET_ID` filled in —
-see `.env.example`. The VPS side (`scripts/sheet_replay_poller.py`, its own
-cron) reads and replays what lands there; local dump files are deleted once
-they're safely uploaded, so nothing accumulates on this PC.
-
-`--dump` reads its roster from the relay sheet's `Roster` tab, not a local
-file — `scripts/push_roster_to_sheet.py` keeps that tab current from the VPS
-side. There is no local-roster fallback: if the Sheets relay isn't reachable
-or configured, `--dump` fails loudly rather than silently running against a
-roster someone forgot to update (a stale roster is exactly what let a
-leading-`L` NRP typo silently drop three people's data for months).

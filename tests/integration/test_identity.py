@@ -74,9 +74,7 @@ async def test_five_failed_attempts_lock_the_employee(
     service = ActivationService(database_dsn)
     codes = await service.issue_codes((employee_id,))
 
-    outcomes = [
-        (await service.activate(jid, employee_id, "WRONGCODE")).outcome for _ in range(5)
-    ]
+    outcomes = [(await service.activate(jid, employee_id, "WRONGCODE")).outcome for _ in range(5)]
 
     assert outcomes[:4] == [ActivationOutcome.INVALID_CODE] * 4
     assert outcomes[4] is ActivationOutcome.LOCKED

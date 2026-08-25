@@ -16,7 +16,8 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
-const { ownUserIds, isForUs, looksLikeConversation } = require("./mention");
+const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
+const { waitingReply } = require("./greeting");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -27,6 +28,11 @@ const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
+// Keep in sync with EVIDENCE_UPLOAD_IN_GROUP_REPLY in
+// src/digital_bast/bot/whatsapp.py -- same redirect, two runtimes.
+const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
+  "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 " +
+  "Tinggal kirim foto/dokumennya langsung ke DM aku.";
 
 const state = {
   connection: "starting",
@@ -86,6 +92,7 @@ function messageText(message) {
     content.extendedTextMessage?.text ||
     content.imageMessage?.caption ||
     content.videoMessage?.caption ||
+    content.documentMessage?.caption ||
     ""
   );
 }
@@ -248,7 +255,24 @@ async function start() {
 // GROUP: monitoring + commands, unchanged -- mention-gated, allowlist-gated.
 async function handleGroupMessage(sock, message, jid) {
   const text = messageText(message);
-  if (!text || !isForUs(message, text, ownUserIds(sock))) return;
+  const content = message.message || {};
+  const media = content.imageMessage || content.documentMessage;
+  const forUs = isForUs(message, text, ownUserIds(sock));
+  if (media && forUs) {
+    // Someone tagged @conform on a photo/document straight in the group,
+    // expecting it to count as evidence -- that upload flow only exists in
+    // DM (handleEvidenceUpload), so redirect instead of silently ignoring
+    // it or running it through bot-reply, which has no idea what to do
+    // with a caption-only "here's my evidence" message.
+    if (!allowedGroups().has(jid)) {
+      log(`ignored message from unlisted group ${jid}`);
+      return;
+    }
+    log(`evidence-in-group redirect for ${jid}`);
+    await sock.sendMessage(jid, { text: EVIDENCE_UPLOAD_IN_GROUP_REPLY }, { quoted: message });
+    return;
+  }
+  if (!text || !forUs) return;
   if (!allowedGroups().has(jid)) {
     log(`ignored message from unlisted group ${jid}`);
     return;
@@ -261,7 +285,7 @@ async function handleGroupMessage(sock, message, jid) {
   if (!looksLikeConversation(text)) {
     await sock.sendMessage(
       jid,
-      { text: "Siap, tunggu sekitar 10-15 detik ya" },
+      { text: waitingReply(message.pushName) },
       { quoted: message },
     );
   }
@@ -293,6 +317,13 @@ async function handleDirectMessage(sock, message, jid) {
   const text = messageText(message);
   if (!text) return;
   log(`dm from ${jid}: ${text.slice(0, 120)}`);
+  // Mirrors the group path's waitingReply heads-up (see handleGroupMessage)
+  // -- cli.py::_dm_reply now falls back to an LLM classification pass
+  // (~10-20s) for anything the keyword fast paths don't catch, so give the
+  // same "give me a sec" notice here instead of leaving the sender hanging.
+  if (!looksLikeDmFastPath(text)) {
+    await sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message });
+  }
   const result = await runCli(["bot-reply", "--text", text, "--jid", jid, "--channel", "dm"]);
   const reply = result.ok
     ? result.text

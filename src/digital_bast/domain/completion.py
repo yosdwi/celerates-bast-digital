@@ -143,6 +143,22 @@ class EmployeeCompletion:
     evidence: CheckResult
     log_1_pama: CheckResult
     total_tasks: int = 0
+    # Subset of log_1_pama's failing days that are actually upload-able: an
+    # attendance row exists (so there's a row to attach a photo to) but clock
+    # in/out is incomplete and no evidence yet. Excludes the "no attendance
+    # row at all" case, which a photo upload can't fix. Feeds the WhatsApp DM
+    # attendance-evidence flow (bot/attendance_evidence.py).
+    log_1_pama_evidence_days: tuple[date, ...] = ()
+    # The other log_1_pama failure case: no attendance row synced for this
+    # work day at all. Not upload-able (nothing to attach a photo to) -- a
+    # pipeline/data-sync gap, surfaced read-only in the DM summary
+    # (cli.py::_attendance_list_reply) so it isn't mistaken for "no issues
+    # here" just because it's missing from log_1_pama_evidence_days.
+    log_1_pama_missing_data_days: tuple[date, ...] = ()
+    # Work days actually evaluated in the period (off-days excluded) --
+    # mirrors total_tasks' role for the Task List summary, letting the
+    # Attendance DM summary show the same Total/Lengkap/Belum Lengkap shape.
+    total_work_days: int = 0
 
     @property
     def state(self) -> CheckState:
@@ -196,12 +212,26 @@ def _missing_clock_label(record: AttendanceFact) -> str:
     return "Clock In belum terisi" if not record.has_clock_in else "Clock Out belum terisi"
 
 
-def _log_1_pama(facts: EmployeeFacts, period: DateRange) -> tuple[CheckResult, frozenset[date]]:
+def _log_1_pama(
+    facts: EmployeeFacts, period: DateRange
+) -> tuple[CheckResult, frozenset[date], frozenset[date], frozenset[date]]:
     if not facts.attendance_available:
-        return CheckResult(CheckState.NEEDS_REVIEW, (ATTENDANCE_MAPPING_ISSUE,)), frozenset()
+        return (
+            CheckResult(CheckState.NEEDS_REVIEW, (ATTENDANCE_MAPPING_ISSUE,)),
+            frozenset(),
+            frozenset(),
+            frozenset(),
+        )
     by_day = {record.work_date: record for record in facts.attendance}
     issues: list[str] = []
     invalid: set[date] = set()
+    # Subset of `invalid` where an attendance row actually exists -- the only
+    # case a WhatsApp evidence-photo upload can fix (there's a row to attach
+    # it to). "no row at all" (missing_data below) is a pipeline/data-sync
+    # gap, not something a talent's photo resolves, so it's tracked
+    # separately -- surfaced read-only, never offered as an upload target.
+    needs_evidence: set[date] = set()
+    missing_data: set[date] = set()
     for work_date in period.days():
         if work_date in facts.off_days:
             continue
@@ -209,6 +239,7 @@ def _log_1_pama(facts: EmployeeFacts, period: DateRange) -> tuple[CheckResult, f
         if record is None:
             issues.append(f"{format_day(work_date)} — Data attendance belum tersedia.")
             invalid.add(work_date)
+            missing_data.add(work_date)
             continue
         if record.has_clock_in and record.has_clock_out:
             continue
@@ -219,8 +250,14 @@ def _log_1_pama(facts: EmployeeFacts, period: DateRange) -> tuple[CheckResult, f
             "dan Evidence Attendance belum tersedia."
         )
         invalid.add(work_date)
+        needs_evidence.add(work_date)
     state = CheckState.INCOMPLETE if issues else CheckState.COMPLETE
-    return CheckResult(state, tuple(issues)), frozenset(invalid)
+    return (
+        CheckResult(state, tuple(issues)),
+        frozenset(invalid),
+        frozenset(needs_evidence),
+        frozenset(missing_data),
+    )
 
 
 def _timesheet(
@@ -275,7 +312,9 @@ def _evidence(facts: EmployeeFacts) -> CheckResult:
 
 
 def evaluate_employee(facts: EmployeeFacts, period: DateRange) -> EmployeeCompletion:
-    log_result, invalid_log_days = _log_1_pama(facts, period)
+    log_result, invalid_log_days, needs_evidence_days, missing_data_days = _log_1_pama(
+        facts, period
+    )
     return EmployeeCompletion(
         employee_id=facts.employee_id,
         name=facts.name,
@@ -284,6 +323,9 @@ def evaluate_employee(facts: EmployeeFacts, period: DateRange) -> EmployeeComple
         evidence=_evidence(facts),
         log_1_pama=log_result,
         total_tasks=len(facts.tasks),
+        log_1_pama_evidence_days=tuple(sorted(needs_evidence_days)),
+        log_1_pama_missing_data_days=tuple(sorted(missing_data_days)),
+        total_work_days=sum(1 for day in period.days() if day not in facts.off_days),
     )
 
 

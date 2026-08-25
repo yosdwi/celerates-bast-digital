@@ -218,6 +218,68 @@ class GoogleIoTTaskSource:
         return parse_iot_sheet(payload, period, employees)
 
 
+# Schedule Shifting roster: month blocks laid out side by side (one ~31-column
+# block per month, starting March 2024), a day-number row, then one row per
+# IoT Operations employee. Column arithmetic and row offsets are lifted
+# unchanged from scripts/import_schedule_csv.py (originally derived from
+# scripts/load_pama_attendance.py::load_roster) -- that CSV importer imports
+# this function rather than keeping its own copy, so there's only ever one
+# place this layout gets parsed.
+
+_SCHEDULE_ROSTER_START_YEAR: Final = 2024
+_SCHEDULE_ROSTER_START_MONTH: Final = 3
+_SCHEDULE_MONTH_HEADER_ROW: Final = 10
+_SCHEDULE_DAY_NUMBER_ROW: Final = 12
+_SCHEDULE_FIRST_DATA_ROW: Final = 13
+_MONTHS_PER_YEAR: Final = 12
+
+
+def parse_schedule_rows(  # noqa: C901 -- ported unchanged from import_schedule_csv.py
+    rows: Sequence[Sequence[str]], names: dict[str, str]
+) -> dict[tuple[str, date], str]:
+    """`names` is {employee full name: employee_id}. Returns
+    {(employee_id, work_date): raw PAMA roster code} -- resolve through
+    pama_attendance.SHIFT_LEGEND for a display name, same as every other
+    caller of that legend.
+    """
+    if len(rows) <= _SCHEDULE_DAY_NUMBER_ROW:
+        return {}
+    month_header = rows[_SCHEDULE_MONTH_HEADER_ROW]
+    month_columns = [index for index, value in enumerate(month_header) if value.strip()]
+    if not month_columns:
+        return {}
+    day_row = rows[_SCHEDULE_DAY_NUMBER_ROW]
+    schedule: dict[tuple[str, date], str] = {}
+    for row in rows[_SCHEDULE_FIRST_DATA_ROW:]:
+        if not row or not row[0].strip():
+            continue
+        label = row[0].strip()
+        # Row labels carry a suffix, e.g. "Titin Ervina Sari (P)".
+        matched = next((name for name in names if name.lower() in label.lower()), None)
+        if matched is None:
+            continue
+        if not any(value.strip() for value in row[1:]):
+            continue
+        boundaries = list(zip(month_columns, [*month_columns[1:], len(row)], strict=True))
+        for block_index, (col_index, col_end) in enumerate(boundaries):
+            total_month = (_SCHEDULE_ROSTER_START_MONTH - 1) + block_index
+            year_num = _SCHEDULE_ROSTER_START_YEAR + total_month // _MONTHS_PER_YEAR
+            month_num = total_month % _MONTHS_PER_YEAR + 1
+            for offset in range(col_index, min(col_end, len(row))):
+                day_text = day_row[offset].strip() if offset < len(day_row) else ""
+                if not day_text.isdigit():
+                    continue
+                code = row[offset].strip()
+                if not code:
+                    continue
+                try:
+                    work_date = date(year_num, month_num, int(day_text))
+                except ValueError:
+                    continue
+                schedule[(names[matched], work_date)] = code
+    return schedule
+
+
 type RedmineRow = dict[str, str | int | float | date | datetime | None]
 
 _REDMINE_QUERY = """
