@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { getRuntimeHealth } from "../api/health";
 import type { HealthProbe } from "../api/health";
+import { askCommandCenter } from "../api/talentops";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
-import { RefreshIcon, SyncIcon } from "../components/Icons";
+import { CloseIcon, RefreshIcon, SparkleIcon, SyncIcon } from "../components/Icons";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 import { sourceAge } from "../domain/insights";
 
@@ -23,14 +25,40 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
   const [live, setLive] = useState<HealthProbe | null>(null);
   const [ready, setReady] = useState<HealthProbe | null>(null);
   const [loading, setLoading] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState("Summarize the observed source-ingest state and explain what PMO can safely conclude from it.");
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
 
   async function refreshHealth() {
     if (loading) return;
     setLoading(true);
-    const result = await getRuntimeHealth();
-    setLive(result.live);
-    setReady(result.ready);
-    setLoading(false);
+    try {
+      const result = await getRuntimeHealth();
+      setLive(result.live);
+      setReady(result.ready);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitAi(event?: FormEvent) {
+    event?.preventDefault();
+    const question = aiQuestion.trim();
+    if (!question || aiLoading) return;
+    setAiLoading(true);
+    setAiUnavailable(false);
+    try {
+      const response = await askCommandCenter(session.csrf_token, question, data.period);
+      setAiAnswer(response.answer);
+      setAiUnavailable(response.status === "unavailable");
+    } catch {
+      setAiAnswer(null);
+      setAiUnavailable(true);
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   useEffect(() => { void refreshHealth(); }, []);
@@ -38,7 +66,7 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
   const observedSources = data.sources.filter((source) => source.last_success_at !== null).length;
 
   return (
-    <WorkspaceFrame session={session} active="system" attentionCount={data.summary.need_attention} search={search} onSearch={setSearch} onNavigate={onNavigate} onAskAi={() => onNavigate("/admin/talentops/")}>
+    <WorkspaceFrame session={session} active="system" attentionCount={data.summary.need_attention} search={search} onSearch={setSearch} onNavigate={onNavigate} onAskAi={() => setAiOpen(true)}>
       <div className="content system-sync-page">
         <div className="page-heading"><div><h1>System &amp; Sync</h1><p>Runtime probes and source-ingest observations</p></div><button className="secondary-button" type="button" disabled={loading} onClick={() => void refreshHealth()}><RefreshIcon />{loading ? "Checking" : "Refresh"}</button></div>
 
@@ -57,6 +85,11 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
 
         <section className="panel system-boundary-panel"><div className="panel-title-row"><div><h2>Operational boundaries</h2><span>What this page can and cannot claim</span></div></div><div className="system-boundaries"><div><SyncIcon /><strong>Observed</strong><span>FastAPI liveness/readiness and last successful ingest timestamps.</span></div><div><SyncIcon /><strong>Not inferred</strong><span>Database-specific health, queue depth, Ollama availability, ingest SLA, or source lag thresholds unless exposed by a real backend signal.</span></div></div></section>
       </div>
+
+      <section className={`ai-panel ${aiOpen ? "open" : ""}`} aria-hidden={!aiOpen}>
+        <div className="ai-panel-header"><div><span>Grounded in Command Center and ingest facts</span><h2>Ask AI</h2></div><button className="icon-button" type="button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
+        <form className="ai-panel-body" onSubmit={submitAi}><label htmlFor="system-ai-question">Question</label><textarea id="system-ai-question" rows={4} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} /><button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}><SparkleIcon />{aiLoading ? "Thinking…" : "Ask"}</button><div className="ai-safety-note">AI may explain observed source facts. It must not invent an SLA, database-specific health, queue depth, or Ollama status that is not exposed by the backend.</div>{aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. Runtime probes and observed timestamps remain valid.</div> : null}{aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}</form>
+      </section>
     </WorkspaceFrame>
   );
 }
