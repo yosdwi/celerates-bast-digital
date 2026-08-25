@@ -30,8 +30,9 @@ grep -q 'no-new-privileges:true' compose.yaml
 grep -q 'internal: true' compose.yaml
 grep -q 'flock -n' scripts/deploy.sh
 grep -q 'migration gate failed; active slot preserved' scripts/deploy.sh
-grep -q 'proxy rolled back' scripts/deploy.sh
+grep -q 'proxy and bridge rolled back' scripts/deploy.sh
 grep -q 'compose build bot-bridge' scripts/deploy.sh
-grep -q 'bot bridge failed health gate' scripts/deploy.sh
+grep -q 'bot bridge failed health gate; previous bridge restored' scripts/deploy.sh
+grep -q 'rollback_bridge' scripts/deploy.sh
 grep -q 'bot-bridge/outbound.js' bot-bridge/Dockerfile
 printf '%s\n' "operations static checks passed"
