@@ -75,6 +75,11 @@ if docker image inspect "$app_image" >/dev/null 2>&1; then
 else
     run compose pull "web-$target" worker runner postgres redis prefect-server prefect-services reverse-proxy
 fi
+
+# The bridge image extends the exact application image selected for this
+# release. Build it before touching the running bridge so an image-build
+# failure cannot interrupt the currently paired WhatsApp session.
+run compose build bot-bridge
 run compose up -d postgres redis prefect-server prefect-services reverse-proxy
 run compose up -d --no-deps "web-$target"
 
@@ -94,6 +99,18 @@ if [ "$DRY_RUN" = "0" ]; then
     # slot serving exactly as it was.
     compose run --rm --no-deps "web-$target" alembic upgrade head || die "migration gate failed; active slot preserved" 1
     compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
+
+    # Only replace the shared bridge after the candidate web + schema passed.
+    # Its volume keeps the paired WhatsApp session; the HTTP health check
+    # proves the new Node process and packaged modules actually started.
+    compose up -d --no-deps bot-bridge
+    elapsed=0
+    until [ "$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q bot-bridge)" 2>/dev/null || true)" = "healthy" ]; do
+        [ "$elapsed" -lt "$timeout_seconds" ] || die "bot bridge failed health gate; active web slot preserved" 1
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
     sed "s/web-$current:8000/web-$target:8000/" "$active_config" > "$active_config.next"
     dd if="$active_config.next" of="$active_config" conv=notrunc status=none
     truncate -s "$(wc -c < "$active_config.next")" "$active_config"
@@ -121,6 +138,7 @@ else
     printf '%s\n' "DRY-RUN health web-$target"
     printf '%s\n' "DRY-RUN shadow web-$target"
     printf '%s\n' "DRY-RUN migration alembic upgrade head"
+    printf '%s\n' "DRY-RUN restart + health bot-bridge"
     printf '%s\n' "DRY-RUN switch $current to $target"
     printf '%s\n' "DRY-RUN public health and rollback on failure"
     printf '%s\n' "DRY-RUN restart worker runner"
