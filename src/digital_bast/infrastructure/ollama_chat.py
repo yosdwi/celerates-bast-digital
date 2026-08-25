@@ -20,7 +20,15 @@ class OllamaChatClient:
         self,
         base_url: str,
         model: str,
-        timeout_seconds: float = 25.0,
+        # 110s, not 25s: this box runs Ollama CPU-only, no GPU. A real
+        # command-center prompt (~3.7k tokens once the JSON context is
+        # included) measured 81s end-to-end -- 25s guaranteed every real
+        # question timed out silently (complete() catches httpx.HTTPError,
+        # including ReadTimeout, and returns None, which the router reports
+        # as {"status":"unavailable"} indistinguishably from Ollama being
+        # down). Kept under nginx's 115s proxy_read_timeout so this timeout
+        # fires first and the app still returns its own JSON.
+        timeout_seconds: float = 110.0,
     ) -> None:
         self._base_url = base_url
         self._model = model
