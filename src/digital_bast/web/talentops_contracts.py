@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime  # noqa: TC003
 from typing import Annotated, ClassVar, Literal
+from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -181,3 +182,52 @@ class AiCommandCenterInput(_FrozenModel):
 class AiCommandCenterResponse(_FrozenModel):
     status: Literal["ok", "unavailable"]
     answer: str | None
+
+
+class FollowUpDraftInput(_FrozenModel):
+    year: int | None = Field(default=None, ge=2020, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)
+
+
+class FollowUpRecordResponse(_FrozenModel):
+    id: str
+    source: str
+    status: str
+    created_by: str
+    created_at: datetime
+    sent_at: datetime | None
+
+
+class FollowUpDraftResponse(_FrozenModel):
+    nrp: str
+    name: str
+    whatsapp_bound: bool
+    message: str
+    source: Literal["deterministic", "ai", "edited"]
+    last_follow_up: FollowUpRecordResponse | None
+
+
+class FollowUpSendInput(_FrozenModel):
+    year: int | None = Field(default=None, ge=2020, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)
+    idempotency_key: UUID
+    source: Literal["deterministic", "ai", "edited"] = "edited"
+    message: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=4_000),
+    ]
+
+
+class FollowUpSendResponse(_FrozenModel):
+    status: Literal[
+        "sent",
+        "not_bound",
+        "bridge_unavailable",
+        "failed",
+        "no_blockers",
+    ]
+    delivery_id: str | None
+    provider_message_id: str | None
+    sent_at: datetime | None
+    error_code: str | None
+    duplicate: bool = False

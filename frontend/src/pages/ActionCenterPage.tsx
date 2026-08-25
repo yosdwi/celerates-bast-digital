@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type { AttentionItem, CheckState, CommandCenterResponse, EmployeeRole, TalentOpsSession } from "../api/types";
+import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
 import { StatusBadge } from "../components/StatusBadge";
 import WorkspaceFrame from "../components/WorkspaceFrame";
@@ -34,6 +35,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [teamFilter, setTeamFilter] = useState<TeamFilter>("all");
   const [selected, setSelected] = useState<AttentionItem | null>(null);
+  const [followUpTarget, setFollowUpTarget] = useState<AttentionItem | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState("Summarize the current PMO action queue and the most common blockers.");
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
@@ -73,12 +75,9 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
     }
   }
 
-  function draftFollowUp(item: AttentionItem) {
+  function openFollowUp(item: AttentionItem) {
     setSelected(null);
-    setAiQuestion(`Draft a concise PMO follow-up for ${item.name} (${item.nrp}) based only on the current readiness blockers. State what needs attention and the next review step. Do not invent facts or say the message was sent.`);
-    setAiAnswer(null);
-    setAiUnavailable(false);
-    setAiOpen(true);
+    setFollowUpTarget(item);
   }
 
   return (
@@ -108,7 +107,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
 
         <div className="ai-insight-strip action-ai-strip">
           <span className="ai-insight-icon"><SparkleIcon /></span>
-          <div><strong>Follow-up stays draft-only.</strong> AI may explain and draft from current facts; nothing is sent from this screen.</div>
+          <div><strong>Actions are explicit.</strong> AI may explain or draft, but WhatsApp is sent only after PMO reviews the composer and presses Send.</div>
           <button type="button" onClick={() => setAiOpen(true)}>Ask AI</button>
         </div>
 
@@ -164,7 +163,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
         </section>
 
         <div className="action-rule-note">
-          <strong>Queue semantics:</strong> one row per talent needing attention. The screen does not create a second task system or persist acknowledgement/resolution state; readiness remains owned by the typed business data and existing rules.
+          <strong>Queue semantics:</strong> one row per talent needing attention. Readiness remains owned by typed business data; the follow-up audit records communication only, not a second task lifecycle.
         </div>
       </div>
 
@@ -179,7 +178,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
             {selected.blockers.map((blocker) => <div className="blocker-card" key={blocker.domain}><div className="blocker-head"><strong>{domainLabel(blocker.domain)}</strong><StatusBadge state={blocker.state} compact /></div>{blocker.issues.length > 0 ? <ul>{blocker.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <p>No detailed issue text was returned.</p>}</div>)}
           </div>
           <div className="drawer-actions action-drawer-actions">
-            <button className="secondary-button" type="button" onClick={() => draftFollowUp(selected)}><SparkleIcon />Draft follow-up</button>
+            <button className="secondary-button" type="button" onClick={() => openFollowUp(selected)}>WhatsApp follow-up</button>
             <button className="primary-button" type="button" onClick={() => { setSelected(null); onOpenTalent(selected.nrp); }}>Open Talent 360</button>
           </div>
         </> : null}
@@ -188,14 +187,24 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
       <section className={`ai-panel ${aiOpen ? "open" : ""}`} aria-hidden={!aiOpen}>
         <div className="ai-panel-header"><div><span>Grounded in current Command Center facts</span><h2>Ask AI</h2></div><button className="icon-button" type="button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
         <form className="ai-panel-body" onSubmit={submitAi}>
-          <label htmlFor="action-ai-question">Question or draft request</label>
+          <label htmlFor="action-ai-question">Question</label>
           <textarea id="action-ai-question" rows={4} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} />
           <button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Thinking…" : "Ask"}</button>
-          <div className="ai-safety-note">Draft only. No WhatsApp message is sent from Action Center.</div>
+          <div className="ai-safety-note">AI explains current facts. WhatsApp sending is a separate explicit action.</div>
           {aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. The deterministic action queue remains valid.</div> : null}
-          {aiAnswer ? <div className="ai-answer"><span>Answer / draft</span><p>{aiAnswer}</p></div> : null}
+          {aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}
         </form>
       </section>
+
+      {followUpTarget ? (
+        <FollowUpComposer
+          session={session}
+          nrp={followUpTarget.nrp}
+          name={followUpTarget.name}
+          period={data.period}
+          onClose={() => setFollowUpTarget(null)}
+        />
+      ) : null}
     </WorkspaceFrame>
   );
 }

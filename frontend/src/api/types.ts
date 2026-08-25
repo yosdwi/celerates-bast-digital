@@ -1,5 +1,7 @@
 export type CheckState = "complete" | "incomplete" | "needs_review";
 export type EmployeeRole = "Developer" | "IoT Operations";
+export type FollowUpSource = "deterministic" | "ai" | "edited";
+export type FollowUpStatus = "sent" | "not_bound" | "bridge_unavailable" | "failed" | "no_blockers";
 
 export interface SessionUser {
   name: string;
@@ -157,4 +159,31 @@ export interface TalentDetailResponse {
 export interface AiResponse {
   status: "ok" | "unavailable";
   answer: string | null;
+}
+
+export interface FollowUpRecord {
+  id: string;
+  source: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface FollowUpDraft {
+  nrp: string;
+  name: string;
+  whatsapp_bound: boolean;
+  message: string;
+  source: FollowUpSource;
+  last_follow_up: FollowUpRecord | null;
+}
+
+export interface FollowUpSendResponse {
+  status: FollowUpStatus;
+  delivery_id: string | null;
+  provider_message_id: string | null;
+  sent_at: string | null;
+  error_code: string | null;
+  duplicate: boolean;
 }

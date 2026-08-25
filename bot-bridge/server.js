@@ -1,8 +1,10 @@
 "use strict";
 
 // WhatsApp bridge for the Digital BAST bot.
-// It owns exactly three jobs: pair the number, listen in allowlisted groups,
-// and hand the raw message to `digital-bast bot-reply`. No business logic here.
+// It owns transport concerns: pair the number, receive messages, and hand
+// business interpretation to `digital-bast`. TalentOps outbound follow-ups
+// enter through an authenticated internal endpoint but business rules remain
+// in the Python application.
 
 const http = require("node:http");
 const path = require("node:path");
@@ -18,6 +20,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
+const { handleOutboundRequest } = require("./outbound");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -28,8 +31,6 @@ const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
-// Keep in sync with EVIDENCE_UPLOAD_IN_GROUP_REPLY in
-// src/digital_bast/bot/whatsapp.py -- same redirect, two runtimes.
 const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 " +
   "Tinggal kirim foto/dokumennya langsung ke DM aku.";
@@ -40,6 +41,7 @@ const state = {
   me: "",
   groups: [],
   log: [],
+  socket: null,
 };
 
 function log(line) {
@@ -49,14 +51,6 @@ function log(line) {
   console.log(entry);
 }
 
-// Baileys throws (not just rejects) from deep inside its own send/query
-// internals on a transient socket state -- e.g. "Connection Closed" while a
-// reconnect is in flight (see groupMetadata -> sendNode -> sendRawMessage).
-// Node's default behavior for an uncaught exception/rejection is to crash
-// the whole process, which took the bot offline outright. Log and keep
-// running instead -- a single failed send/query should not end the session;
-// Baileys' own reconnect logic (connection.update handler below) recovers
-// the socket on its own.
 process.on("uncaughtException", (error) => {
   log(`uncaughtException (bot stays up): ${error && error.stack ? error.stack : error}`);
 });
@@ -118,10 +112,6 @@ function requestId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-// The full stdout/stderr/traceback from a failed CLI call goes to the
-// process log only -- WhatsApp gets a short Indonesian message plus a
-// ref id so the two can be correlated without ever putting a filesystem
-// path, Python traceback, or SQL detail in front of the sender.
 function friendlyErrorReply(context, resultText) {
   const id = requestId();
   log(`${context} failed [${id}]: ${resultText}`);
@@ -154,9 +144,6 @@ async function sendFileReply(sock, jid, message, filePayload) {
   try {
     const buffer = fs.readFileSync(filePayload.path);
     const mimetype = mimetypeFor(filePayload.path);
-    // The status-matrix PNG (cli.py generate-status-matrix) is meant to be
-    // read inline in the chat, not saved -- everything else (CSV/PDF export)
-    // stays a document attachment.
     const payload = mimetype.startsWith("image/")
       ? { image: buffer, caption: filePayload.caption || "" }
       : {
@@ -201,6 +188,7 @@ async function start() {
     syncFullHistory: false,
     browser: ["Digital BAST Bot", "Chrome", "1.0.0"],
   });
+  state.socket = sock;
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -215,12 +203,14 @@ async function start() {
       state.connection = "connected";
       state.qrDataUrl = "";
       state.me = sock.user?.id || "";
+      state.socket = sock;
       log(`connected as ${state.me}`);
       await refreshGroups(sock);
     }
     if (connection === "close") {
       const status = lastDisconnect?.error?.output?.statusCode;
       state.connection = "disconnected";
+      if (state.socket === sock) state.socket = null;
       log(`connection closed (${status ?? "unknown"})`);
       if (status === DisconnectReason.loggedOut) {
         log("logged out; delete the auth directory and scan again");
@@ -240,10 +230,6 @@ async function start() {
       if (jid.endsWith("@g.us")) {
         await handleGroupMessage(sock, message, jid);
       } else if (jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid")) {
-        // A 1:1 chat's remoteJid is the phone-number JID or the privacy "@lid"
-        // JID depending on the *other* side's addressing mode (same ambiguity
-        // as group mentions, see mention.js) -- @lid alone used to fall through
-        // neither branch and get silently dropped.
         await handleDirectMessage(sock, message, jid);
       }
     }
@@ -252,18 +238,12 @@ async function start() {
   return sock;
 }
 
-// GROUP: monitoring + commands, unchanged -- mention-gated, allowlist-gated.
 async function handleGroupMessage(sock, message, jid) {
   const text = messageText(message);
   const content = message.message || {};
   const media = content.imageMessage || content.documentMessage;
   const forUs = isForUs(message, text, ownUserIds(sock));
   if (media && forUs) {
-    // Someone tagged @conform on a photo/document straight in the group,
-    // expecting it to count as evidence -- that upload flow only exists in
-    // DM (handleEvidenceUpload), so redirect instead of silently ignoring
-    // it or running it through bot-reply, which has no idea what to do
-    // with a caption-only "here's my evidence" message.
     if (!allowedGroups().has(jid)) {
       log(`ignored message from unlisted group ${jid}`);
       return;
@@ -278,10 +258,6 @@ async function handleGroupMessage(sock, message, jid) {
     return;
   }
   log(`command from ${jid}: ${text.slice(0, 120)}`);
-  // A plain greeting/intro (see mention.js::looksLikeConversation, mirrors
-  // cli.py's conversation fast-path) doesn't need a "this'll take a
-  // moment" heads-up -- generate/export/status and everything else still
-  // gets it immediately, same as before.
   if (!looksLikeConversation(text)) {
     await sock.sendMessage(
       jid,
@@ -304,9 +280,6 @@ async function handleGroupMessage(sock, message, jid) {
   await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
 }
 
-// DM: activation + evidence only. No trigger word needed -- every DM is in scope,
-// and digital-bast itself enforces "unbound JID can only attempt activation"
-// (see cli.py::_dm_reply). No business logic here, same rule as the group path.
 async function handleDirectMessage(sock, message, jid) {
   const content = message.message || {};
   const media = content.imageMessage || content.documentMessage;
@@ -317,10 +290,6 @@ async function handleDirectMessage(sock, message, jid) {
   const text = messageText(message);
   if (!text) return;
   log(`dm from ${jid}: ${text.slice(0, 120)}`);
-  // Mirrors the group path's waitingReply heads-up (see handleGroupMessage)
-  // -- cli.py::_dm_reply now falls back to an LLM classification pass
-  // (~10-20s) for anything the keyword fast paths don't catch, so give the
-  // same "give me a sec" notice here instead of leaving the sender hanging.
   if (!looksLikeDmFastPath(text)) {
     await sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message });
   }
@@ -337,10 +306,6 @@ function evidenceFileExtension(mimetype) {
   return "jpg";
 }
 
-// WhatsApp re-compresses photos sent as imageMessage; documentMessage preserves
-// the original bytes. Both are accepted -- digital-bast bot-evidence sniffs
-// magic bytes and validates size/type itself, so the bridge just downloads and
-// hands off the file.
 async function handleEvidenceUpload(sock, message, jid, media) {
   fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
   const caption = media.caption || "";
@@ -450,6 +415,8 @@ function readBody(request) {
 }
 
 const server = http.createServer(async (request, response) => {
+  if (await handleOutboundRequest(request, response, state, log)) return;
+
   const url = new URL(request.url, `http://${request.headers.host}`);
   if (request.method === "GET" && url.pathname === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
@@ -487,4 +454,5 @@ server.listen(PORT, HOST, () => {
 start().catch((error) => {
   log(`startup failed: ${error}`);
   state.connection = "failed";
+  state.socket = null;
 });

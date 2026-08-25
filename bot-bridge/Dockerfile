@@ -4,7 +4,8 @@
 # two have to share a filesystem. Running the bridge on the host and reaching
 # into a container would mean either a docker socket mount or a shared export
 # directory; putting Node in the app image avoids both.
-FROM digital-bast:local AS base
+ARG APP_IMAGE=digital-bast:local
+FROM ${APP_IMAGE} AS base
 
 USER root
 
@@ -22,7 +23,7 @@ WORKDIR /opt/digital-bast/bot-bridge
 COPY bot-bridge/package.json bot-bridge/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY bot-bridge/server.js bot-bridge/mention.js bot-bridge/greeting.js ./
+COPY bot-bridge/server.js bot-bridge/mention.js bot-bridge/greeting.js bot-bridge/outbound.js ./
 
 # The Baileys auth session and generated exports live on a volume so the
 # paired WhatsApp session survives redeploys -- re-pairing by QR would take

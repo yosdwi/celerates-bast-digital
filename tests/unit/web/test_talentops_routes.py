@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from digital_bast.application.talentops import (
     AttendanceDay,
+    Blocker,
     CheckSummary,
     CommandCenterSummary,
     CommandCenterView,
@@ -14,6 +15,11 @@ from digital_bast.application.talentops import (
     TalentDetailView,
     TalentTask,
     TimesheetDay,
+)
+from digital_bast.application.talentops_followups import (
+    FollowUpDraftView,
+    FollowUpSendCommand,
+    FollowUpSendView,
 )
 from digital_bast.domain.completion import CheckState
 from digital_bast.domain.models import EmployeeRole
@@ -93,6 +99,58 @@ class Backend:
         return 1
 
 
+def talent_detail_view() -> TalentDetailView:
+    checks = ReadinessChecks(
+        attendance=CheckSummary(CheckState.INCOMPLETE, 1),
+        timesheet=CheckSummary(CheckState.INCOMPLETE, 1),
+        task=CheckSummary(CheckState.COMPLETE, 0),
+        evidence=CheckSummary(CheckState.INCOMPLETE, 1),
+    )
+    return TalentDetailView(
+        period=PeriodView(2026, 8, "2026-08-01", "2026-08-31", "1-31 Agustus 2026"),
+        nrp="JIMT24002",
+        name="Yoses Dwi Maheswara",
+        role=EmployeeRole.DEVELOPER,
+        overall_state=CheckState.INCOMPLETE,
+        checks=checks,
+        blockers=(
+            Blocker("evidence", CheckState.INCOMPLETE, ("Evidence missing",)),
+        ),
+        attendance_days=(
+            AttendanceDay(
+                work_date=date(2026, 8, 1),
+                is_off=False,
+                has_record=False,
+                has_clock_in=False,
+                has_clock_out=False,
+                has_evidence=False,
+                state=CheckState.INCOMPLETE,
+            ),
+        ),
+        timesheet_days=(
+            TimesheetDay(
+                work_date=date(2026, 8, 1),
+                is_off=False,
+                has_record=False,
+                has_remarks=False,
+                blocked_by_attendance=True,
+                state=CheckState.INCOMPLETE,
+            ),
+        ),
+        tasks=(
+            TalentTask(
+                work_date=date(2026, 8, 1),
+                title="Task",
+                status="Closed",
+                evidence_count=0,
+                is_closed=True,
+                evidence_ready=False,
+            ),
+        ),
+        availability=TalentDataAvailability(attendance=True, evidence=True),
+    )
+
+
 class TalentOps:
     async def command_center(self, period: object) -> CommandCenterView:
         return CommandCenterView(
@@ -106,60 +164,44 @@ class TalentOps:
         )
 
     async def talent_detail(self, period: object, nrp: str) -> TalentDetailView | None:
-        if nrp != "JIMT24002":
-            return None
-        checks = ReadinessChecks(
-            attendance=CheckSummary(CheckState.INCOMPLETE, 1),
-            timesheet=CheckSummary(CheckState.INCOMPLETE, 1),
-            task=CheckSummary(CheckState.COMPLETE, 0),
-            evidence=CheckSummary(CheckState.COMPLETE, 0),
-        )
-        return TalentDetailView(
-            period=PeriodView(2026, 8, "2026-08-01", "2026-08-31", "1-31 Agustus 2026"),
-            nrp="JIMT24002",
-            name="Yoses Dwi Maheswara",
-            role=EmployeeRole.DEVELOPER,
-            overall_state=CheckState.INCOMPLETE,
-            checks=checks,
-            blockers=(),
-            attendance_days=(
-                AttendanceDay(
-                    work_date=date(2026, 8, 1),
-                    is_off=False,
-                    has_record=False,
-                    has_clock_in=False,
-                    has_clock_out=False,
-                    has_evidence=False,
-                    state=CheckState.INCOMPLETE,
-                ),
-            ),
-            timesheet_days=(
-                TimesheetDay(
-                    work_date=date(2026, 8, 1),
-                    is_off=False,
-                    has_record=False,
-                    has_remarks=False,
-                    blocked_by_attendance=True,
-                    state=CheckState.INCOMPLETE,
-                ),
-            ),
-            tasks=(
-                TalentTask(
-                    work_date=date(2026, 8, 1),
-                    title="Task",
-                    status="Closed",
-                    evidence_count=1,
-                    is_closed=True,
-                    evidence_ready=True,
-                ),
-            ),
-            availability=TalentDataAvailability(attendance=True, evidence=True),
-        )
+        return talent_detail_view() if nrp == "JIMT24002" else None
 
 
 class TalentOpsAi:
     async def answer(self, question: str, view: CommandCenterView) -> str | None:
         return "Grounded answer"
+
+    async def answer_talent(self, question: str, view: TalentDetailView) -> str | None:
+        assert view.nrp == "JIMT24002"
+        return "Talent-grounded answer"
+
+    async def draft_follow_up(self, view: TalentDetailView) -> str | None:
+        return "AI draft"
+
+
+class FollowUps:
+    async def draft(self, period: object, nrp: str) -> FollowUpDraftView | None:
+        if nrp != "JIMT24002":
+            return None
+        return FollowUpDraftView(
+            nrp=nrp,
+            name="Yoses Dwi Maheswara",
+            whatsapp_bound=True,
+            message="Halo Yoses, Evidence masih perlu dilengkapi.",
+            source="ai",
+            last_follow_up=None,
+        )
+
+    async def send(self, command: FollowUpSendCommand) -> FollowUpSendView | None:
+        if command.nrp != "JIMT24002":
+            return None
+        return FollowUpSendView(
+            status="sent",
+            delivery_id="delivery-1",
+            provider_message_id="wa-message-1",
+            sent_at=datetime(2026, 8, 25, 4, tzinfo=UTC),
+            error_code=None,
+        )
 
 
 def make_client(authenticated: bool) -> TestClient:
@@ -181,6 +223,7 @@ def make_client(authenticated: bool) -> TestClient:
         cookie=CookieSettings(secure=True),
         talentops=TalentOps(),  # type: ignore[arg-type]
         talentops_ai=TalentOpsAi(),  # type: ignore[arg-type]
+        talentops_followups=FollowUps(),  # type: ignore[arg-type]
         now=lambda: now,
     )
     client = TestClient(create_app(dependencies), base_url="https://testserver")
@@ -222,7 +265,7 @@ def test_talentops_talent_detail_requires_session_and_returns_grounded_payload()
     assert response.json()["nrp"] == "JIMT24002"
     assert response.json()["attendance_days"][0]["state"] == "incomplete"
     assert response.json()["timesheet_days"][0]["blocked_by_attendance"] is True
-    assert response.json()["tasks"][0]["evidence_ready"] is True
+    assert response.json()["tasks"][0]["evidence_ready"] is False
 
 
 def test_talentops_talent_detail_returns_404_for_unknown_nrp() -> None:
@@ -247,3 +290,50 @@ def test_talentops_ai_requires_csrf_and_accepts_valid_header() -> None:
     assert missing.status_code == 403
     assert valid.status_code == 200
     assert valid.json() == {"status": "ok", "answer": "Grounded answer"}
+
+
+def test_talent_scoped_ai_uses_talent_context() -> None:
+    response = make_client(authenticated=True).post(
+        "/api/talentops/v1/ai/talents/JIMT24002",
+        headers={"X-CSRF-Token": "csrf-token"},
+        json={"year": 2026, "month": 8, "question": "Why is this blocked?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "answer": "Talent-grounded answer"}
+
+
+def test_follow_up_draft_requires_csrf_and_reports_whatsapp_binding() -> None:
+    client = make_client(authenticated=True)
+    missing = client.post(
+        "/api/talentops/v1/talents/JIMT24002/follow-up-draft",
+        json={"year": 2026, "month": 8},
+    )
+    valid = client.post(
+        "/api/talentops/v1/talents/JIMT24002/follow-up-draft",
+        headers={"X-CSRF-Token": "csrf-token"},
+        json={"year": 2026, "month": 8},
+    )
+
+    assert missing.status_code == 403
+    assert valid.status_code == 200
+    assert valid.json()["whatsapp_bound"] is True
+    assert valid.json()["source"] == "ai"
+
+
+def test_follow_up_send_is_explicit_csrf_protected_action() -> None:
+    response = make_client(authenticated=True).post(
+        "/api/talentops/v1/talents/JIMT24002/follow-ups",
+        headers={"X-CSRF-Token": "csrf-token"},
+        json={
+            "year": 2026,
+            "month": 8,
+            "message": "Please review your current Evidence blocker.",
+            "source": "edited",
+            "idempotency_key": "11111111-1111-4111-8111-111111111111",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "sent"
+    assert response.json()["provider_message_id"] == "wa-message-1"

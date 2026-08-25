@@ -34,18 +34,29 @@ jobs:
 
   frontend:
     runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm install --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+          node-version: "22"
+      - name: Install TalentOps frontend
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test -- --run
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
+      - name: Install WhatsApp bridge
+        working-directory: bot-bridge
+        run: npm ci --no-audit --no-fund
+      - name: WhatsApp bridge tests
+        working-directory: bot-bridge
+        run: npm test
 
   secrets:
     runs-on: ubuntu-24.04
@@ -73,6 +84,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: test "$(docker image inspect digital-bast:ci --format '{{.Config.User}}')" = "10001:10001"
+      - name: Build WhatsApp bridge image
+        run: docker build -f bot-bridge/Dockerfile --build-arg APP_IMAGE=digital-bast:ci -t digital-bast-bot-bridge:ci .
+      - name: Verify WhatsApp bridge runtime package
+        run: |
+          test "$(docker image inspect digital-bast-bot-bridge:ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint node digital-bast-bot-bridge:ci -e "require('/opt/digital-bast/bot-bridge/outbound.js')"
       - name: Verify secure runtime dependency floors
         run: >-
           docker run --rm --entrypoint python digital-bast:ci -c

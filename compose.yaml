@@ -299,6 +299,8 @@ services:
     build:
       context: .
       dockerfile: bot-bridge/Dockerfile
+      args:
+        APP_IMAGE: ${APP_IMAGE:-digital-bast:local}
     image: ${BOT_BRIDGE_IMAGE:-digital-bast-bot-bridge:local}
     restart: unless-stopped
     environment:
@@ -316,6 +318,12 @@ services:
     # Loopback-only: /allow and /try have no authentication of their own.
     ports:
       - "127.0.0.1:${BOT_SETUP_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     networks:
       - backend
       - egress

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { askCommandCenter } from "../api/talentops";
+import { askTalent } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
+import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, SparkleIcon } from "../components/Icons";
 import { StatusBadge, statusLabel } from "../components/StatusBadge";
 import WorkspaceFrame from "../components/WorkspaceFrame";
@@ -30,6 +31,7 @@ function initials(name: string): string {
 export default function Talent360Page({ session, commandCenter, talent, onNavigate, onBack }: Props) {
   const [search, setSearch] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState(`Explain the blockers for ${talent.name} and what PMO should review next.`);
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -54,7 +56,7 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
     setAiLoading(true);
     setAiUnavailable(false);
     try {
-      const response = await askCommandCenter(session.csrf_token, question, talent.period);
+      const response = await askTalent(session.csrf_token, talent.nrp, question, talent.period);
       setAiAnswer(response.answer);
       setAiUnavailable(response.status === "unavailable");
     } catch {
@@ -63,13 +65,6 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
     } finally {
       setAiLoading(false);
     }
-  }
-
-  function askFollowUp() {
-    setAiQuestion(`Draft a concise PMO follow-up for ${talent.name} about the current BAST blockers. Do not invent facts or claim a message was sent.`);
-    setAiAnswer(null);
-    setAiUnavailable(false);
-    setAiOpen(true);
   }
 
   return (
@@ -92,7 +87,7 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
           </div>
           <div className="talent-profile-actions">
             <button className="secondary-button" type="button" disabled title="Edit records in the existing NocoDB Data Workspace">Open data</button>
-            <button className="primary-button" type="button" onClick={askFollowUp}>Follow up</button>
+            <button className="primary-button" type="button" onClick={() => setFollowUpOpen(true)}>Follow up</button>
           </div>
         </section>
 
@@ -172,12 +167,22 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
         <div className="slice2-ai-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAiOpen(false); }}>
           <section className="slice2-ai-panel" role="dialog" aria-modal="true" aria-label={`Ask AI about ${talent.name}`}>
             <div className="slice2-ai-head"><div><SparkleIcon /><strong>Ask AI · {talent.name}</strong></div><button type="button" className="icon-button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
-            <p>AI is grounded in the current Command Center period. Readiness rules and database facts remain authoritative.</p>
+            <p>AI is grounded in this talent's current readiness, tasks, attendance, and evidence facts. Deterministic rules remain authoritative.</p>
             <form onSubmit={(event) => void submitAi(event)}><textarea value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} rows={5} /><button className="primary-button" type="submit" disabled={aiLoading}>{aiLoading ? "Thinking…" : "Ask"}</button></form>
             {aiAnswer ? <div className="slice2-ai-answer">{aiAnswer}</div> : null}
             {aiUnavailable ? <div className="slice2-ai-answer muted">AI is unavailable. The deterministic readiness data remains available above.</div> : null}
           </section>
         </div>
+      ) : null}
+
+      {followUpOpen ? (
+        <FollowUpComposer
+          session={session}
+          nrp={talent.nrp}
+          name={talent.name}
+          period={talent.period}
+          onClose={() => setFollowUpOpen(false)}
+        />
       ) : null}
     </WorkspaceFrame>
   );
