@@ -21,7 +21,7 @@ function resultMessage(result: FollowUpSendResponse): string {
     case "sent":
       return result.duplicate ? "Message was already sent; duplicate send prevented." : "WhatsApp follow-up sent.";
     case "not_bound":
-      return "This talent has not connected their WhatsApp identity yet.";
+      return "This talent has not linked their WhatsApp identity yet.";
     case "bridge_unavailable":
       return "WhatsApp bridge is unavailable. Nothing was sent.";
     case "no_blockers":
@@ -55,7 +55,7 @@ export default function FollowUpComposer({ session, nrp, name, period, onClose, 
       setMessage(next.message);
       setIdempotencyKey(newIdempotencyKey());
     } catch {
-      setError("Follow-up draft is unavailable. Try again after checking the TalentOps API and Ollama/bridge configuration.");
+      setError("Follow-up draft is unavailable. Check the TalentOps API and current data connectivity, then try again.");
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export default function FollowUpComposer({ session, nrp, name, period, onClose, 
             <div className="followup-channel-row">
               <div><span>Channel</span><strong>WhatsApp DM</strong></div>
               <span className={`followup-channel-status ${draft.whatsapp_bound ? "connected" : "unbound"}`}>
-                {draft.whatsapp_bound ? "Connected" : "Not connected"}
+                {draft.whatsapp_bound ? "Identity linked" : "Not linked"}
               </span>
             </div>
 
