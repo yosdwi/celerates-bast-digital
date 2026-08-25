@@ -5,7 +5,10 @@ from redis.asyncio import Redis
 
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
-from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+from digital_bast.application.talentops_followups import (
+    TalentOpsFollowUpService,
+    WhatsAppOutboundGateway,
+)
 from digital_bast.config import get_settings
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.local_completion_source import (
@@ -135,9 +138,6 @@ def production_dependencies() -> WebDependencies:
             decode_responses=True,
         )
         sessions = RedisSessionStore(redis_client)
-    # NOCODB_DATABASE_DSN is now *only* the login backend: admin credentials
-    # still live in the existing NocoDB's nc_users_v2, which V2 never writes.
-    # All business data comes from the app Postgres backend below.
     authenticator: OwnerAuthenticator = UnavailableAuthenticator()
     if settings.nocodb_database_dsn is not None and settings.nocodb_base_id is not None:
         authenticator = NocoDBPostgresOwnerAuthenticator(
@@ -175,7 +175,7 @@ def production_dependencies() -> WebDependencies:
                     settings.bot_llm_model,
                 )
             )
-        outbound = UnavailableWhatsAppOutboundGateway()
+        outbound: WhatsAppOutboundGateway = UnavailableWhatsAppOutboundGateway()
         if settings.sync_ingest_token is not None:
             outbound = BotBridgeWhatsAppOutboundGateway(
                 _BOT_BRIDGE_INTERNAL_URL,
