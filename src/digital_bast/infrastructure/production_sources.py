@@ -249,12 +249,14 @@ def _as_date(value: object) -> date | None:
     if not isinstance(value, str) or not value.strip():
         return None
     text = value.strip()
-    for parse in (lambda t: datetime.fromisoformat(t).date(), lambda t: date.fromisoformat(t[:10])):
-        try:
-            return parse(text)
-        except ValueError:
-            continue
-    return None
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        pass
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)

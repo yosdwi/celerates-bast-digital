@@ -9,7 +9,15 @@ for script in scripts/*.sh tests/ops/*.sh; do
     sh -n "$script"
 done
 
-NOCODB_BASE_URL=https://invalid.local docker compose --profile blue --profile green config --quiet
+# `docker compose config` only validates interpolation and structure here; it
+# never starts services. Supply explicit non-secret CI placeholders for every
+# production-required variable so the static gate does not depend on a local
+# .env file or deployment secrets existing on the runner.
+NOCODB_BASE_URL=https://invalid.local \
+NOCODB_BASE_ID=ci-placeholder \
+NOCODB_V2_DB_PASSWORD=ci-placeholder \
+SECRETS_GID=${SECRETS_GID:-0} \
+docker compose --profile blue --profile green config --quiet
 
 if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[[:alnum:]])' .; then
     printf '%s\n' "possible embedded secret detected" >&2

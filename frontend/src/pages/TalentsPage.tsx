@@ -1,0 +1,147 @@
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { askCommandCenter } from "../api/talentops";
+import type { CommandCenterResponse, EmployeeRole, TalentOpsSession } from "../api/types";
+import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
+import { StatusBadge, statusLabel } from "../components/StatusBadge";
+import WorkspaceFrame from "../components/WorkspaceFrame";
+
+interface Props {
+  session: TalentOpsSession;
+  data: CommandCenterResponse;
+  onNavigate: (path: string) => void;
+  onOpenTalent: (nrp: string) => void;
+}
+
+type TeamFilter = "all" | EmployeeRole;
+type StateFilter = "all" | "attention" | "complete";
+
+function percentage(value: number, total: number): string {
+  return total === 0 ? "0%" : `${Math.round((value / total) * 100)}%`;
+}
+
+export default function TalentsPage({ session, data, onNavigate, onOpenTalent }: Props) {
+  const [search, setSearch] = useState("");
+  const [team, setTeam] = useState<TeamFilter>("all");
+  const [state, setState] = useState<StateFilter>("all");
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState("Which talents need PMO attention this period, and why?");
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    return data.readiness.filter((talent) => {
+      const searchOk = !needle || `${talent.name} ${talent.nrp} ${talent.role}`.toLocaleLowerCase().includes(needle);
+      const teamOk = team === "all" || talent.role === team;
+      const stateOk = state === "all"
+        || (state === "attention" ? talent.overall_state !== "complete" : talent.overall_state === "complete");
+      return searchOk && teamOk && stateOk;
+    });
+  }, [data.readiness, search, state, team]);
+
+  const developerCount = data.readiness.filter((item) => item.role === "Developer").length;
+  const iotCount = data.readiness.filter((item) => item.role === "IoT Operations").length;
+
+  async function submitAi(event?: FormEvent) {
+    event?.preventDefault();
+    const question = aiQuestion.trim();
+    if (!question || aiLoading) return;
+    setAiLoading(true);
+    setAiUnavailable(false);
+    try {
+      const response = await askCommandCenter(session.csrf_token, question, data.period);
+      setAiAnswer(response.answer);
+      setAiUnavailable(response.status === "unavailable");
+    } catch {
+      setAiAnswer(null);
+      setAiUnavailable(true);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  return (
+    <WorkspaceFrame
+      session={session}
+      active="talents"
+      attentionCount={data.summary.need_attention}
+      search={search}
+      onSearch={setSearch}
+      onNavigate={onNavigate}
+      onAskAi={() => setAiOpen(true)}
+    >
+      <div className="content slice2-content">
+        <div className="page-heading">
+          <div><h1>Talents</h1><p>{data.period.label} · readiness from current BAST rules</p></div>
+        </div>
+
+        <div className="talent-directory-summary" aria-label="Talent directory summary">
+          <div><span>Active talents</span><strong>{data.summary.active_talents}</strong></div>
+          <div><span>BAST ready</span><strong>{data.summary.bast_ready}</strong><small>{percentage(data.summary.bast_ready, data.summary.active_talents)}</small></div>
+          <div><span>Need attention</span><strong>{data.summary.need_attention}</strong></div>
+          <div><span>Teams</span><strong>2</strong><small>{developerCount} Developer · {iotCount} IoT Ops</small></div>
+        </div>
+
+        <section className="panel talent-directory-panel">
+          <div className="panel-title-row"><div><h2>Talent directory</h2><span>{visible.length} of {data.readiness.length} talents</span></div></div>
+          <div className="toolbar directory-toolbar">
+            <div className="panel-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search talent or NRP" aria-label="Search talent directory" /></div>
+            <select value={team} onChange={(event) => setTeam(event.target.value as TeamFilter)} aria-label="Filter by team">
+              <option value="all">All teams</option><option value="Developer">Developer</option><option value="IoT Operations">IoT Operations</option>
+            </select>
+            <select value={state} onChange={(event) => setState(event.target.value as StateFilter)} aria-label="Filter by readiness">
+              <option value="all">All readiness</option><option value="attention">Need attention</option><option value="complete">Ready</option>
+            </select>
+          </div>
+
+          {visible.length === 0 ? <div className="empty-state">No talents match the current filters.</div> : null}
+          <div className="desktop-table-wrap">
+            <table className="data-table talent-directory-table">
+              <thead><tr><th>Talent</th><th>Team</th><th>Attendance</th><th>Timesheet</th><th>Task</th><th>Evidence</th><th>Overall</th><th aria-label="Open" /></tr></thead>
+              <tbody>{visible.map((talent) => (
+                <tr key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
+                  <td><div className="talent-name">{talent.name}</div><div className="cell-muted">{talent.nrp}</div></td>
+                  <td>{talent.role}</td>
+                  <td><StatusBadge state={talent.checks.attendance.state} compact /></td>
+                  <td><StatusBadge state={talent.checks.timesheet.state} compact /></td>
+                  <td><StatusBadge state={talent.checks.task.state} compact /></td>
+                  <td><StatusBadge state={talent.checks.evidence.state} compact /></td>
+                  <td><StatusBadge state={talent.overall_state} compact /></td>
+                  <td><button className="row-open" type="button" aria-label={`Open ${talent.name}`} onClick={(event) => { event.stopPropagation(); onOpenTalent(talent.nrp); }}><ChevronIcon /></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+
+          <div className="mobile-operational-list slice2-mobile-list">
+            {visible.map((talent) => (
+              <button className="talent-mobile-card" type="button" key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
+                <div className="talent-mobile-head"><div><strong>{talent.name}</strong><span>{talent.nrp} · {talent.role}</span></div><StatusBadge state={talent.overall_state} compact /></div>
+                <div className="talent-mobile-checks">
+                  {([['Attendance', talent.checks.attendance], ['Timesheet', talent.checks.timesheet], ['Task', talent.checks.task], ['Evidence', talent.checks.evidence]] as const).map(([label, check]) => (
+                    <div key={label}><span>{label}</span><strong className={`text-${check.state}`}>{statusLabel(check.state)}</strong></div>
+                  ))}
+                </div>
+                <ChevronIcon className="talent-mobile-chevron" />
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {aiOpen ? (
+        <div className="slice2-ai-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAiOpen(false); }}>
+          <section className="slice2-ai-panel" role="dialog" aria-modal="true" aria-label="Ask AI about talents">
+            <div className="slice2-ai-head"><div><SparkleIcon /><strong>Ask AI</strong></div><button type="button" className="icon-button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
+            <p>Grounded in the selected period and deterministic readiness results.</p>
+            <form onSubmit={(event) => void submitAi(event)}><textarea value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} rows={4} /><button className="primary-button" type="submit" disabled={aiLoading}>{aiLoading ? "Thinking…" : "Ask"}</button></form>
+            {aiAnswer ? <div className="slice2-ai-answer">{aiAnswer}</div> : null}
+            {aiUnavailable ? <div className="slice2-ai-answer muted">AI is unavailable. Readiness data above remains authoritative.</div> : null}
+          </section>
+        </div>
+      ) : null}
+    </WorkspaceFrame>
+  );
+}

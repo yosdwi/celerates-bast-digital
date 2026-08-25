@@ -77,6 +77,8 @@ unfixable = []
 # bridge/pama_bridge.py ships standalone to a Windows PC outside this package,
 # so it cannot import digital_bast and its console output is the whole UI.
 "bridge/*.py" = ["INP001", "T201", "TRY003", "EM101", "EM102"]
+# Tests for the standalone bridge live beside it rather than under tests/.
+"bridge/test_*.py" = ["FURB192", "PLR2004", "S101"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Body", "fastapi.Cookie", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Path", "fastapi.Query"]

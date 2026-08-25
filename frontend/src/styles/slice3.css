@@ -1,0 +1,123 @@
+.action-center-page .page-heading {
+  margin-bottom: 18px;
+}
+
+.action-summary {
+  margin-bottom: 14px;
+}
+
+.action-ai-strip {
+  margin-bottom: 18px;
+}
+
+.action-queue-panel {
+  min-height: 420px;
+}
+
+.action-toolbar {
+  grid-template-columns: minmax(260px, 1fr) 180px 190px;
+}
+
+.action-table th:nth-child(1) { width: 116px; }
+.action-table th:nth-child(4) { width: 72px; }
+.action-table th:nth-child(5) { width: 132px; }
+.action-table th:last-child { width: 44px; }
+
+.action-next {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.action-rule-note {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding: 14px 2px 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.action-rule-note strong {
+  color: var(--text);
+}
+
+.action-drawer-meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0 0 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.action-drawer-meta > span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-drawer-meta > strong {
+  font-size: 12px;
+}
+
+.action-drawer-meta > span:last-child {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-drawer-actions {
+  gap: 8px;
+}
+
+.ai-safety-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: -2px;
+}
+
+@media (max-width: 920px) {
+  .action-toolbar {
+    grid-template-columns: minmax(220px, 1fr) 160px 170px;
+  }
+}
+
+@media (max-width: 760px) {
+  .action-center-page .page-heading {
+    margin-bottom: 14px;
+  }
+
+  .action-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .action-toolbar .panel-search {
+    grid-column: 1 / -1;
+  }
+
+  .action-toolbar select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .action-mobile-list {
+    border-top: 1px solid var(--line);
+  }
+
+  .action-mobile-row {
+    text-align: left;
+  }
+
+  .action-rule-note {
+    margin-top: 10px;
+  }
+
+  .action-drawer-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

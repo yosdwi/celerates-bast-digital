@@ -18,12 +18,15 @@ from digital_bast.web.errors import (
 from digital_bast.web.page_router import page_router
 from digital_bast.web.report_router import report_router
 from digital_bast.web.sync_router import router as sync_router
+from digital_bast.web.talentops_page_router import talentops_page_router
+from digital_bast.web.talentops_router import talentops_router
 
 
 def create_app(dependencies: WebDependencies) -> FastAPI:
     project_root = Path(__file__).resolve().parents[3]
     templates = Jinja2Templates(directory=project_root / "templates")
     templates.env.autoescape = True
+    talentops_dist = project_root / "frontend" / "dist"
     app = FastAPI(
         title="Digital BAST Admin",
         version="2.0.0",
@@ -35,10 +38,19 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1_000)
     app.mount("/static", StaticFiles(directory=project_root / "static"), name="static")
     app.mount("/admin/static", StaticFiles(directory=project_root / "static"), name="admin-static")
+    # check_dir=False keeps ordinary Python import/test collection working before
+    # a local frontend build exists. Production images always copy frontend/dist.
+    app.mount(
+        "/admin/talentops/assets",
+        StaticFiles(directory=talentops_dist / "assets", check_dir=False),
+        name="talentops-assets",
+    )
     app.include_router(auth_router(dependencies, templates))
     app.include_router(page_router(dependencies, templates))
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
+    app.include_router(talentops_router(dependencies))
+    app.include_router(talentops_page_router(dependencies, talentops_dist))
     # Machine-to-machine ingest from the PAMA bridge: bearer-token auth of
     # its own, no session cookie, and excluded from the schema.
     app.include_router(sync_router)
