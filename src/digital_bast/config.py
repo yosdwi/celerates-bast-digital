@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import stat
 from functools import lru_cache
-from typing import ClassVar, Final, Self, final, override
+from typing import ClassVar, Final, Literal, Self, final, override
 
 from pydantic import AnyHttpUrl, Field, FilePath, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -213,6 +213,23 @@ class Settings(BaseSettings):
         min_length=1,
         validation_alias="BOT_LLM_MODEL",
     )
+    # Which TalentOpsChatClient production_dependencies() builds. Defaults to
+    # the existing self-hosted Ollama path -- switching to a hosted provider
+    # is opt-in, never a silent behavior change for an existing deployment.
+    llm_provider: Literal["ollama", "groq"] = Field(
+        default="ollama",
+        validation_alias="LLM_PROVIDER",
+    )
+    groq_api_key: SecretStr | None = Field(default=None, validation_alias="GROQ_API_KEY")
+    groq_api_key_file: FilePath | None = Field(
+        default=None,
+        validation_alias="GROQ_API_KEY_FILE",
+    )
+    groq_model: str = Field(
+        default="openai/gpt-oss-20b",
+        min_length=1,
+        validation_alias="GROQ_MODEL",
+    )
 
     @model_validator(mode="after")
     def resolve_files_and_validate(self) -> Self:
@@ -263,6 +280,11 @@ class Settings(BaseSettings):
             self.sync_ingest_token,
             self.sync_ingest_token_file,
             "sync_ingest_token",
+        )
+        self.groq_api_key = _read_secret(
+            self.groq_api_key,
+            self.groq_api_key_file,
+            "groq_api_key",
         )
         if self.environment.casefold() == "production":
             self._validate_production()

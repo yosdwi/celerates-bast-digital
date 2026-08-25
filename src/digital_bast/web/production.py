@@ -7,6 +7,7 @@ from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
 from digital_bast.config import get_settings
 from digital_bast.infrastructure.completion_source import CompletionSource
+from digital_bast.infrastructure.groq_chat import GroqChatClient
 from digital_bast.infrastructure.local_completion_source import (
     PostgresAttendanceFactReader,
     PostgresTaskEvidenceReader,
@@ -158,7 +159,14 @@ def production_dependencies() -> WebDependencies:
             records,
             source_sync_state,
         )
-        if settings.bot_llm_url is not None:
+        if settings.llm_provider == "groq" and settings.groq_api_key is not None:
+            talentops_ai = TalentOpsAiService(
+                GroqChatClient(
+                    settings.groq_api_key.get_secret_value(),
+                    settings.groq_model,
+                )
+            )
+        elif settings.llm_provider == "ollama" and settings.bot_llm_url is not None:
             talentops_ai = TalentOpsAiService(
                 OllamaChatClient(
                     str(settings.bot_llm_url),

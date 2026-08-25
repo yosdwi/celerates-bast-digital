@@ -54,6 +54,13 @@ x-app: &app
     # WhatsApp bot does -- see bot-bridge's BOT_LLM_URL below, same host.
     BOT_LLM_URL: ${BOT_LLM_URL:-}
     BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+    # TalentOps AI provider -- defaults to ollama (below is a no-op unless
+    # LLM_PROVIDER=groq); Groq is the recommended choice here since Ollama on
+    # this CPU-only, RAM-constrained box OOM-killed itself under a real
+    # command-center prompt (2026-08-25).
+    LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+    GROQ_API_KEY_FILE: /run/secrets/groq_api_key
+    GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
   secrets: &app-secrets
     - session_secret
     - app_database_dsn
@@ -67,6 +74,7 @@ x-app: &app
     - sqlserver_connection_string
     - sync_ingest_token
     - google_sheets_relay_credentials
+    - groq_api_key
   networks:
     - backend
     - egress
@@ -357,6 +365,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/nocodb_database_dsn
   google_service_account:
     file: ${SECRETS_DIR:-./secrets}/google_service_account.json
+  groq_api_key:
+    file: ${SECRETS_DIR:-./secrets}/groq_api_key
   sqlserver_connection_string:
     file: ${SECRETS_DIR:-./secrets}/sqlserver_connection_string
   sync_ingest_token:
