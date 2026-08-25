@@ -16,6 +16,16 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
+# Every deploy leaves the previous blue/green generation's image dangling
+# once nothing references it. `image prune` only ever removes images with
+# zero containers on them (running or stopped), so this can never touch an
+# image still backing the legacy V1 stack or either active slot -- safe to
+# run unconditionally, before the disk gate below, on every deploy rather
+# than requiring someone to notice and do it by hand.
+if [ "$DRY_RUN" = "0" ]; then
+    docker image prune -af >/dev/null 2>&1 || true
+fi
+
 # 8GB, not 10: the box also carries an unrelated legacy V1 stack (its own
 # postgres, pgadmin) that this deploy does not own and will not stop to free
 # space, so 10GB stopped being reachable even right after a full prune. A

@@ -110,5 +110,10 @@ jobs:
           if test -f "$DEPLOY_PATH/.env"; then ln -s "$DEPLOY_PATH/.env" "$release_dir/.env"; fi
           ln -s "$DEPLOY_PATH/config/nginx/active-slot.conf" "$release_dir/config/nginx/active-slot.conf"
           cd "$release_dir"
+          # preflight.sh/deploy.sh read SECRETS_GID (and other config) as plain
+          # shell variables -- only `docker compose` subcommands auto-load
+          # .env. The symlink above makes .env present in this directory, but
+          # something still has to source it for the non-compose scripts.
+          if [ -f .env ]; then set -a; . ./.env; set +a; fi
           SECRETS_DIR="${SECRETS_DIR:-$DEPLOY_PATH/secrets}" APP_IMAGE="$APP_IMAGE" scripts/deploy.sh
           REMOTE
