@@ -7,6 +7,10 @@ const DEFAULT_TOKEN_FILE = "/run/secrets/sync_ingest_token";
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_MESSAGE_CHARS = 4000;
 const MAX_REQUEST_ID_CHARS = 128;
+const MAX_COMPLETED_SENDS = 1024;
+
+const inFlightSends = new Map();
+const completedSends = new Map();
 
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ""));
@@ -54,6 +58,64 @@ function validJid(jid) {
   return typeof jid === "string" && (jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid"));
 }
 
+function sameMessage(entry, jid, text) {
+  return entry.jid === jid && entry.text === text;
+}
+
+function rememberCompleted(requestId, jid, text, result) {
+  completedSends.set(requestId, { jid, text, result });
+  if (completedSends.size <= MAX_COMPLETED_SENDS) return;
+  const oldest = completedSends.keys().next().value;
+  if (oldest) completedSends.delete(oldest);
+}
+
+async function sendOutboundOnce(state, jid, text, requestId, log) {
+  const completed = completedSends.get(requestId);
+  if (completed) {
+    if (!sameMessage(completed, jid, text)) {
+      return { statusCode: 409, payload: { status: "invalid", error: "request_id_conflict" } };
+    }
+    log(`outbound follow-up deduped request=${requestId}`);
+    return completed.result;
+  }
+
+  const inFlight = inFlightSends.get(requestId);
+  if (inFlight) {
+    if (!sameMessage(inFlight, jid, text)) {
+      return { statusCode: 409, payload: { status: "invalid", error: "request_id_conflict" } };
+    }
+    log(`outbound follow-up joined in-flight request=${requestId}`);
+    return inFlight.promise;
+  }
+
+  const promise = (async () => {
+    try {
+      const sent = await state.socket.sendMessage(jid, { text });
+      const providerMessageId = sent?.key?.id || null;
+      log(`outbound follow-up sent request=${requestId} provider=${providerMessageId || "unknown"}`);
+      const result = {
+        statusCode: 200,
+        payload: {
+          status: "sent",
+          provider_message_id: providerMessageId,
+        },
+      };
+      rememberCompleted(requestId, jid, text, result);
+      return result;
+    } catch (error) {
+      log(`outbound follow-up failed request=${requestId}: ${error}`);
+      return { statusCode: 503, payload: { status: "unavailable", error: "send_failed" } };
+    }
+  })();
+
+  inFlightSends.set(requestId, { jid, text, promise });
+  try {
+    return await promise;
+  } finally {
+    inFlightSends.delete(requestId);
+  }
+}
+
 async function handleOutboundRequest(request, response, state, log) {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (request.method !== "POST" || url.pathname !== "/internal/v1/messages") return false;
@@ -90,19 +152,9 @@ async function handleOutboundRequest(request, response, state, log) {
     return true;
   }
 
-  try {
-    const sent = await state.socket.sendMessage(jid, { text });
-    const providerMessageId = sent?.key?.id || null;
-    log(`outbound follow-up sent request=${requestId} provider=${providerMessageId || "unknown"}`);
-    writeJson(response, 200, {
-      status: "sent",
-      provider_message_id: providerMessageId,
-    });
-  } catch (error) {
-    log(`outbound follow-up failed request=${requestId}: ${error}`);
-    writeJson(response, 503, { status: "unavailable", error: "send_failed" });
-  }
+  const result = await sendOutboundOnce(state, jid, text, requestId, log);
+  writeJson(response, result.statusCode, result.payload);
   return true;
 }
 
-module.exports = { handleOutboundRequest, safeEqual, validJid };
+module.exports = { handleOutboundRequest, safeEqual, sendOutboundOnce, validJid };
