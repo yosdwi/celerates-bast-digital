@@ -10,15 +10,31 @@ const session: TalentOpsSession = {
 };
 
 const data: CommandCenterResponse = {
-  period: { year: 2026, month: 8, start: "2026-08-01", end: "2026-08-31", label: "1-31 Agustus 2026" },
-  summary: { active_talents: 2, bast_ready: 1, need_attention: 1, open_tasks: 0, evidence_ready: 1 },
+  period: {
+    year: 2026,
+    month: 8,
+    start: "2026-08-01",
+    end: "2026-08-31",
+    label: "1-31 Agustus 2026",
+  },
+  summary: {
+    active_talents: 2,
+    bast_ready: 1,
+    need_attention: 1,
+    open_tasks: 0,
+    evidence_ready: 1,
+  },
   attention: [{
     employee_id: "internal-1",
     nrp: "JIMT24002",
     name: "Yoses Dwi Maheswara",
     role: "Developer",
     overall_state: "incomplete",
-    blockers: [{ domain: "attendance", state: "incomplete", issues: ["Attendance missing clock-out"] }],
+    blockers: [{
+      domain: "attendance",
+      state: "incomplete",
+      issues: ["Attendance missing clock-out"],
+    }],
   }],
   readiness: [
     {
@@ -51,35 +67,70 @@ const data: CommandCenterResponse = {
   teams: [],
   delivery: { total_tasks: 0, closed_tasks: 0, non_closed_tasks: 0, status_counts: [] },
   sources: [],
+  signals: [{
+    kind: "multi_domain_blocker",
+    title: "Attendance and Timesheet both block readiness",
+    summary: "Two readiness domains need PMO verification for this talent.",
+    domains: ["attendance", "timesheet"],
+    dates: [],
+    task_titles: [],
+    nrp: "JIMT24002",
+    role: "Developer",
+  }],
 };
 
 afterEach(() => cleanup());
 
 describe("BastReadinessPage", () => {
-  it("renders deterministic closing readiness and drills into Talent 360", () => {
+  it("shows deterministic blocker facts and signals before AI investigation", () => {
     const openTalent = vi.fn();
-    render(<BastReadinessPage session={session} data={data} onNavigate={vi.fn()} onOpenTalent={openTalent} />);
+    render(
+      <BastReadinessPage
+        session={session}
+        data={data}
+        onNavigate={vi.fn()}
+        onOpenTalent={openTalent}
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "BAST Readiness" })).toBeInTheDocument();
     expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Yoses Dwi Maheswara").length).toBeGreaterThan(0);
+    expect(screen.getByText("Attendance missing clock-out")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Open BAST readiness for Yoses Dwi Maheswara"));
     expect(screen.getByRole("heading", { name: "Yoses Dwi Maheswara" })).toBeInTheDocument();
+    expect(screen.getByText("Attendance and Timesheet both block readiness")).toBeInTheDocument();
+    expect(screen.getByText("Blocker facts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Investigate blockers" })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Open Talent 360" }));
     expect(openTalent).toHaveBeenCalledWith("JIMT24002");
   });
 
   it("keeps generation explicit and separate from readiness filtering", () => {
-    render(<BastReadinessPage session={session} data={data} onNavigate={vi.fn()} onOpenTalent={vi.fn()} />);
+    render(
+      <BastReadinessPage
+        session={session}
+        data={data}
+        onNavigate={vi.fn()}
+        onOpenTalent={vi.fn()}
+      />,
+    );
 
     expect(screen.getByRole("button", { name: "Generate BAST" })).toBeInTheDocument();
     expect(screen.getByLabelText("BAST report type")).toHaveValue("developer");
-    fireEvent.change(screen.getByLabelText("BAST report type"), { target: { value: "iotoperation" } });
+    fireEvent.change(screen.getByLabelText("BAST report type"), {
+      target: { value: "iotoperation" },
+    });
     expect(screen.getByLabelText("BAST report type")).toHaveValue("iotoperation");
 
-    fireEvent.change(screen.getByLabelText("Filter BAST readiness by state"), { target: { value: "complete" } });
+    fireEvent.change(screen.getByLabelText("Filter BAST readiness by state"), {
+      target: { value: "complete" },
+    });
     expect(screen.getAllByText("Ovianto").length).toBeGreaterThan(0);
-    expect(screen.queryByLabelText("Open BAST readiness for Yoses Dwi Maheswara")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Open BAST readiness for Yoses Dwi Maheswara"),
+    ).not.toBeInTheDocument();
   });
 });
