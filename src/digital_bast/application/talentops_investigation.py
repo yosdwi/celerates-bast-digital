@@ -223,36 +223,61 @@ def parse_investigation(
     raw: str,
     evidence: tuple[InvestigationEvidence, ...],
 ) -> TalentOpsInvestigation | None:
-    value = raw.strip()
-    if value.startswith("```"):
-        lines = value.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        value = "\n".join(lines).strip()
-    try:
-        decoded = cast("object", json.loads(value))
-    except json.JSONDecodeError:
+    payload = _decode_payload(raw)
+    if payload is None:
         return None
-    if not isinstance(decoded, dict):
-        return None
-    payload = cast("dict[str, object]", decoded)
 
     title = _clean_text(payload.get("title"), 160)
     finding = _clean_text(payload.get("finding"), 800)
     if title is None or finding is None:
         return None
-    impact = _clean_text(payload.get("impact"), 500)
-    suggested_action = _clean_text(payload.get("suggested_action"), 500)
 
-    raw_ids = payload.get("evidence_ids")
+    selected = _select_evidence(payload.get("evidence_ids"), evidence)
+    if selected is None:
+        return None
+
+    return TalentOpsInvestigation(
+        title=title,
+        finding=finding,
+        impact=_clean_text(payload.get("impact"), 500),
+        suggested_action=_clean_text(payload.get("suggested_action"), 500),
+        evidence=selected,
+    )
+
+
+def _decode_payload(raw: str) -> dict[str, object] | None:
+    try:
+        decoded = cast("object", json.loads(_strip_code_fence(raw)))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    return cast("dict[str, object]", decoded)
+
+
+def _strip_code_fence(raw: str) -> str:
+    value = raw.strip()
+    if not value.startswith("```"):
+        return value
+
+    lines = value.splitlines()[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
+def _select_evidence(
+    raw_ids: object,
+    evidence: tuple[InvestigationEvidence, ...],
+) -> tuple[InvestigationEvidence, ...] | None:
     if not isinstance(raw_ids, list):
         return None
+
+    candidate_ids = cast("list[object]", raw_ids)
     by_id = {item.id: item for item in evidence}
     selected: list[InvestigationEvidence] = []
     seen: set[str] = set()
-    for raw_id in raw_ids[:8]:
+    for raw_id in candidate_ids[:8]:
         if not isinstance(raw_id, str) or raw_id in seen:
             continue
         item = by_id.get(raw_id)
@@ -260,16 +285,10 @@ def parse_investigation(
             continue
         selected.append(item)
         seen.add(raw_id)
+
     if evidence and not selected:
         return None
-
-    return TalentOpsInvestigation(
-        title=title,
-        finding=finding,
-        impact=impact,
-        suggested_action=suggested_action,
-        evidence=tuple(selected),
-    )
+    return tuple(selected)
 
 
 def _clean_text(value: object, limit: int) -> str | None:
