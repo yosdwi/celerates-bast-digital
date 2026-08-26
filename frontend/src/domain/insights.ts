@@ -25,6 +25,11 @@ export function totalIssues(item: AttentionItem): number {
 }
 
 export function deterministicInsight(data: CommandCenterResponse): string {
+  const signal = data.signals?.[0];
+  if (signal) {
+    return `${signal.title} · ${signal.summary}`;
+  }
+
   if (data.attention.length === 0) {
     return "All active talents pass the current readiness rules.";
   }

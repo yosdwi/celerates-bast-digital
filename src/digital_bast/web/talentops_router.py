@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING, Annotated
 from anyio.to_thread import run_sync
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
+from digital_bast.application.operational_signals import (
+    command_center_signals,
+    talent_signals,
+)
 from digital_bast.application.talentops_followups import FollowUpSendCommand
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
@@ -18,6 +22,7 @@ from digital_bast.web.talentops_contracts import (
     FollowUpDraftResponse,
     FollowUpSendInput,
     FollowUpSendResponse,
+    OperationalSignalResponse,
     SessionUserResponse,
     TalentDetailResponse,
     TalentOpsSessionResponse,
@@ -105,7 +110,12 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         )
         selected_period = _period(year, month, deps.now())
         view = await _service(deps).command_center(selected_period)
-        return CommandCenterResponse.model_validate(view)
+        response = CommandCenterResponse.model_validate(view)
+        signals = tuple(
+            OperationalSignalResponse.model_validate(signal)
+            for signal in command_center_signals(view.attention, view.teams)
+        )
+        return response.model_copy(update={"signals": signals})
 
     async def talent_detail(
         request: Request,
@@ -127,7 +137,17 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Talent not found",
             )
-        return TalentDetailResponse.model_validate(view)
+        response = TalentDetailResponse.model_validate(view)
+        signals = tuple(
+            OperationalSignalResponse.model_validate(signal)
+            for signal in talent_signals(
+                view.nrp,
+                view.blockers,
+                view.timesheet_days,
+                view.tasks,
+            )
+        )
+        return response.model_copy(update={"signals": signals})
 
     async def ask_command_center(
         request: Request,

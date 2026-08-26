@@ -3,6 +3,12 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Protocol, final
 
+from digital_bast.application.operational_signals import (
+    OperationalSignal,
+    command_center_signals,
+    talent_signals,
+)
+
 if TYPE_CHECKING:
     from digital_bast.application.talentops import CommandCenterView, TalentDetailView
 
@@ -11,23 +17,40 @@ class TalentOpsChatClient(Protocol):
     async def complete(self, system_prompt: str, user_prompt: str) -> str | None: ...
 
 
-_SYSTEM_PROMPT = """Kamu adalah asisten analitik PMO TalentOps.
-Jawab hanya berdasarkan fakta JSON yang diberikan aplikasi.
-Jangan mengarang angka, status, prioritas, penyebab, performa, utilisasi, kapasitas,
-atau informasi yang tidak ada di fakta.
-Status readiness ditentukan aplikasi; kamu hanya menjelaskan.
-Jika fakta tidak cukup, katakan data yang tersedia belum cukup.
-Jawab ringkas dan operasional. Gunakan bahasa pertanyaan user jika jelas."""
+_SYSTEM_PROMPT = """Kamu adalah investigation assistant untuk PMO TalentOps.
+Jawab hanya berdasarkan fakta JSON dan operational_signals yang diberikan aplikasi.
+Operational signals adalah relasi deterministik yang sudah dihitung aplikasi; gunakan signal itu
+untuk menyintesis hubungan antar-domain dan menjelaskan apa yang perlu diverifikasi.
+Jangan mengarang angka, status, prioritas, penyebab, performa, utilisasi, kapasitas, SLA,
+deadline, atau hubungan sebab-akibat yang tidak didukung fakta/signal.
+Status readiness tetap ditentukan aplikasi, bukan AI.
+Jika ada dependency eksplisit (contoh attendance_blocks_timesheet), kamu boleh menyarankan
+urutan verifikasi berdasarkan dependency tersebut. Jika fakta tidak cukup, katakan demikian.
+Jangan hanya membacakan ulang KPI. Jawab ringkas, operasional, dan gunakan bahasa user."""
 
 _FOLLOW_UP_SYSTEM_PROMPT = """Kamu membantu PMO menulis satu pesan follow-up WhatsApp ke talent.
-Gunakan HANYA fakta JSON yang diberikan aplikasi.
+Gunakan HANYA fakta JSON dan operational_signals yang diberikan aplikasi.
 Jangan mengarang blocker, tanggal, status, SLA, deadline, performa, atau penyebab.
 Jangan mengatakan pesan sudah dikirim.
 Tulis hanya isi pesan yang siap direview PMO, tanpa judul, tanpa markdown table.
 Nada profesional, natural, singkat, dan actionable dalam Bahasa Indonesia."""
 
 
+def _signal_context(signal: OperationalSignal) -> dict[str, object]:
+    return {
+        "kind": signal.kind.value,
+        "title": signal.title,
+        "summary": signal.summary,
+        "domains": list(signal.domains),
+        "dates": [item.isoformat() for item in signal.dates],
+        "task_titles": list(signal.task_titles),
+        "nrp": signal.nrp,
+        "role": signal.role.value if signal.role is not None else None,
+    }
+
+
 def _command_center_context(view: CommandCenterView) -> str:
+    signals = command_center_signals(view.attention, view.teams)
     payload = {
         "period": {
             "label": view.period.label,
@@ -41,6 +64,7 @@ def _command_center_context(view: CommandCenterView) -> str:
             "open_tasks": view.summary.open_tasks,
             "evidence_ready": view.summary.evidence_ready,
         },
+        "operational_signals": [_signal_context(signal) for signal in signals],
         "attention": [
             {
                 "name": item.name,
@@ -96,6 +120,12 @@ def _command_center_context(view: CommandCenterView) -> str:
 
 
 def _talent_context(view: TalentDetailView) -> str:
+    signals = talent_signals(
+        view.nrp,
+        view.blockers,
+        view.timesheet_days,
+        view.tasks,
+    )
     payload = {
         "period": {
             "label": view.period.label,
@@ -126,6 +156,7 @@ def _talent_context(view: TalentDetailView) -> str:
                 "issue_count": view.checks.evidence.issue_count,
             },
         },
+        "operational_signals": [_signal_context(signal) for signal in signals],
         "blockers": [
             {
                 "domain": blocker.domain,
@@ -133,6 +164,30 @@ def _talent_context(view: TalentDetailView) -> str:
                 "issues": list(blocker.issues[:8]),
             }
             for blocker in view.blockers
+        ],
+        "attendance_issue_days": [
+            {
+                "work_date": day.work_date.isoformat(),
+                "state": day.state.value,
+                "has_record": day.has_record,
+                "has_clock_in": day.has_clock_in,
+                "has_clock_out": day.has_clock_out,
+                "has_evidence": day.has_evidence,
+            }
+            for day in view.attendance_days
+            if not day.is_off and day.state.value != "complete"
+        ],
+        "timesheet_issue_days": [
+            {
+                "work_date": day.work_date.isoformat(),
+                "state": day.state.value,
+                "has_record": day.has_record,
+                "has_remarks": day.has_remarks,
+                "blocked_by_attendance": day.blocked_by_attendance,
+                "is_off": day.is_off,
+            }
+            for day in view.timesheet_days
+            if day.state.value != "complete"
         ],
         "tasks": [
             {
@@ -181,9 +236,9 @@ class TalentOpsAiService:
 
     async def draft_follow_up(self, view: TalentDetailView) -> str | None:
         user_prompt = (
-            "Buat pesan follow-up untuk talent berdasarkan blocker readiness yang masih aktif. "
-            "Jika tidak ada blocker, katakan pada PMO bahwa tidak ada follow-up "
-            "yang perlu dibuat.\n"
+            "Buat pesan follow-up untuk talent berdasarkan blocker readiness dan operational "
+            "signals yang masih aktif. Jika tidak ada blocker, katakan pada PMO bahwa tidak ada "
+            "follow-up yang perlu dibuat.\n"
             f"Fakta aplikasi: {_talent_context(view)}"
         )
         return await self._client.complete(_FOLLOW_UP_SYSTEM_PROMPT, user_prompt)

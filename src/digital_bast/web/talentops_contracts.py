@@ -6,6 +6,7 @@ from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from digital_bast.application.operational_signals import OperationalSignalKind  # noqa: TC001
 from digital_bast.domain.completion import CheckState  # noqa: TC001
 from digital_bast.domain.models import EmployeeRole  # noqa: TC001
 
@@ -113,6 +114,17 @@ class SourceFreshnessResponse(_FrozenModel):
     age_seconds: int | None
 
 
+class OperationalSignalResponse(_FrozenModel):
+    kind: OperationalSignalKind
+    title: str
+    summary: str
+    domains: tuple[str, ...] = ()
+    dates: tuple[date, ...] = ()
+    task_titles: tuple[str, ...] = ()
+    nrp: str | None = None
+    role: EmployeeRole | None = None
+
+
 class CommandCenterResponse(_FrozenModel):
     period: PeriodResponse
     summary: CommandCenterSummaryResponse
@@ -121,6 +133,7 @@ class CommandCenterResponse(_FrozenModel):
     teams: tuple[TeamReadinessResponse, ...]
     delivery: DeliverySummaryResponse
     sources: tuple[SourceFreshnessResponse, ...]
+    signals: tuple[OperationalSignalResponse, ...] = ()
 
 
 class AttendanceDayResponse(_FrozenModel):
@@ -168,6 +181,7 @@ class TalentDetailResponse(_FrozenModel):
     timesheet_days: tuple[TimesheetDayResponse, ...]
     tasks: tuple[TalentTaskResponse, ...]
     availability: TalentDataAvailabilityResponse
+    signals: tuple[OperationalSignalResponse, ...] = ()
 
 
 class AiCommandCenterInput(_FrozenModel):
