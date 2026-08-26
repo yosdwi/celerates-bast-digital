@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { askCommandCenter, askTalent } from "../api/talentops";
-import type { AttentionItem, CommandCenterResponse, EmployeeRole, TalentOpsSession, TalentReadiness } from "../api/types";
+import type { AiInvestigation, AttentionItem, CommandCenterResponse, EmployeeRole, TalentOpsSession, TalentReadiness } from "../api/types";
 import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, RefreshIcon, SearchIcon, SparkleIcon } from "../components/Icons";
+import InvestigationCard from "../components/InvestigationCard";
 import { StatusBadge, statusLabel } from "../components/StatusBadge";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 import { deterministicInsight, domainLabel, primaryBlocker, readinessPercent, sourceAge, totalIssues } from "../domain/insights";
@@ -52,6 +53,7 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
   const [aiTarget, setAiTarget] = useState<AttentionItem | null>(null);
   const [aiQuestion, setAiQuestion] = useState("What should PMO pay attention to today?");
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiInvestigation, setAiInvestigation] = useState<AiInvestigation | null>(null);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -79,9 +81,11 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
         ? await askTalent(session.csrf_token, aiTarget.nrp, question, data.period)
         : await askCommandCenter(session.csrf_token, question, data.period);
       setAiAnswer(response.answer);
+      setAiInvestigation(response.investigation);
       setAiUnavailable(response.status === "unavailable");
     } catch {
       setAiAnswer(null);
+      setAiInvestigation(null);
       setAiUnavailable(true);
     } finally {
       setAiLoading(false);
@@ -92,6 +96,7 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
     setAiTarget(null);
     setAiQuestion("What should PMO pay attention to today?");
     setAiAnswer(null);
+    setAiInvestigation(null);
     setAiUnavailable(false);
     setAiOpen(true);
   }
@@ -99,8 +104,9 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
   function askAbout(item: AttentionItem) {
     setSelected(null);
     setAiTarget(item);
-    setAiQuestion(`Explain the blockers for ${item.name} and what PMO should review next.`);
+    setAiQuestion(`Why is ${item.name} blocked and what should PMO verify first?`);
     setAiAnswer(null);
+    setAiInvestigation(null);
     setAiUnavailable(false);
     setAiOpen(true);
   }
@@ -117,7 +123,7 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
       <div className="content">
         <div className="page-heading"><div><h1>Command Center</h1><p>{data.period.label}</p></div><button className="secondary-button refresh-button" type="button" disabled={refreshing} onClick={onRefresh}><RefreshIcon />{refreshing ? "Refreshing" : "Refresh"}</button></div>
         <SummaryStrip data={data} />
-        <div className="ai-insight-strip"><span className="ai-insight-icon"><SparkleIcon /></span><div><strong>{insight.split(" · ")[0]}</strong>{insight.includes(" · ") ? ` · ${insight.split(" · ").slice(1).join(" · ")}` : ""}</div><button type="button" onClick={openGlobalAi}>View insight</button></div>
+        <div className="ai-insight-strip"><span className="ai-insight-icon"><SparkleIcon /></span><div><strong>{insight.split(" · ")[0]}</strong>{insight.includes(" · ") ? ` · ${insight.split(" · ").slice(1).join(" · ")}` : ""}</div><button type="button" onClick={openGlobalAi}>Investigate</button></div>
 
         <div className="top-grid">
           <section className="panel attention-panel">
@@ -147,9 +153,9 @@ export default function CommandCenterPage({ session, data, refreshing, onRefresh
       </div>
 
       <div className={`drawer-overlay ${selected ? "open" : ""}`} onClick={() => setSelected(null)} />
-      <aside className={`detail-drawer ${selected ? "open" : ""}`} aria-hidden={!selected}>{selected ? <><div className="drawer-header"><div><span>{selected.role}</span><h2>{selected.name}</h2><p>{selected.nrp}</p></div><button className="icon-button" type="button" aria-label="Close details" onClick={() => setSelected(null)}><CloseIcon /></button></div><div className="drawer-body"><div className="drawer-overall"><span>Overall</span><StatusBadge state={selected.overall_state} /></div><h3>Blockers</h3>{selected.blockers.map((blocker) => <div className="blocker-card" key={blocker.domain}><div className="blocker-head"><strong>{domainLabel(blocker.domain)}</strong><StatusBadge state={blocker.state} compact /></div>{blocker.issues.length ? <ul>{blocker.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <p>No detailed issue text was returned.</p>}</div>)}</div><div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => askAbout(selected)}><SparkleIcon />Ask AI about this</button><button className="secondary-button" type="button" onClick={() => openFollowUp(selected)}>WhatsApp follow-up</button><button className="primary-button" type="button" onClick={() => { setSelected(null); onOpenTalent(selected.nrp); }}>Open talent</button></div></> : null}</aside>
+      <aside className={`detail-drawer ${selected ? "open" : ""}`} aria-hidden={!selected}>{selected ? <><div className="drawer-header"><div><span>{selected.role}</span><h2>{selected.name}</h2><p>{selected.nrp}</p></div><button className="icon-button" type="button" aria-label="Close details" onClick={() => setSelected(null)}><CloseIcon /></button></div><div className="drawer-body"><div className="drawer-overall"><span>Overall</span><StatusBadge state={selected.overall_state} /></div><h3>Blockers</h3>{selected.blockers.map((blocker) => <div className="blocker-card" key={blocker.domain}><div className="blocker-head"><strong>{domainLabel(blocker.domain)}</strong><StatusBadge state={blocker.state} compact /></div>{blocker.issues.length ? <ul>{blocker.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <p>No detailed issue text was returned.</p>}</div>)}</div><div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => askAbout(selected)}><SparkleIcon />Investigate blockers</button><button className="secondary-button" type="button" onClick={() => openFollowUp(selected)}>WhatsApp follow-up</button><button className="primary-button" type="button" onClick={() => { setSelected(null); onOpenTalent(selected.nrp); }}>Open talent</button></div></> : null}</aside>
 
-      <section className={`ai-panel ${aiOpen ? "open" : ""}`} aria-hidden={!aiOpen}><div className="ai-panel-header"><div><span>{aiTarget ? `Grounded in ${aiTarget.name}'s current facts` : "Grounded in Command Center facts"}</span><h2>Ask AI</h2></div><button className="icon-button" type="button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div><form className="ai-panel-body" onSubmit={submitAi}><label htmlFor="ai-question">Question</label><textarea id="ai-question" rows={3} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} /><button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Thinking…" : "Ask"}</button>{aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. Deterministic readiness data above is still valid.</div> : null}{aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}</form></section>
+      <section className={`ai-panel ${aiOpen ? "open" : ""}`} aria-hidden={!aiOpen}><div className="ai-panel-header"><div><span>{aiTarget ? `Grounded in ${aiTarget.name}'s current facts` : "Grounded in Command Center facts"}</span><h2>Investigate</h2></div><button className="icon-button" type="button" aria-label="Close investigation" onClick={() => setAiOpen(false)}><CloseIcon /></button></div><form className="ai-panel-body" onSubmit={submitAi}><label htmlFor="ai-question">Question</label><textarea id="ai-question" rows={3} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} /><button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Investigating…" : "Investigate"}</button>{aiUnavailable ? <div className="ai-unavailable">AI investigation is unavailable right now. Deterministic readiness and operational signals remain valid.</div> : null}{aiInvestigation ? <InvestigationCard investigation={aiInvestigation} /> : aiAnswer ? <div className="ai-answer"><span>Finding</span><p>{aiAnswer}</p></div> : null}</form></section>
 
       {followUpTarget ? <FollowUpComposer session={session} nrp={followUpTarget.nrp} name={followUpTarget.name} period={data.period} onClose={() => setFollowUpTarget(null)} /> : null}
     </WorkspaceFrame>
