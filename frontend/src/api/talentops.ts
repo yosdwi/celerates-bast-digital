@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchResponse } from "./client";
 import type {
   AiResponse,
   CommandCenterResponse,
@@ -11,6 +11,13 @@ import type {
 } from "./types";
 
 const BASE = "/api/talentops/v1";
+
+export type BastReportType = "developer" | "iotoperation";
+
+export interface GeneratedBastFile {
+  blob: Blob;
+  filename: string;
+}
 
 export function getSession(): Promise<TalentOpsSession> {
   return apiFetch<TalentOpsSession>(`${BASE}/session`);
@@ -49,6 +56,32 @@ export function askTalent(
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify({ year: period.year, month: period.month, question }),
   });
+}
+
+export async function generateBast(
+  csrfToken: string,
+  period: Pick<PeriodView, "year" | "month">,
+  reportType: BastReportType,
+): Promise<GeneratedBastFile> {
+  const query = new URLSearchParams({
+    year: String(period.year),
+    month: String(period.month),
+    report_type: reportType,
+  });
+  const response = await apiFetchResponse(`${BASE}/bast/generate?${query.toString()}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/pdf",
+      "X-CSRF-Token": csrfToken,
+    },
+  });
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const fallback = `BAST_${reportType}_${period.year}-${String(period.month).padStart(2, "0")}.pdf`;
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] || fallback,
+  };
 }
 
 export function getFollowUpDraft(
