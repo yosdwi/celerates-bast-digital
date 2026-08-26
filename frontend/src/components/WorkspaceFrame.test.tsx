@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TalentOpsSession } from "../api/types";
 import { PeriodControlProvider } from "../app/PeriodContext";
 import WorkspaceFrame from "./WorkspaceFrame";
@@ -9,6 +9,8 @@ const session: TalentOpsSession = {
   csrf_token: "csrf-test",
   timezone: "Asia/Jakarta",
 };
+
+afterEach(() => cleanup());
 
 describe("WorkspaceFrame period control", () => {
   it("shows the active month and requests a new global period", () => {
