@@ -6,8 +6,53 @@
   align-items: flex-end;
 }
 
-.report-tools-link {
-  text-decoration: none;
+.bast-generation {
+  min-width: 290px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.bast-generation-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bast-generation-controls select {
+  height: 34px;
+  min-width: 145px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+  color: #3c4043;
+  background: #fff;
+  font-size: 11px;
+}
+
+.bast-generation-controls select:focus {
+  border-color: #8ab4f8;
+}
+
+.bast-generation-controls select:disabled {
+  opacity: .6;
+}
+
+.bast-generation-status {
+  max-width: 360px;
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.bast-generation-status.success {
+  color: var(--green);
+}
+
+.bast-generation-status.error {
+  color: var(--red);
 }
 
 .bast-summary {
@@ -51,19 +96,6 @@
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.bast-closing-note {
-  margin-top: 14px;
-  padding: 14px 2px 2px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.bast-closing-note strong {
-  color: var(--text);
 }
 
 .bast-check-row {
@@ -154,11 +186,28 @@
 
   .bast-heading {
     align-items: flex-start;
+    flex-direction: column;
   }
 
-  .bast-heading .report-tools-link {
+  .bast-generation {
     width: 100%;
-    margin-top: 10px;
+    min-width: 0;
+    align-items: stretch;
+  }
+
+  .bast-generation-controls {
+    width: 100%;
+  }
+
+  .bast-generation-controls select,
+  .bast-generation-controls .primary-button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bast-generation-status {
+    max-width: none;
+    text-align: left;
   }
 
   .bast-toolbar {
@@ -183,10 +232,6 @@
   .bast-mobile-row {
     position: relative;
     text-align: left;
-  }
-
-  .bast-closing-note {
-    margin-top: 10px;
   }
 
   .bast-drawer-actions {

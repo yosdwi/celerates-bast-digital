@@ -16,7 +16,7 @@ function redirectToLogin(): void {
   window.location.assign(loginUrl());
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetchResponse(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(path, {
     credentials: "same-origin",
     cache: "no-store",
@@ -46,5 +46,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     throw new ApiError(response.status, message);
   }
 
+  return response;
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetchResponse(path, init);
   return (await response.json()) as T;
 }
