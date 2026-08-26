@@ -51,6 +51,30 @@ def test_parse_investigation_accepts_null_optional_sections() -> None:
     assert tuple(item.id for item in result.evidence) == ("signal:0",)
 
 
+def test_parse_investigation_caps_selected_evidence_at_eight() -> None:
+    catalog = tuple(
+        InvestigationEvidence(
+            id=f"evidence:{index}",
+            kind="test",
+            label=f"Evidence {index}",
+            detail="Grounded fact.",
+        )
+        for index in range(10)
+    )
+    evidence_ids = ",".join(f'"evidence:{index}"' for index in range(10))
+    result = parse_investigation(
+        '{"title":"Grounded finding","finding":"Bound to catalog evidence.",'
+        f'"impact":null,"suggested_action":null,"evidence_ids":[{evidence_ids}]}}',
+        catalog,
+    )
+
+    assert result is not None
+    assert len(result.evidence) == 8
+    assert tuple(item.id for item in result.evidence) == tuple(
+        f"evidence:{index}" for index in range(8)
+    )
+
+
 def test_parse_investigation_rejects_unbound_or_invalid_output() -> None:
     unknown_only = parse_investigation(
         '{"title":"Claim","finding":"Unsupported","impact":null,'
