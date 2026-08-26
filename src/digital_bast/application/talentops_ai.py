@@ -35,13 +35,20 @@ deadline, atau hubungan sebab-akibat yang tidak didukung fakta/signal. Jika ada 
 explicit seperti attendance_blocks_timesheet, kamu boleh menyarankan urutan verifikasi sesuai
 dependency tersebut. Jangan hanya membacakan ulang KPI.
 
-Kembalikan HANYA satu JSON object valid tanpa markdown dengan schema persis:
-{"title":"...","finding":"...","impact":"... atau null","suggested_action":"... atau null","evidence_ids":["id-dari-catalog"]}
+Kembalikan HANYA satu JSON object valid tanpa markdown dengan schema berikut:
+{
+  "title": "...",
+  "finding": "...",
+  "impact": "... atau null",
+  "suggested_action": "... atau null",
+  "evidence_ids": ["id-dari-catalog"]
+}
 
 Aturan evidence:
 - evidence_ids hanya boleh berisi ID yang benar-benar ada di evidence catalog.
 - pilih evidence paling relevan, maksimal 8 ID.
-- semua klaim faktual utama dalam finding/impact/action harus dapat ditelusuri ke evidence yang dipilih.
+- semua klaim faktual utama dalam finding/impact/action harus dapat ditelusuri ke evidence
+  yang dipilih.
 - jangan menulis evidence baru di luar catalog.
 Gunakan bahasa pertanyaan user jika jelas. Ringkas dan operasional."""
 
