@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { askCommandCenter } from "../api/talentops";
+import { askCommandCenter, generateBast } from "../api/talentops";
+import type { BastReportType } from "../api/talentops";
 import type { CheckState, CommandCenterResponse, EmployeeRole, TalentOpsSession, TalentReadiness } from "../api/types";
 import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
 import { StatusBadge } from "../components/StatusBadge";
@@ -9,6 +10,7 @@ import { domainLabel, readinessPercent } from "../domain/insights";
 
 type StateFilter = "all" | CheckState;
 type TeamFilter = "all" | EmployeeRole;
+type GenerationState = "idle" | "generating" | "success" | "error";
 
 interface Props {
   session: TalentOpsSession;
@@ -27,11 +29,26 @@ function firstBlockerLabel(row: ReadinessRow): string {
   return row.blockerDomains.length ? row.blockerDomains.map(domainLabel).join(", ") : "Needs review";
 }
 
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export default function BastReadinessPage({ session, data, onNavigate, onOpenTalent }: Props) {
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [teamFilter, setTeamFilter] = useState<TeamFilter>("all");
   const [selected, setSelected] = useState<ReadinessRow | null>(null);
+  const [bastReportType, setBastReportType] = useState<BastReportType>("developer");
+  const [generationState, setGenerationState] = useState<GenerationState>("idle");
+  const [generationMessage, setGenerationMessage] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState("Summarize the current BAST readiness blockers and what PMO should close first.");
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
@@ -81,6 +98,21 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
     }
   }
 
+  async function submitBastGeneration() {
+    if (generationState === "generating") return;
+    setGenerationState("generating");
+    setGenerationMessage("");
+    try {
+      const generated = await generateBast(session.csrf_token, data.period, bastReportType);
+      triggerDownload(generated.blob, generated.filename);
+      setGenerationState("success");
+      setGenerationMessage(`${generated.filename} generated.`);
+    } catch (error) {
+      setGenerationState("error");
+      setGenerationMessage(error instanceof Error ? error.message : "BAST generation failed.");
+    }
+  }
+
   function explainTalent(item: ReadinessRow) {
     setSelected(null);
     setAiQuestion(`Explain the BAST readiness blockers for ${item.name} (${item.nrp}) and the safest next PMO review step. Use only current readiness facts.`);
@@ -102,7 +134,29 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
       <div className="content bast-readiness-page">
         <div className="page-heading bast-heading">
           <div><h1>BAST Readiness</h1><p>{data.period.label} · closing readiness from shared completion rules</p></div>
-          <a className="secondary-button report-tools-link" href="/admin/">Open report tools</a>
+          <div className="bast-generation">
+            <div className="bast-generation-controls">
+              <select
+                aria-label="BAST report type"
+                value={bastReportType}
+                disabled={generationState === "generating"}
+                onChange={(event) => setBastReportType(event.target.value as BastReportType)}
+              >
+                <option value="developer">Developer</option>
+                <option value="iotoperation">IoT Operations</option>
+              </select>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={generationState === "generating"}
+                onClick={submitBastGeneration}
+              >
+                {generationState === "generating" ? "Generating…" : "Generate BAST"}
+              </button>
+            </div>
+            {generationState === "success" ? <div className="bast-generation-status success" role="status">{generationMessage}</div> : null}
+            {generationState === "error" ? <div className="bast-generation-status error" role="alert">{generationMessage}</div> : null}
+          </div>
         </div>
 
         <div className="summary-strip bast-summary" aria-label="BAST readiness summary">
@@ -166,8 +220,6 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
             ))}
           </div>
         </section>
-
-        <div className="bast-closing-note"><strong>Generation boundary:</strong> this screen evaluates closing readiness. Existing report generation remains in the current admin report tools; this slice does not create a second BAST generator.</div>
       </div>
 
       <div className={`drawer-overlay ${selected ? "open" : ""}`} onClick={() => setSelected(null)} />
@@ -190,7 +242,7 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
           <label htmlFor="bast-ai-question">Question</label>
           <textarea id="bast-ai-question" rows={4} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} />
           <button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Thinking…" : "Ask"}</button>
-          <div className="ai-safety-note">AI explains deterministic readiness; it does not mark a talent ready or generate BAST.</div>
+          <div className="ai-safety-note">AI explains deterministic readiness; generation stays deterministic and template-driven.</div>
           {aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. Readiness data above remains valid.</div> : null}
           {aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}
         </form>
