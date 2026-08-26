@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
+import type {
+  CommandCenterResponse,
+  TalentDetailResponse,
+  TalentOpsSession,
+} from "../api/types";
 import Talent360Page from "./Talent360Page";
 
 const session: TalentOpsSession = {
@@ -10,8 +14,20 @@ const session: TalentOpsSession = {
 };
 
 const commandCenter: CommandCenterResponse = {
-  period: { year: 2026, month: 8, start: "2026-08-01", end: "2026-08-31", label: "1-31 Agustus 2026" },
-  summary: { active_talents: 1, bast_ready: 0, need_attention: 1, open_tasks: 0, evidence_ready: 1 },
+  period: {
+    year: 2026,
+    month: 8,
+    start: "2026-08-01",
+    end: "2026-08-31",
+    label: "1-31 Agustus 2026",
+  },
+  summary: {
+    active_talents: 1,
+    bast_ready: 0,
+    need_attention: 1,
+    open_tasks: 0,
+    evidence_ready: 0,
+  },
   attention: [],
   readiness: [],
   teams: [],
@@ -29,9 +45,12 @@ const talent: TalentDetailResponse = {
     attendance: { state: "incomplete", issue_count: 1 },
     timesheet: { state: "incomplete", issue_count: 1 },
     task: { state: "complete", issue_count: 0 },
-    evidence: { state: "complete", issue_count: 0 },
+    evidence: { state: "incomplete", issue_count: 1 },
   },
-  blockers: [{ domain: "attendance", state: "incomplete", issues: ["Attendance missing"] }],
+  blockers: [
+    { domain: "attendance", state: "incomplete", issues: ["Attendance missing"] },
+    { domain: "evidence", state: "incomplete", issues: ["Closed task missing evidence"] },
+  ],
   attendance_days: [{
     work_date: "2026-08-01",
     is_off: false,
@@ -53,15 +72,15 @@ const talent: TalentDetailResponse = {
     work_date: "2026-08-01",
     title: "Closed task",
     status: "Closed",
-    evidence_count: 1,
+    evidence_count: 0,
     is_closed: true,
-    evidence_ready: true,
+    evidence_ready: false,
   }],
   availability: { attendance: true, evidence: true },
 };
 
 describe("Talent360Page", () => {
-  it("renders identity and deterministic readiness facts", () => {
+  it("surfaces deterministic cross-domain dependencies without AI", () => {
     render(
       <Talent360Page
         session={session}
@@ -75,7 +94,10 @@ describe("Talent360Page", () => {
     expect(screen.getByRole("heading", { name: "Yoses Dwi Maheswara" })).toBeInTheDocument();
     expect(screen.getByText(/JIMT24002/)).toBeInTheDocument();
     expect(screen.getByText("Attendance missing")).toBeInTheDocument();
-    expect(screen.getByText("Blocked by attendance validation")).toBeInTheDocument();
+    expect(screen.getAllByText("→ Timesheet").length).toBeGreaterThan(0);
+    expect(screen.getByText("Attendance incomplete → Timesheet blocked")).toBeInTheDocument();
+    expect(screen.getByText("1 Closed task missing Evidence")).toBeInTheDocument();
     expect(screen.getAllByText("Closed task").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Missing evidence|Evidence missing/).length).toBeGreaterThan(0);
   });
 });
