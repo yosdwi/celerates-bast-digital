@@ -1,9 +1,19 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { askCommandCenter, generateBast } from "../api/talentops";
+import { askCommandCenter, askTalent, generateBast } from "../api/talentops";
 import type { BastReportType } from "../api/talentops";
-import type { CheckState, CommandCenterResponse, EmployeeRole, TalentOpsSession, TalentReadiness } from "../api/types";
+import type {
+  AiInvestigation,
+  AttentionItem,
+  CheckState,
+  CommandCenterResponse,
+  EmployeeRole,
+  OperationalSignal,
+  TalentOpsSession,
+  TalentReadiness,
+} from "../api/types";
 import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
+import InvestigationCard from "../components/InvestigationCard";
 import { StatusBadge } from "../components/StatusBadge";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 import { domainLabel, readinessPercent } from "../domain/insights";
@@ -22,11 +32,28 @@ interface Props {
 interface ReadinessRow extends TalentReadiness {
   blockerDomains: string[];
   issueCount: number;
+  blockers: AttentionItem["blockers"];
+  signals: OperationalSignal[];
 }
 
 function firstBlockerLabel(row: ReadinessRow): string {
   if (row.overall_state === "complete") return "No blockers";
   return row.blockerDomains.length ? row.blockerDomains.map(domainLabel).join(", ") : "Needs review";
+}
+
+function firstIssue(row: ReadinessRow): string | null {
+  for (const blocker of row.blockers) {
+    const issue = blocker.issues[0];
+    if (issue) return issue;
+  }
+  return null;
+}
+
+function signalMeta(signal: OperationalSignal): string | null {
+  const parts: string[] = [];
+  if (signal.dates.length) parts.push(signal.dates.join(", "));
+  if (signal.task_titles.length) parts.push(signal.task_titles.join(", "));
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -50,27 +77,47 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
   const [generationState, setGenerationState] = useState<GenerationState>("idle");
   const [generationMessage, setGenerationMessage] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiQuestion, setAiQuestion] = useState("Summarize the current BAST readiness blockers and what PMO should close first.");
+  const [aiTarget, setAiTarget] = useState<ReadinessRow | null>(null);
+  const [aiQuestion, setAiQuestion] = useState(
+    "Summarize the current BAST readiness blockers and what PMO should verify first.",
+  );
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiInvestigation, setAiInvestigation] = useState<AiInvestigation | null>(null);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
   const rows = useMemo<ReadinessRow[]>(() => {
     const attentionByNrp = new Map(data.attention.map((item) => [item.nrp, item]));
+    const signalsByNrp = new Map<string, OperationalSignal[]>();
+    for (const signal of data.signals ?? []) {
+      if (!signal.nrp) continue;
+      const current = signalsByNrp.get(signal.nrp) ?? [];
+      current.push(signal);
+      signalsByNrp.set(signal.nrp, current);
+    }
+
     return data.readiness.map((item) => {
       const attention = attentionByNrp.get(item.nrp);
-      const blockerDomains = attention?.blockers.map((blocker) => blocker.domain) ?? [];
+      const blockers = attention?.blockers ?? [];
+      const blockerDomains = blockers.map((blocker) => blocker.domain);
       const issueCount = Object.values(item.checks).reduce((sum, check) => sum + check.issue_count, 0);
-      return { ...item, blockerDomains, issueCount };
+      return {
+        ...item,
+        blockerDomains,
+        issueCount,
+        blockers,
+        signals: signalsByNrp.get(item.nrp) ?? [],
+      };
     });
-  }, [data.attention, data.readiness]);
+  }, [data.attention, data.readiness, data.signals]);
 
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filtered = useMemo(
     () => rows.filter((item) => {
       const stateOk = stateFilter === "all" || item.overall_state === stateFilter;
       const teamOk = teamFilter === "all" || item.role === teamFilter;
-      const searchOk = !normalizedSearch || `${item.name} ${item.nrp} ${item.role}`.toLocaleLowerCase().includes(normalizedSearch);
+      const searchOk = !normalizedSearch
+        || `${item.name} ${item.nrp} ${item.role}`.toLocaleLowerCase().includes(normalizedSearch);
       return stateOk && teamOk && searchOk;
     }),
     [normalizedSearch, rows, stateFilter, teamFilter],
@@ -79,6 +126,7 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
   const blockedCount = rows.filter((item) => item.overall_state === "incomplete").length;
   const reviewCount = rows.filter((item) => item.overall_state === "needs_review").length;
   const readyCount = rows.filter((item) => item.overall_state === "complete").length;
+  const primarySignal = data.signals?.[0] ?? null;
 
   async function submitAi(event?: FormEvent) {
     event?.preventDefault();
@@ -87,11 +135,15 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
     setAiLoading(true);
     setAiUnavailable(false);
     try {
-      const response = await askCommandCenter(session.csrf_token, question, data.period);
+      const response = aiTarget
+        ? await askTalent(session.csrf_token, aiTarget.nrp, question, data.period)
+        : await askCommandCenter(session.csrf_token, question, data.period);
       setAiAnswer(response.answer);
+      setAiInvestigation(response.investigation);
       setAiUnavailable(response.status === "unavailable");
     } catch {
       setAiAnswer(null);
+      setAiInvestigation(null);
       setAiUnavailable(true);
     } finally {
       setAiLoading(false);
@@ -113,10 +165,21 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
     }
   }
 
-  function explainTalent(item: ReadinessRow) {
-    setSelected(null);
-    setAiQuestion(`Explain the BAST readiness blockers for ${item.name} (${item.nrp}) and the safest next PMO review step. Use only current readiness facts.`);
+  function openGlobalInvestigation() {
+    setAiTarget(null);
+    setAiQuestion("Summarize the current BAST readiness blockers and what PMO should verify first.");
     setAiAnswer(null);
+    setAiInvestigation(null);
+    setAiUnavailable(false);
+    setAiOpen(true);
+  }
+
+  function investigateTalent(item: ReadinessRow) {
+    setSelected(null);
+    setAiTarget(item);
+    setAiQuestion(`Why is ${item.name} blocked for BAST and what should PMO verify first?`);
+    setAiAnswer(null);
+    setAiInvestigation(null);
     setAiUnavailable(false);
     setAiOpen(true);
   }
@@ -129,7 +192,7 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
       search={search}
       onSearch={setSearch}
       onNavigate={onNavigate}
-      onAskAi={() => setAiOpen(true)}
+      onAskAi={openGlobalInvestigation}
     >
       <div className="content bast-readiness-page">
         <div className="page-heading bast-heading">
@@ -168,8 +231,13 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
 
         <div className="ai-insight-strip bast-ai-strip">
           <span className="ai-insight-icon"><SparkleIcon /></span>
-          <div><strong>Readiness is not generated by AI.</strong> AI may explain blockers; deterministic completion rules remain authoritative.</div>
-          <button type="button" onClick={() => setAiOpen(true)}>Explain blockers</button>
+          <div>
+            <strong>{primarySignal?.title ?? "Readiness stays deterministic."}</strong>
+            {primarySignal
+              ? ` · ${primarySignal.summary}`
+              : " · Investigation can synthesize blocker facts, but it cannot change readiness."}
+          </div>
+          <button type="button" onClick={openGlobalInvestigation}>Investigate BAST blockers</button>
         </div>
 
         <section className="panel bast-matrix-panel">
@@ -194,18 +262,24 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
           <div className="desktop-table-wrap">
             <table className="data-table bast-table">
               <thead><tr><th>Talent</th><th>Attendance</th><th>Timesheet</th><th>Task</th><th>Evidence</th><th>Overall</th><th>Blockers</th><th aria-label="Open" /></tr></thead>
-              <tbody>{filtered.map((item) => (
-                <tr key={item.employee_id} onClick={() => setSelected(item)}>
-                  <td><div className="talent-name">{item.name}</div><div className="cell-muted">{item.nrp} · {item.role}</div></td>
-                  <td><StatusBadge state={item.checks.attendance.state} compact /></td>
-                  <td><StatusBadge state={item.checks.timesheet.state} compact /></td>
-                  <td><StatusBadge state={item.checks.task.state} compact /></td>
-                  <td><StatusBadge state={item.checks.evidence.state} compact /></td>
-                  <td><StatusBadge state={item.overall_state} compact /></td>
-                  <td><span className="bast-blocker-text">{firstBlockerLabel(item)}{item.issueCount > 0 ? ` · ${item.issueCount} issues` : ""}</span></td>
-                  <td><button className="row-open" type="button" aria-label={`Open BAST readiness for ${item.name}`}><ChevronIcon /></button></td>
-                </tr>
-              ))}</tbody>
+              <tbody>{filtered.map((item) => {
+                const issue = firstIssue(item);
+                return (
+                  <tr key={item.employee_id} onClick={() => setSelected(item)}>
+                    <td><div className="talent-name">{item.name}</div><div className="cell-muted">{item.nrp} · {item.role}</div></td>
+                    <td><StatusBadge state={item.checks.attendance.state} compact /></td>
+                    <td><StatusBadge state={item.checks.timesheet.state} compact /></td>
+                    <td><StatusBadge state={item.checks.task.state} compact /></td>
+                    <td><StatusBadge state={item.checks.evidence.state} compact /></td>
+                    <td><StatusBadge state={item.overall_state} compact /></td>
+                    <td>
+                      <div className="talent-name">{firstBlockerLabel(item)}{item.issueCount > 0 ? ` · ${item.issueCount}` : ""}</div>
+                      <span className="bast-blocker-text">{issue ?? (item.signals[0]?.summary || "No blocker detail")}</span>
+                    </td>
+                    <td><button className="row-open" type="button" aria-label={`Open BAST readiness for ${item.name}`}><ChevronIcon /></button></td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
 
@@ -214,7 +288,7 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
               <button className="mobile-readiness-row bast-mobile-row" type="button" key={item.employee_id} onClick={() => setSelected(item)}>
                 <div className="mobile-readiness-head"><div><strong>{item.name}</strong><span>{item.nrp} · {item.role}</span></div><StatusBadge state={item.overall_state} compact /></div>
                 <div className="bast-mobile-checks"><span>Attendance <StatusBadge state={item.checks.attendance.state} compact /></span><span>Timesheet <StatusBadge state={item.checks.timesheet.state} compact /></span><span>Task <StatusBadge state={item.checks.task.state} compact /></span><span>Evidence <StatusBadge state={item.checks.evidence.state} compact /></span></div>
-                <div className="bast-mobile-blocker">{firstBlockerLabel(item)}{item.issueCount > 0 ? ` · ${item.issueCount} issues` : ""}</div>
+                <div className="bast-mobile-blocker"><strong>{firstBlockerLabel(item)}</strong>{firstIssue(item) ? ` · ${firstIssue(item)}` : item.signals[0] ? ` · ${item.signals[0].summary}` : ""}</div>
                 <ChevronIcon className="mobile-chevron" />
               </button>
             ))}
@@ -230,21 +304,49 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
             <div className="drawer-overall"><span>BAST readiness</span><StatusBadge state={selected.overall_state} /></div>
             <h3>Completion checks</h3>
             {([['Attendance', selected.checks.attendance], ['Timesheet', selected.checks.timesheet], ['Task', selected.checks.task], ['Evidence', selected.checks.evidence]] as const).map(([label, check]) => <div className="bast-check-row" key={label}><span>{label}</span><StatusBadge state={check.state} compact /><strong>{check.issue_count}</strong><small>issues</small></div>)}
-            <div className="bast-drawer-blockers"><span>Blocker domains</span><strong>{firstBlockerLabel(selected)}</strong></div>
+
+            <h3>Operational signals</h3>
+            {selected.signals.length ? selected.signals.map((signal, index) => (
+              <div className="bast-drawer-blockers" key={`${signal.kind}-${index}`}>
+                <span>{signal.domains.map(domainLabel).join(" → ") || "Readiness signal"}</span>
+                <strong>{signal.title}</strong>
+                <p className="cell-muted">{signal.summary}</p>
+                {signalMeta(signal) ? <small className="cell-muted">{signalMeta(signal)}</small> : null}
+              </div>
+            )) : <div className="empty-state">No additional operational signal for this talent.</div>}
+
+            <h3>Blocker facts</h3>
+            {selected.blockers.length ? selected.blockers.map((blocker) => (
+              <div className="blocker-card" key={blocker.domain}>
+                <div className="blocker-head"><strong>{domainLabel(blocker.domain)}</strong><StatusBadge state={blocker.state} compact /></div>
+                {blocker.issues.length ? <ul>{blocker.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <p>No detailed issue text was returned.</p>}
+              </div>
+            )) : <div className="empty-state">No blocker facts are present for this readiness state.</div>}
           </div>
-          <div className="drawer-actions bast-drawer-actions"><button className="secondary-button" type="button" onClick={() => explainTalent(selected)}><SparkleIcon />Explain blockers</button><button className="primary-button" type="button" onClick={() => { setSelected(null); onOpenTalent(selected.nrp); }}>Open Talent 360</button></div>
+          <div className="drawer-actions bast-drawer-actions"><button className="secondary-button" type="button" onClick={() => investigateTalent(selected)}><SparkleIcon />Investigate blockers</button><button className="primary-button" type="button" onClick={() => { setSelected(null); onOpenTalent(selected.nrp); }}>Open Talent 360</button></div>
         </> : null}
       </aside>
 
       <section className={`ai-panel ${aiOpen ? "open" : ""}`} aria-hidden={!aiOpen}>
-        <div className="ai-panel-header"><div><span>Grounded in current readiness facts</span><h2>Ask AI</h2></div><button className="icon-button" type="button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
+        <div className="ai-panel-header"><div><span>{aiTarget ? `Grounded in ${aiTarget.name}'s date-level facts` : "Grounded in current BAST readiness facts"}</span><h2>Investigate BAST readiness</h2></div><button className="icon-button" type="button" aria-label="Close investigation" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
         <form className="ai-panel-body" onSubmit={submitAi}>
+          <div className="filter-chips" role="group" aria-label="BAST investigation prompts">
+            {aiTarget ? <>
+              <button type="button" onClick={() => setAiQuestion(`Why is ${aiTarget.name} blocked for BAST and what should PMO verify first?`)}>Why blocked?</button>
+              <button type="button" onClick={() => setAiQuestion("Which dates should PMO verify first, and are Attendance and Timesheet related?")}>Related dates</button>
+              <button type="button" onClick={() => setAiQuestion("Which Closed tasks still have missing Evidence?")}>Missing evidence</button>
+            </> : <>
+              <button type="button" onClick={() => setAiQuestion("Which BAST blockers affect the most current readiness domains?")}>Top blockers</button>
+              <button type="button" onClick={() => setAiQuestion("What cross-domain readiness patterns should PMO verify first?")}>Cross-domain</button>
+              <button type="button" onClick={() => setAiQuestion("What should PMO verify first before the next BAST generation?")}>Next review</button>
+            </>}
+          </div>
           <label htmlFor="bast-ai-question">Question</label>
           <textarea id="bast-ai-question" rows={4} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} />
-          <button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Thinking…" : "Ask"}</button>
-          <div className="ai-safety-note">AI explains deterministic readiness; generation stays deterministic and template-driven.</div>
-          {aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. Readiness data above remains valid.</div> : null}
-          {aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}
+          <button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Investigating…" : "Investigate"}</button>
+          <div className="ai-safety-note">Readiness stays deterministic. Investigation can only synthesize server-owned facts and evidence.</div>
+          {aiUnavailable ? <div className="ai-unavailable">AI investigation is unavailable. Deterministic readiness and blocker facts remain valid.</div> : null}
+          {aiInvestigation ? <InvestigationCard investigation={aiInvestigation} /> : aiAnswer ? <div className="ai-answer"><span>Finding</span><p>{aiAnswer}</p></div> : null}
         </form>
       </section>
     </WorkspaceFrame>
