@@ -96,11 +96,13 @@ describe("BastReadinessPage", () => {
     expect(screen.getByRole("heading", { name: "BAST Readiness" })).toBeInTheDocument();
     expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Yoses Dwi Maheswara").length).toBeGreaterThan(0);
-    expect(screen.getByText("Attendance missing clock-out")).toBeInTheDocument();
+    expect(screen.getAllByText("Attendance missing clock-out").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByLabelText("Open BAST readiness for Yoses Dwi Maheswara"));
     expect(screen.getByRole("heading", { name: "Yoses Dwi Maheswara" })).toBeInTheDocument();
-    expect(screen.getByText("Attendance and Timesheet both block readiness")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Attendance and Timesheet both block readiness").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("Blocker facts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Investigate blockers" })).toBeInTheDocument();
 
