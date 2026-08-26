@@ -1,4 +1,5 @@
 from digital_bast.application.talentops_ai import TalentOpsAiService
+from digital_bast.application.talentops_investigation import talent_evidence
 from tests.unit.web.test_talentops_routes import talent_detail_view
 
 
@@ -43,6 +44,15 @@ async def test_talent_ai_receives_operational_signals_and_date_level_evidence() 
     assert "closed_task_missing_evidence" in client.user_prompt
     assert "attendance_issue_days" in client.user_prompt
     assert "timesheet_issue_days" in client.user_prompt
+    assert "summary:talent" in client.user_prompt
     assert "Evidence catalog" in client.user_prompt
     assert "2026-08-01" in client.user_prompt
     assert "evidence_ids" in client.system_prompt
+
+
+def test_talent_evidence_always_contains_summary_fact() -> None:
+    evidence = talent_evidence(talent_detail_view())
+
+    summary = next(item for item in evidence if item.id == "summary:talent")
+    assert summary.kind == "summary"
+    assert "overall=incomplete" in summary.detail
