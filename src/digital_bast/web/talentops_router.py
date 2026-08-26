@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated
 
 from anyio.to_thread import run_sync
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -181,7 +181,7 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         request: Request,
         year: Annotated[int, Query(ge=2020, le=2100)],
         month: Annotated[int, Query(ge=1, le=12)],
-        report_type: Annotated[Literal["developer", "iotoperation"], Query()],
+        report_type: Annotated[str, Query(pattern="^(developer|iotoperation)$")],
         csrf_token: HeaderCsrf = None,
     ) -> Response:
         _, record = await require_session(
