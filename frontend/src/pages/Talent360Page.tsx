@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { askTalent } from "../api/talentops";
-import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
+import type { AiInvestigation, CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
 import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, SparkleIcon } from "../components/Icons";
+import InvestigationCard from "../components/InvestigationCard";
 import { StatusBadge, statusLabel } from "../components/StatusBadge";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 import { domainLabel } from "../domain/insights";
@@ -32,8 +33,9 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
   const [search, setSearch] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
-  const [aiQuestion, setAiQuestion] = useState(`Explain the blockers for ${talent.name} and what PMO should review next.`);
+  const [aiQuestion, setAiQuestion] = useState(`Why is ${talent.name} blocked and what should PMO verify first?`);
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+  const [aiInvestigation, setAiInvestigation] = useState<AiInvestigation | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
 
@@ -42,6 +44,7 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
   const evidenceReady = talent.tasks.filter((task) => task.is_closed && task.evidence_ready === true).length;
   const timesheetIssues = talent.timesheet_days.filter((day) => day.state !== "complete");
   const attendanceIssues = talent.attendance_days.filter((day) => !day.is_off && day.state !== "complete");
+  const primarySignal = talent.signals?.[0] ?? null;
   const firstWeekdayOffset = useMemo(() => {
     const first = talent.attendance_days[0];
     if (!first) return 0;
@@ -58,13 +61,23 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
     try {
       const response = await askTalent(session.csrf_token, talent.nrp, question, talent.period);
       setAiAnswer(response.answer);
+      setAiInvestigation(response.investigation);
       setAiUnavailable(response.status === "unavailable");
     } catch {
       setAiAnswer(null);
+      setAiInvestigation(null);
       setAiUnavailable(true);
     } finally {
       setAiLoading(false);
     }
+  }
+
+  function openInvestigation(question?: string) {
+    if (question) setAiQuestion(question);
+    setAiAnswer(null);
+    setAiInvestigation(null);
+    setAiUnavailable(false);
+    setAiOpen(true);
   }
 
   return (
@@ -75,7 +88,7 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
       search={search}
       onSearch={setSearch}
       onNavigate={onNavigate}
-      onAskAi={() => setAiOpen(true)}
+      onAskAi={() => openInvestigation()}
     >
       <div className="content slice2-content">
         <button className="talent-breadcrumb" type="button" onClick={onBack}>Talents <ChevronIcon /> <span>{talent.name}</span></button>
@@ -101,8 +114,8 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
 
         <div className="ai-insight-strip talent-ai-strip">
           <span className="ai-insight-icon"><SparkleIcon /></span>
-          <div><strong>{issueCount === 0 ? "No blockers from current readiness rules." : `${issueCount} current readiness issues.`}</strong>{talent.blockers[0] ? ` · ${domainLabel(talent.blockers[0].domain)} needs review first.` : ""}</div>
-          <button type="button" onClick={() => setAiOpen(true)}>Explain</button>
+          <div><strong>{primarySignal?.title ?? (issueCount === 0 ? "No blockers from current readiness rules." : `${issueCount} current readiness issues.`)}</strong>{primarySignal ? ` · ${primarySignal.summary}` : talent.blockers[0] ? ` · ${domainLabel(talent.blockers[0].domain)} needs review.` : ""}</div>
+          <button type="button" onClick={() => openInvestigation()}>Investigate</button>
         </div>
 
         <div className="talent-tabs" role="tablist" aria-label="Talent detail sections">
@@ -165,12 +178,17 @@ export default function Talent360Page({ session, commandCenter, talent, onNaviga
 
       {aiOpen ? (
         <div className="slice2-ai-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAiOpen(false); }}>
-          <section className="slice2-ai-panel" role="dialog" aria-modal="true" aria-label={`Ask AI about ${talent.name}`}>
-            <div className="slice2-ai-head"><div><SparkleIcon /><strong>Ask AI · {talent.name}</strong></div><button type="button" className="icon-button" aria-label="Close AI" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
-            <p>AI is grounded in this talent's current readiness, tasks, attendance, and evidence facts. Deterministic rules remain authoritative.</p>
-            <form onSubmit={(event) => void submitAi(event)}><textarea value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} rows={5} /><button className="primary-button" type="submit" disabled={aiLoading}>{aiLoading ? "Thinking…" : "Ask"}</button></form>
-            {aiAnswer ? <div className="slice2-ai-answer">{aiAnswer}</div> : null}
-            {aiUnavailable ? <div className="slice2-ai-answer muted">AI is unavailable. The deterministic readiness data remains available above.</div> : null}
+          <section className="slice2-ai-panel" role="dialog" aria-modal="true" aria-label={`Investigate ${talent.name}`}>
+            <div className="slice2-ai-head"><div><SparkleIcon /><strong>Investigate · {talent.name}</strong></div><button type="button" className="icon-button" aria-label="Close investigation" onClick={() => setAiOpen(false)}><CloseIcon /></button></div>
+            <p>Investigation is grounded in deterministic signals plus this talent's date-level Attendance, Timesheet, Task, and Evidence facts.</p>
+            <div className="filter-chips" role="group" aria-label="Investigation prompts">
+              <button type="button" onClick={() => setAiQuestion(`Why is ${talent.name} blocked and what should PMO verify first?`)}>Why blocked?</button>
+              <button type="button" onClick={() => setAiQuestion("Which dates should PMO verify first, and are Attendance and Timesheet related?")}>Related dates</button>
+              <button type="button" onClick={() => setAiQuestion("Which Closed tasks still have missing Evidence?")}>Missing evidence</button>
+            </div>
+            <form onSubmit={(event) => void submitAi(event)}><textarea value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} rows={4} /><button className="primary-button" type="submit" disabled={aiLoading}>{aiLoading ? "Investigating…" : "Investigate"}</button></form>
+            {aiInvestigation ? <InvestigationCard investigation={aiInvestigation} /> : aiAnswer ? <div className="slice2-ai-answer">{aiAnswer}</div> : null}
+            {aiUnavailable ? <div className="slice2-ai-answer muted">AI investigation is unavailable. Deterministic readiness and operational signals remain available above.</div> : null}
           </section>
         </div>
       ) : null}
