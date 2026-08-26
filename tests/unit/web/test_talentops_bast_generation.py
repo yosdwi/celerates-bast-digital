@@ -1,11 +1,21 @@
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
+from pytest import MonkeyPatch
+
+from digital_bast.domain.completion import DateRange
 from tests.unit.web.test_talentops_routes import make_client
 
 
-def test_bast_generation_requires_csrf_and_returns_pdf(monkeypatch, tmp_path) -> None:
-    async def fake_generate_bast(period, report_type):
+def test_bast_generation_requires_csrf_and_returns_pdf(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def fake_generate_bast(
+        period: DateRange,
+        report_type: str,
+    ) -> tuple[Path, SimpleNamespace]:
         assert period.start == date(2026, 8, 1)
         assert period.end == date(2026, 8, 31)
         assert report_type == "iotoperation"
