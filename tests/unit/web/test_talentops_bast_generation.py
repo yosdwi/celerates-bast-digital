@@ -2,14 +2,14 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
-from pytest import MonkeyPatch
+import pytest
 
 from digital_bast.domain.completion import DateRange
 from tests.unit.web.test_talentops_routes import make_client
 
 
 def test_bast_generation_requires_csrf_and_returns_pdf(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     async def fake_generate_bast(
