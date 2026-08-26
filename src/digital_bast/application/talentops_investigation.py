@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from digital_bast.application.operational_signals import (
     command_center_signals,
@@ -232,11 +232,12 @@ def parse_investigation(
             lines = lines[:-1]
         value = "\n".join(lines).strip()
     try:
-        payload = json.loads(value)
+        decoded = cast("object", json.loads(value))
     except json.JSONDecodeError:
         return None
-    if not isinstance(payload, dict):
+    if not isinstance(decoded, dict):
         return None
+    payload = cast("dict[str, object]", decoded)
 
     title = _clean_text(payload.get("title"), 160)
     finding = _clean_text(payload.get("finding"), 800)
