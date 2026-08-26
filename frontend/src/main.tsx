@@ -9,6 +9,7 @@ import "./styles/slice6.css";
 import "./styles/action-pipeline.css";
 import "./styles/investigation.css";
 import "./styles/talent360-correlation.css";
+import "./styles/period-control.css";
 
 const root = document.getElementById("root");
 if (!root) {
