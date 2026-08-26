@@ -196,7 +196,7 @@ export interface AiInvestigation {
 export interface AiResponse {
   status: "ok" | "unavailable";
   answer: string | null;
-  investigation?: AiInvestigation | null;
+  investigation: AiInvestigation | null;
 }
 
 export interface FollowUpRecord {
