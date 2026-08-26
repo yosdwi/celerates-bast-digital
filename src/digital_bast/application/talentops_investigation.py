@@ -12,6 +12,7 @@ from digital_bast.application.operational_signals import (
 if TYPE_CHECKING:
     from datetime import date
 
+    from digital_bast.application.operational_signals import OperationalSignal
     from digital_bast.application.talentops import CommandCenterView, TalentDetailView
 
 
@@ -36,7 +37,10 @@ class TalentOpsInvestigation:
     evidence: tuple[InvestigationEvidence, ...]
 
 
-def _signal_evidence(prefix: str, signals: tuple[object, ...]) -> list[InvestigationEvidence]:
+def _signal_evidence(
+    prefix: str,
+    signals: tuple[OperationalSignal, ...],
+) -> list[InvestigationEvidence]:
     result: list[InvestigationEvidence] = []
     for index, signal in enumerate(signals):
         result.append(
@@ -223,8 +227,8 @@ def parse_investigation(
     finding = _clean_text(payload.get("finding"), 800)
     if title is None or finding is None:
         return None
-    impact = _clean_text(payload.get("impact"), 500, optional=True)
-    suggested_action = _clean_text(payload.get("suggested_action"), 500, optional=True)
+    impact = _clean_text(payload.get("impact"), 500)
+    suggested_action = _clean_text(payload.get("suggested_action"), 500)
 
     raw_ids = payload.get("evidence_ids")
     if not isinstance(raw_ids, list):
@@ -252,12 +256,10 @@ def parse_investigation(
     )
 
 
-def _clean_text(value: object, limit: int, optional: bool = False) -> str | None:
-    if value is None and optional:
-        return None
+def _clean_text(value: object, limit: int) -> str | None:
     if not isinstance(value, str):
         return None
     cleaned = " ".join(value.split()).strip()
     if not cleaned:
-        return None if optional else None
+        return None
     return cleaned[:limit]
