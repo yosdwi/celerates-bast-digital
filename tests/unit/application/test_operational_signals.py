@@ -8,9 +8,9 @@ from digital_bast.application.operational_signals import (
 from digital_bast.application.talentops import (
     AttentionItem,
     Blocker,
+    TalentTask,
     TeamCheckCounts,
     TeamReadiness,
-    TalentTask,
     TimesheetDay,
 )
 from digital_bast.domain.completion import CheckState
