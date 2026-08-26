@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from anyio.to_thread import run_sync
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from digital_bast.application.talentops_followups import FollowUpSendCommand
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
+from digital_bast.operations import generate_bast as generate_bast_artifact
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
@@ -175,6 +177,34 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
             return AiCommandCenterResponse(status="unavailable", answer=None)
         return AiCommandCenterResponse(status="ok", answer=answer)
 
+    async def generate_bast_document(
+        request: Request,
+        year: Annotated[int, Query(ge=2020, le=2100)],
+        month: Annotated[int, Query(ge=1, le=12)],
+        report_type: Annotated[Literal["developer", "iotoperation"], Query()],
+        csrf_token: HeaderCsrf = None,
+    ) -> Response:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        selected_period = _period(year, month, deps.now())
+        path, report = await generate_bast_artifact(selected_period, report_type)
+        pdf_bytes = await run_sync(path.read_bytes)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": f'attachment; filename="{path.name}"',
+                "X-BAST-Fingerprint": report.fingerprint,
+            },
+        )
+
     async def follow_up_draft(
         request: Request,
         nrp: str,
@@ -252,6 +282,12 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         ask_talent,
         methods=["POST"],
         response_model=AiCommandCenterResponse,
+    )
+    router.add_api_route(
+        "/bast/generate",
+        generate_bast_document,
+        methods=["POST"],
+        response_class=Response,
     )
     router.add_api_route(
         "/talents/{nrp}/follow-up-draft",
