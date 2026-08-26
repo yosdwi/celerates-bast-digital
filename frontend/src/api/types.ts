@@ -2,6 +2,11 @@ export type CheckState = "complete" | "incomplete" | "needs_review";
 export type EmployeeRole = "Developer" | "IoT Operations";
 export type FollowUpSource = "deterministic" | "ai" | "edited";
 export type FollowUpStatus = "sent" | "not_bound" | "bridge_unavailable" | "failed" | "no_blockers";
+export type OperationalSignalKind =
+  | "attendance_blocks_timesheet"
+  | "closed_task_missing_evidence"
+  | "multi_domain_blocker"
+  | "team_domain_gap";
 
 export interface SessionUser {
   name: string;
@@ -99,6 +104,17 @@ export interface SourceFreshness {
   age_seconds: number | null;
 }
 
+export interface OperationalSignal {
+  kind: OperationalSignalKind;
+  title: string;
+  summary: string;
+  domains: string[];
+  dates: string[];
+  task_titles: string[];
+  nrp: string | null;
+  role: EmployeeRole | null;
+}
+
 export interface CommandCenterResponse {
   period: PeriodView;
   summary: CommandCenterSummary;
@@ -107,6 +123,7 @@ export interface CommandCenterResponse {
   teams: TeamReadiness[];
   delivery: DeliverySummary;
   sources: SourceFreshness[];
+  signals?: OperationalSignal[];
 }
 
 export interface AttendanceDay {
@@ -154,6 +171,7 @@ export interface TalentDetailResponse {
   timesheet_days: TimesheetDay[];
   tasks: TalentTask[];
   availability: TalentDataAvailability;
+  signals?: OperationalSignal[];
 }
 
 export interface AiResponse {
