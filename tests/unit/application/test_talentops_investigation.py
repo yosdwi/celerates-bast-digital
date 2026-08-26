@@ -38,6 +38,19 @@ def test_parse_investigation_resolves_only_known_evidence_ids() -> None:
     )
 
 
+def test_parse_investigation_accepts_null_optional_sections() -> None:
+    result = parse_investigation(
+        '{"title":"Grounded finding","finding":"Only the cited signal is established.",'
+        '"impact":null,"suggested_action":null,"evidence_ids":["signal:0"]}',
+        evidence(),
+    )
+
+    assert result is not None
+    assert result.impact is None
+    assert result.suggested_action is None
+    assert tuple(item.id for item in result.evidence) == ("signal:0",)
+
+
 def test_parse_investigation_rejects_unbound_or_invalid_output() -> None:
     unknown_only = parse_investigation(
         '{"title":"Claim","finding":"Unsupported","impact":null,'
