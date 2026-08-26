@@ -8,6 +8,14 @@ from digital_bast.application.operational_signals import (
     command_center_signals,
     talent_signals,
 )
+from digital_bast.application.talentops_investigation import (
+    InvestigationEvidence,
+    TalentOpsInvestigation,
+    command_center_evidence,
+    evidence_catalog,
+    parse_investigation,
+    talent_evidence,
+)
 
 if TYPE_CHECKING:
     from digital_bast.application.talentops import CommandCenterView, TalentDetailView
@@ -17,16 +25,32 @@ class TalentOpsChatClient(Protocol):
     async def complete(self, system_prompt: str, user_prompt: str) -> str | None: ...
 
 
-_SYSTEM_PROMPT = """Kamu adalah investigation assistant untuk PMO TalentOps.
-Jawab hanya berdasarkan fakta JSON dan operational_signals yang diberikan aplikasi.
-Operational signals adalah relasi deterministik yang sudah dihitung aplikasi; gunakan signal itu
-untuk menyintesis hubungan antar-domain dan menjelaskan apa yang perlu diverifikasi.
+_INVESTIGATION_SYSTEM_PROMPT = """Kamu adalah investigation assistant untuk PMO TalentOps.
+Gunakan hanya fakta aplikasi, operational signals, dan evidence catalog yang diberikan.
+Operational signals adalah relasi deterministik yang dihitung aplikasi. Status readiness tetap
+ditentukan aplikasi, bukan AI.
+
 Jangan mengarang angka, status, prioritas, penyebab, performa, utilisasi, kapasitas, SLA,
-deadline, atau hubungan sebab-akibat yang tidak didukung fakta/signal.
-Status readiness tetap ditentukan aplikasi, bukan AI.
-Jika ada dependency eksplisit (contoh attendance_blocks_timesheet), kamu boleh menyarankan
-urutan verifikasi berdasarkan dependency tersebut. Jika fakta tidak cukup, katakan demikian.
-Jangan hanya membacakan ulang KPI. Jawab ringkas, operasional, dan gunakan bahasa user."""
+deadline, atau hubungan sebab-akibat yang tidak didukung fakta/signal. Jika ada dependency
+explicit seperti attendance_blocks_timesheet, kamu boleh menyarankan urutan verifikasi sesuai
+dependency tersebut. Jangan hanya membacakan ulang KPI.
+
+Kembalikan HANYA satu JSON object valid tanpa markdown dengan schema berikut:
+{
+  "title": "...",
+  "finding": "...",
+  "impact": "... atau null",
+  "suggested_action": "... atau null",
+  "evidence_ids": ["id-dari-catalog"]
+}
+
+Aturan evidence:
+- evidence_ids hanya boleh berisi ID yang benar-benar ada di evidence catalog.
+- pilih evidence paling relevan, maksimal 8 ID.
+- semua klaim faktual utama dalam finding/impact/action harus dapat ditelusuri ke evidence
+  yang dipilih.
+- jangan menulis evidence baru di luar catalog.
+Gunakan bahasa pertanyaan user jika jelas. Ringkas dan operasional."""
 
 _FOLLOW_UP_SYSTEM_PROMPT = """Kamu membantu PMO menulis satu pesan follow-up WhatsApp ke talent.
 Gunakan HANYA fakta JSON dan operational_signals yang diberikan aplikasi.
@@ -207,6 +231,23 @@ def _talent_context(view: TalentDetailView) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+async def _investigate(
+    client: TalentOpsChatClient,
+    question: str,
+    context: str,
+    evidence: tuple[InvestigationEvidence, ...],
+) -> TalentOpsInvestigation | None:
+    user_prompt = (
+        f"Pertanyaan PMO: {question.strip()}\n"
+        f"Fakta aplikasi: {context}\n"
+        f"Evidence catalog: {evidence_catalog(evidence)}"
+    )
+    raw = await client.complete(_INVESTIGATION_SYSTEM_PROMPT, user_prompt)
+    if raw is None:
+        return None
+    return parse_investigation(raw, evidence)
+
+
 @final
 class TalentOpsAiService:
     def __init__(self, client: TalentOpsChatClient) -> None:
@@ -216,23 +257,25 @@ class TalentOpsAiService:
         self,
         question: str,
         view: CommandCenterView,
-    ) -> str | None:
-        user_prompt = (
-            f"Pertanyaan PMO: {question.strip()}\n"
-            f"Fakta aplikasi: {_command_center_context(view)}"
+    ) -> TalentOpsInvestigation | None:
+        return await _investigate(
+            self._client,
+            question,
+            _command_center_context(view),
+            command_center_evidence(view),
         )
-        return await self._client.complete(_SYSTEM_PROMPT, user_prompt)
 
     async def answer_talent(
         self,
         question: str,
         view: TalentDetailView,
-    ) -> str | None:
-        user_prompt = (
-            f"Pertanyaan PMO tentang talent ini: {question.strip()}\n"
-            f"Fakta aplikasi: {_talent_context(view)}"
+    ) -> TalentOpsInvestigation | None:
+        return await _investigate(
+            self._client,
+            question,
+            _talent_context(view),
+            talent_evidence(view),
         )
-        return await self._client.complete(_SYSTEM_PROMPT, user_prompt)
 
     async def draft_follow_up(self, view: TalentDetailView) -> str | None:
         user_prompt = (

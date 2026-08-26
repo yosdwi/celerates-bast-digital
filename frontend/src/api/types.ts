@@ -174,9 +174,29 @@ export interface TalentDetailResponse {
   signals?: OperationalSignal[];
 }
 
+export interface AiEvidence {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string;
+  domains: string[];
+  work_date: string | null;
+  task_title: string | null;
+  nrp: string | null;
+}
+
+export interface AiInvestigation {
+  title: string;
+  finding: string;
+  impact: string | null;
+  suggested_action: string | null;
+  evidence: AiEvidence[];
+}
+
 export interface AiResponse {
   status: "ok" | "unavailable";
   answer: string | null;
+  investigation: AiInvestigation | null;
 }
 
 export interface FollowUpRecord {

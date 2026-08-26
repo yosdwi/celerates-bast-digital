@@ -17,6 +17,7 @@ from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
     AiCommandCenterResponse,
+    AiInvestigationResponse,
     CommandCenterResponse,
     FollowUpDraftInput,
     FollowUpDraftResponse,
@@ -167,10 +168,14 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         if deps.talentops_ai is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
         view = await service.command_center(selected_period)
-        answer = await deps.talentops_ai.answer(payload.question, view)
-        if answer is None:
+        investigation = await deps.talentops_ai.answer(payload.question, view)
+        if investigation is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
-        return AiCommandCenterResponse(status="ok", answer=answer)
+        return AiCommandCenterResponse(
+            status="ok",
+            answer=investigation.finding,
+            investigation=AiInvestigationResponse.model_validate(investigation),
+        )
 
     async def ask_talent(
         request: Request,
@@ -192,10 +197,14 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
         if deps.talentops_ai is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
-        answer = await deps.talentops_ai.answer_talent(payload.question, view)
-        if answer is None:
+        investigation = await deps.talentops_ai.answer_talent(payload.question, view)
+        if investigation is None:
             return AiCommandCenterResponse(status="unavailable", answer=None)
-        return AiCommandCenterResponse(status="ok", answer=answer)
+        return AiCommandCenterResponse(
+            status="ok",
+            answer=investigation.finding,
+            investigation=AiInvestigationResponse.model_validate(investigation),
+        )
 
     async def generate_bast_document(
         request: Request,

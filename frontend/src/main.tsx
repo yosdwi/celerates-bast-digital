@@ -7,6 +7,7 @@ import "./styles/slice4.css";
 import "./styles/slice5.css";
 import "./styles/slice6.css";
 import "./styles/action-pipeline.css";
+import "./styles/investigation.css";
 
 const root = document.getElementById("root");
 if (!root) {

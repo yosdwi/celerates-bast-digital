@@ -21,6 +21,10 @@ from digital_bast.application.talentops_followups import (
     FollowUpSendCommand,
     FollowUpSendView,
 )
+from digital_bast.application.talentops_investigation import (
+    InvestigationEvidence,
+    TalentOpsInvestigation,
+)
 from digital_bast.domain.completion import CheckState
 from digital_bast.domain.models import EmployeeRole
 from digital_bast.web import (
@@ -167,13 +171,38 @@ class TalentOps:
         return talent_detail_view() if nrp == "JIMT24002" else None
 
 
-class TalentOpsAi:
-    async def answer(self, question: str, view: CommandCenterView) -> str | None:
-        return "Grounded answer"
+def ai_investigation(finding: str, evidence_id: str) -> TalentOpsInvestigation:
+    return TalentOpsInvestigation(
+        title="Grounded investigation",
+        finding=finding,
+        impact="Readiness remains governed by deterministic completion rules.",
+        suggested_action="Review the cited evidence.",
+        evidence=(
+            InvestigationEvidence(
+                id=evidence_id,
+                kind="signal",
+                label="Grounded evidence",
+                detail="Deterministic evidence detail.",
+            ),
+        ),
+    )
 
-    async def answer_talent(self, question: str, view: TalentDetailView) -> str | None:
+
+class TalentOpsAi:
+    async def answer(
+        self,
+        question: str,
+        view: CommandCenterView,
+    ) -> TalentOpsInvestigation | None:
+        return ai_investigation("Grounded answer", "summary:period")
+
+    async def answer_talent(
+        self,
+        question: str,
+        view: TalentDetailView,
+    ) -> TalentOpsInvestigation | None:
         assert view.nrp == "JIMT24002"
-        return "Talent-grounded answer"
+        return ai_investigation("Talent-grounded answer", "signal:0")
 
     async def draft_follow_up(self, view: TalentDetailView) -> str | None:
         return "AI draft"
@@ -287,9 +316,13 @@ def test_talentops_ai_requires_csrf_and_accepts_valid_header() -> None:
         json={"year": 2026, "month": 8, "question": "Explain blockers"},
     )
 
+    payload = valid.json()
     assert missing.status_code == 403
     assert valid.status_code == 200
-    assert valid.json() == {"status": "ok", "answer": "Grounded answer"}
+    assert payload["status"] == "ok"
+    assert payload["answer"] == "Grounded answer"
+    assert payload["investigation"]["finding"] == "Grounded answer"
+    assert payload["investigation"]["evidence"][0]["id"] == "summary:period"
 
 
 def test_talent_scoped_ai_uses_talent_context() -> None:
@@ -299,8 +332,12 @@ def test_talent_scoped_ai_uses_talent_context() -> None:
         json={"year": 2026, "month": 8, "question": "Why is this blocked?"},
     )
 
+    payload = response.json()
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "answer": "Talent-grounded answer"}
+    assert payload["status"] == "ok"
+    assert payload["answer"] == "Talent-grounded answer"
+    assert payload["investigation"]["finding"] == "Talent-grounded answer"
+    assert payload["investigation"]["evidence"][0]["id"] == "signal:0"
 
 
 def test_follow_up_draft_requires_csrf_and_reports_whatsapp_binding() -> None:

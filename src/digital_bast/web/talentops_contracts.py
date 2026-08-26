@@ -193,9 +193,29 @@ class AiCommandCenterInput(_FrozenModel):
     ]
 
 
+class AiEvidenceResponse(_FrozenModel):
+    id: str
+    kind: str
+    label: str
+    detail: str
+    domains: tuple[str, ...] = ()
+    work_date: date | None = None
+    task_title: str | None = None
+    nrp: str | None = None
+
+
+class AiInvestigationResponse(_FrozenModel):
+    title: str
+    finding: str
+    impact: str | None
+    suggested_action: str | None
+    evidence: tuple[AiEvidenceResponse, ...]
+
+
 class AiCommandCenterResponse(_FrozenModel):
     status: Literal["ok", "unavailable"]
     answer: str | None
+    investigation: AiInvestigationResponse | None = None
 
 
 class FollowUpDraftInput(_FrozenModel):
