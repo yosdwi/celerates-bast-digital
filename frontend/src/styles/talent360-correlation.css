@@ -1,0 +1,138 @@
+.talent-readiness-chain {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(240px, 1.3fr);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.talent-readiness-chain > div {
+  min-height: 72px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+}
+
+.talent-readiness-chain > div span,
+.talent-readiness-chain > div small {
+  display: block;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.talent-readiness-chain > div strong {
+  display: inline-block;
+  margin: 5px 0 2px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.talent-readiness-chain > p {
+  margin: 0;
+  padding: 13px 15px;
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.calendar-day.linked-timesheet {
+  border-width: 2px;
+  border-color: var(--blue);
+}
+
+.calendar-day .calendar-dependency {
+  display: block;
+  margin-top: 3px;
+  color: var(--blue-700);
+  font-size: 7.5px;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.calendar-legend i.linked-timesheet {
+  background: var(--blue);
+}
+
+.talent-task-alert {
+  margin: 0 12px 10px;
+  padding: 10px 11px;
+  border: 1px solid #f6aea9;
+  border-radius: 5px;
+  background: #fff8f7;
+}
+
+.talent-task-alert strong,
+.talent-task-alert span {
+  display: block;
+}
+
+.talent-task-alert strong {
+  color: var(--red);
+  font-size: 10.5px;
+}
+
+.talent-task-alert span {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-row-missing-evidence {
+  background: #fffafa;
+}
+
+.timesheet-issue-list > div.linked-readiness-date {
+  margin: 0 -6px;
+  padding: 9px 6px;
+  border-left: 2px solid var(--blue);
+}
+
+.timesheet-issue-list > div.linked-readiness-date span {
+  color: var(--blue-700);
+  font-weight: 600;
+}
+
+@media (max-width: 1050px) {
+  .talent-readiness-chain {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .talent-readiness-chain > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .talent-readiness-chain > p {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  .talent-readiness-chain {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .talent-readiness-chain > div {
+    min-height: 64px;
+    padding: 10px 11px;
+  }
+
+  .talent-readiness-chain > p {
+    padding: 10px 11px;
+  }
+
+  .calendar-day .calendar-dependency {
+    font-size: 6.5px;
+  }
+
+  .talent-task-alert {
+    margin: 0 10px 8px;
+  }
+}
