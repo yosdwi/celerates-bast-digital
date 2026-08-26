@@ -11,11 +11,7 @@ import SystemSyncPage from "../pages/SystemSyncPage";
 import Talent360Page from "../pages/Talent360Page";
 import TalentsPage from "../pages/TalentsPage";
 import { PeriodControlProvider } from "./PeriodContext";
-import {
-  parsePeriodSearch,
-  samePeriod,
-  withPeriodQuery,
-} from "./period";
+import { parsePeriodSearch, samePeriod, withPeriodQuery } from "./period";
 import type { PeriodSelection } from "./period";
 
 type Route =
@@ -279,8 +275,8 @@ export default function App() {
   } else if (route.page === "settings") {
     page = <SettingsPage session={session} data={data} onNavigate={navigate} />;
   } else if (route.page === "talent") {
-    const talentMatchesPeriod = talent ? samePeriod(talent.period, data.period) : false;
-    if (talentLoading || !talentMatchesPeriod) {
+    const talentHasWrongPeriod = talent ? !samePeriod(talent.period, data.period) : false;
+    if (talentLoading || talentHasWrongPeriod) {
       page = <LoadingScreen />;
     } else if (!talent) {
       page = (
