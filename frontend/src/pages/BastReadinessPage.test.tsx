@@ -70,12 +70,16 @@ describe("BastReadinessPage", () => {
     expect(openTalent).toHaveBeenCalledWith("JIMT24002");
   });
 
-  it("filters ready talents without inventing report generation state", () => {
+  it("keeps generation explicit and separate from readiness filtering", () => {
     render(<BastReadinessPage session={session} data={data} onNavigate={vi.fn()} onOpenTalent={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Generate BAST" })).toBeInTheDocument();
+    expect(screen.getByLabelText("BAST report type")).toHaveValue("developer");
+    fireEvent.change(screen.getByLabelText("BAST report type"), { target: { value: "iotoperation" } });
+    expect(screen.getByLabelText("BAST report type")).toHaveValue("iotoperation");
 
     fireEvent.change(screen.getByLabelText("Filter BAST readiness by state"), { target: { value: "complete" } });
     expect(screen.getAllByText("Ovianto").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Open BAST readiness for Yoses Dwi Maheswara")).not.toBeInTheDocument();
-    expect(screen.queryByText("Generated")).not.toBeInTheDocument();
   });
 });
