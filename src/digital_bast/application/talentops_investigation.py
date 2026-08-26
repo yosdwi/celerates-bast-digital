@@ -114,6 +114,21 @@ def talent_evidence(view: TalentDetailView) -> tuple[InvestigationEvidence, ...]
         view.tasks,
     )
     evidence = _signal_evidence("signal", signals)
+    evidence.append(
+        InvestigationEvidence(
+            id="summary:talent",
+            kind="summary",
+            label=f"{view.name} readiness summary",
+            detail=(
+                f"overall={view.overall_state.value}; "
+                f"attendance={view.checks.attendance.state.value}; "
+                f"timesheet={view.checks.timesheet.state.value}; "
+                f"task={view.checks.task.state.value}; "
+                f"evidence={view.checks.evidence.state.value}."
+            ),
+            nrp=view.nrp,
+        )
+    )
 
     for blocker in view.blockers:
         detail = "; ".join(blocker.issues[:6]) or f"State: {blocker.state.value}"
