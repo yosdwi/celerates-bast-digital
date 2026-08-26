@@ -24,12 +24,17 @@ def evidence() -> tuple[InvestigationEvidence, ...]:
 
 
 def test_parse_investigation_resolves_only_known_evidence_ids() -> None:
-    result = parse_investigation(
-        """```json
-{"title":"Related blocker","finding":"Attendance blocks Timesheet on the cited date.","impact":"Closure remains blocked.","suggested_action":"Review Attendance first.","evidence_ids":["signal:0","unknown:1","attendance:2026-08-01","signal:0"]}
-```""",
-        evidence(),
+    raw = (
+        "```json\n"
+        '{"title":"Related blocker",'
+        '"finding":"Attendance blocks Timesheet on the cited date.",'
+        '"impact":"Closure remains blocked.",'
+        '"suggested_action":"Review Attendance first.",'
+        '"evidence_ids":["signal:0","unknown:1",'
+        '"attendance:2026-08-01","signal:0"]}\n'
+        "```"
     )
+    result = parse_investigation(raw, evidence())
 
     assert result is not None
     assert tuple(item.id for item in result.evidence) == (
