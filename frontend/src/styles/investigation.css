@@ -1,0 +1,74 @@
+.investigation-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border, #d9dde3);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+
+.investigation-section {
+  display: grid;
+  gap: 6px;
+}
+
+.investigation-section + .investigation-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.investigation-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, #6b7280);
+}
+
+.investigation-finding h3,
+.investigation-section p {
+  margin: 0;
+}
+
+.investigation-finding h3 {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.investigation-section p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.investigation-evidence-list {
+  display: grid;
+  gap: 8px;
+}
+
+.investigation-evidence {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--surface-muted, #f6f7f9);
+}
+
+.investigation-evidence strong {
+  font-size: 13px;
+}
+
+.investigation-evidence span {
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+}
+
+.investigation-evidence p {
+  color: var(--text-secondary, #4b5563);
+}
+
+.investigation-action {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--surface-muted, #f6f7f9);
+}
