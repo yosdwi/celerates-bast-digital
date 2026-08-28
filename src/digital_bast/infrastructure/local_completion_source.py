@@ -53,11 +53,11 @@ class LocalEmployeeSource:
 
 class _AttendanceFactRow:
     __slots__ = (
+        "approved_resolution_count",
         "check_in",
         "check_out",
         "employee_id",
         "evidence_note",
-        "evidence_photo_count",
         "work_date",
     )
 
@@ -68,24 +68,25 @@ class _AttendanceFactRow:
         check_in: str,
         check_out: str,
         evidence_note: str,
-        evidence_photo_count: int,
+        approved_resolution_count: int,
     ) -> None:
         self.employee_id = employee_id
         self.work_date = work_date
         self.check_in = check_in
         self.check_out = check_out
         self.evidence_note = evidence_note
-        self.evidence_photo_count = evidence_photo_count
+        self.approved_resolution_count = approved_resolution_count
 
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the `attendance` table.
+    """Derives AttendanceFact from the immutable client attendance row.
 
-    `evidence_note` is the human-maintained column NocoDB edits (it carries the
-    old NocoDB "Evidence" text field). `evidence_photo_count` is the WhatsApp
-    DM upload path (bot/attendance_evidence.py, attendance_evidence table) --
-    either one satisfies has_evidence.
+    `evidence_note` is the legacy human-maintained/admin evidence signal and is
+    grandfathered as valid. New WhatsApp attendance photos do NOT make a gap
+    complete by upload alone: only an approved attendance_resolution_request
+    satisfies readiness. This keeps PMO approval meaningful without rewriting
+    the client's check_in/check_out source-of-truth fields.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -110,9 +111,11 @@ class PostgresAttendanceFactReader:
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
                            a.evidence_note,
-                           COUNT(ae.id) AS evidence_photo_count
+                           COUNT(r.id) FILTER (WHERE r.status = 'approved')
+                               AS approved_resolution_count
                     FROM attendance a
-                    LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
+                    LEFT JOIN attendance_resolution_requests r
+                           ON r.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s
                     GROUP BY a.id
                     """,
@@ -126,7 +129,7 @@ class PostgresAttendanceFactReader:
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=bool(row.evidence_note.strip()) or row.evidence_photo_count > 0,
+                has_evidence=bool(row.evidence_note.strip()) or row.approved_resolution_count > 0,
             )
             for row in rows
         }
