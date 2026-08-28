@@ -33,6 +33,7 @@ class WhatsAppStatusResponse(_FrozenModel):
     connection: str
     me: str
     qr_data_url: str | None
+    pairing_code: str | None
 
 
 class PeriodResponse(_FrozenModel):

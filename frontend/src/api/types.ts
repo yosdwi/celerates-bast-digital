@@ -23,6 +23,7 @@ export interface WhatsAppStatus {
   connection: string;
   me: string;
   qr_data_url: string | null;
+  pairing_code: string | null;
 }
 
 export interface PeriodView {

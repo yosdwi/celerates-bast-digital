@@ -38,11 +38,20 @@ const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
 const state = {
   connection: "starting",
   qrDataUrl: "",
+  pairingCode: "",
   me: "",
   groups: [],
   log: [],
   socket: null,
 };
+
+// Alternative to QR: WhatsApp's own "Link with phone number instead" screen,
+// which needs a code we request FROM Baileys (not scan a QR) -- lets a
+// phone-only user re-pair without a second screen/device to point a camera
+// at. Only meaningful before a session exists (Baileys errors if requested
+// against an already-registered session), and requires the bot's own number
+// in international format, digits only (e.g. "62881080735871").
+const PAIRING_NUMBER = (process.env.BOT_PAIRING_NUMBER || "").replace(/[^0-9]/g, "");
 
 function log(line) {
   const entry = `${new Date().toISOString()} ${line}`;
@@ -190,6 +199,20 @@ async function start() {
   });
   state.socket = sock;
 
+  if (PAIRING_NUMBER && !auth.creds.registered) {
+    // makeWASocket() returns before the underlying websocket actually opens
+    // -- requesting a pairing code immediately races the handshake and
+    // fails with "Connection Closed". A short delay lets it connect first.
+    setTimeout(async () => {
+      try {
+        state.pairingCode = await sock.requestPairingCode(PAIRING_NUMBER);
+        log(`pairing code issued for ${PAIRING_NUMBER}; enter it on WhatsApp > Link with phone number`);
+      } catch (error) {
+        log(`pairing code request failed: ${error}`);
+      }
+    }, 3000);
+  }
+
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", async (update) => {
@@ -202,6 +225,7 @@ async function start() {
     if (connection === "open") {
       state.connection = "connected";
       state.qrDataUrl = "";
+      state.pairingCode = "";
       state.me = sock.user?.id || "";
       state.socket = sock;
       log(`connected as ${state.me}`);
@@ -361,6 +385,9 @@ function page() {
   const qr = state.qrDataUrl
     ? `<img alt="WhatsApp QR" src="${state.qrDataUrl}" width="320" height="320">`
     : "<p>Tidak ada QR aktif.</p>";
+  const pairingCode = state.pairingCode
+    ? `<p>Atau masukkan kode ini di WhatsApp &gt; Tautkan dengan nomor telepon: <strong>${escapeHtml(state.pairingCode)}</strong></p>`
+    : "";
   const groups = state.groups.length
     ? state.groups
         .map(
@@ -388,7 +415,7 @@ function page() {
     state.me ? ` — ${escapeHtml(state.me)}` : ""
   }</p>
 <h2>1. Pairing WhatsApp</h2>
-${state.connection === "connected" ? "<p>Sudah terhubung. Tidak perlu scan lagi.</p>" : qr}
+${state.connection === "connected" ? "<p>Sudah terhubung. Tidak perlu scan lagi.</p>" : `${qr}${pairingCode}`}
 <h2>2. Grup yang diizinkan</h2>
 <form method="post" action="/allow">
 <table><thead><tr><th>Aktif</th><th>Nama grup</th><th>JID</th></tr></thead><tbody>${groups}</tbody></table>
@@ -440,6 +467,7 @@ const server = http.createServer(async (request, response) => {
         connection: state.connection,
         me: state.me,
         qrDataUrl: state.qrDataUrl || null,
+        pairingCode: state.pairingCode || null,
       }),
     );
     return;
