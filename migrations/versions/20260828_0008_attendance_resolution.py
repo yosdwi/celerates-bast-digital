@@ -93,6 +93,21 @@ def upgrade() -> None:
         CREATE UNIQUE INDEX ux_attendance_resolution_open
             ON attendance_resolution_requests (attendance_id)
             WHERE status IN ('pending','approved');
+
+        ALTER TABLE bot_conversations
+            ADD COLUMN pending_attendance_resolution_type text
+                CHECK (pending_attendance_resolution_type IS NULL OR
+                       pending_attendance_resolution_type IN (
+                           'missing_clock_in',
+                           'missing_clock_out',
+                           'missing_both_worked',
+                           'absence'
+                       )),
+            ADD COLUMN pending_absence_type text
+                CHECK (pending_absence_type IS NULL OR
+                       pending_absence_type IN ('cuti','izin','sakit')),
+            ADD COLUMN pending_proposed_check_in time,
+            ADD COLUMN pending_proposed_check_out time;
         """
     )
     op.execute(
@@ -119,6 +134,13 @@ def downgrade() -> None:
                 REVOKE ALL ON attendance_resolution_requests FROM nocodb_editor;
             END IF;
         END $$;
+
+        ALTER TABLE bot_conversations
+            DROP COLUMN pending_attendance_resolution_type,
+            DROP COLUMN pending_absence_type,
+            DROP COLUMN pending_proposed_check_in,
+            DROP COLUMN pending_proposed_check_out;
+
         DROP TABLE attendance_resolution_requests;
         """
     )
