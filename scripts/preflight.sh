@@ -16,6 +16,15 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
+# Every deploy rebuilds bot-bridge and pulls a fresh digest-pinned release
+# image, so old ones from prior deploys pile up unbounded -- this was
+# repeatedly hitting the disk gate below. Blue/green always keeps the
+# current and previous release images referenced by running containers, so
+# `-a` here only ever removes ones no container still points to. Never
+# volumes: those hold real data (Postgres, NocoDB, WhatsApp auth session).
+docker image prune -af >/dev/null 2>&1 || true
+docker builder prune -f >/dev/null 2>&1 || true
+
 # 8GB, not 10: the box also carries an unrelated legacy V1 stack (its own
 # postgres, pgadmin) that this deploy does not own and will not stop to free
 # space, so 10GB stopped being reachable even right after a full prune. A
