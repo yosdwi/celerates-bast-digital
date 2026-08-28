@@ -181,9 +181,12 @@ def test_login_rotates_fixed_session_and_sets_secure_cookie() -> None:
 
 
 def test_protected_routes_and_csrf_fail_closed() -> None:
+    # "/admin/" itself is now a public, unconditional redirect to TalentOps
+    # (still 303 either way, but no longer because of require_session) --
+    # "/admin/legacy-reports" is the route that's actually gated.
     client, _, _, _ = make_client()
 
-    page = client.get("/admin/", follow_redirects=False)
+    page = client.get("/admin/legacy-reports", follow_redirects=False)
     api = client.post("/api/generate/plan", data={"type": "developer", "month": 8})
     login(client)
     missing = client.post("/api/generate/plan", data={"type": "developer", "month": 8})
@@ -199,22 +202,29 @@ def test_protected_routes_and_csrf_fail_closed() -> None:
 
 
 def test_session_expiry_removes_server_record() -> None:
+    # "/admin/" is now an unconditional redirect straight to TalentOps (it
+    # never touches the session store itself) -- "/admin/legacy-reports"
+    # still runs through require_session()/load_session() the same way
+    # "/admin/" used to, so it's the one that still exercises expiry cleanup.
     client, clock, sessions, _ = make_client()
     login(client)
     clock.value += timedelta(minutes=6)
 
-    response = client.get("/admin/", follow_redirects=False)
+    response = client.get("/admin/legacy-reports", follow_redirects=False)
 
     assert response.status_code == 303
     assert not sessions.records
 
 
 def test_templates_escape_untrusted_html() -> None:
+    # "/admin/" no longer renders dashboard.html itself -- it redirects to
+    # TalentOps. "/admin/legacy-reports" is the Jinja2-templated page this
+    # test actually needs to check for escaping.
     client, _, sessions, _ = make_client()
     login(client)
     csrf = next(iter(sessions.records.values())).csrf_token
 
-    dashboard = client.get("/admin/")
+    dashboard = client.get("/admin/legacy-reports")
     report = client.post(
         "/report/evidence",
         data={"type": "developer", "month": 8, "_csrf_token": csrf},

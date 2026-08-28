@@ -3,10 +3,11 @@
 {% block body %}
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="/admin/"><span class="brand-mark">DB</span><span>Digital BAST<small>Admin Portal</small></span></a>
+    <a class="brand" href="/admin/legacy-reports"><span class="brand-mark">DB</span><span>Digital BAST<small>Legacy Reports</small></span></a>
     <nav aria-label="Main navigation">
-      <a class="active" href="/admin/">Reports</a>
+      <a class="active" href="/admin/legacy-reports">Reports</a>
       <a href="/admin/attendance-celerates">Attendance Celerates</a>
+      <a href="/admin/talentops/">← Back to TalentOps</a>
     </nav>
     <div class="account"><strong>{{ user.name }}</strong><span>{{ user.role }}</span>
       <form action="/admin/auth/logout" method="post"><input type="hidden" name="_csrf_token" value="{{ csrf_token }}"><button class="link-button" type="submit">Logout</button></form>

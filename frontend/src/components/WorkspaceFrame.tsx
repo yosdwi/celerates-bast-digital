@@ -104,6 +104,15 @@ export default function WorkspaceFrame({
             <ExternalIcon className="nav-icon" />
             Data workspace
           </button>
+          <a
+            className="nav-item"
+            href="/admin/legacy-reports"
+            style={{ textDecoration: "none" }}
+            title="Generate BAST files and export attendance CSV"
+          >
+            <ExternalIcon className="nav-icon" />
+            Legacy reports
+          </a>
         </div>
         <div className="sidebar-foot">
           <button

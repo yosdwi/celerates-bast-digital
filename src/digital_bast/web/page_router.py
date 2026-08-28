@@ -17,11 +17,17 @@ def page_router(deps: WebDependencies, templates: Jinja2Templates) -> APIRouter:
             {"user": session.user, "csrf_token": session.csrf_token},
         )
 
-    router.add_api_route("/", dashboard, methods=["GET"], response_class=HTMLResponse)
-    router.add_api_route("/admin/", dashboard, methods=["GET"], response_class=HTMLResponse)
+    # TalentOps is the front door now; the legacy dashboard (BAST generation,
+    # attendance CSV export -- neither has a TalentOps equivalent yet) moves
+    # here instead of disappearing.
+    router.add_api_route(
+        "/admin/legacy-reports", dashboard, methods=["GET"], response_class=HTMLResponse
+    )
 
-    async def admin_redirect() -> RedirectResponse:
-        return RedirectResponse("/admin/", status_code=status.HTTP_308_PERMANENT_REDIRECT)
+    async def to_talentops() -> RedirectResponse:
+        return RedirectResponse("/admin/talentops/", status_code=status.HTTP_303_SEE_OTHER)
 
-    router.add_api_route("/admin", admin_redirect, methods=["GET"])
+    router.add_api_route("/", to_talentops, methods=["GET"])
+    router.add_api_route("/admin/", to_talentops, methods=["GET"])
+    router.add_api_route("/admin", to_talentops, methods=["GET"])
     return router
