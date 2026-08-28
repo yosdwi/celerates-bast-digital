@@ -54,13 +54,18 @@ x-app: &app
     # WhatsApp bot does -- see bot-bridge's BOT_LLM_URL below, same host.
     BOT_LLM_URL: ${BOT_LLM_URL:-}
     BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
-    # TalentOps AI provider -- defaults to ollama (below is a no-op unless
-    # LLM_PROVIDER=groq); Groq is the recommended choice here since Ollama on
-    # this CPU-only, RAM-constrained box OOM-killed itself under a real
-    # command-center prompt (2026-08-25).
+    # TalentOps AI provider -- defaults to ollama (groq/cloudflare below are
+    # no-ops unless selected via LLM_PROVIDER). Ollama on this CPU-only,
+    # RAM-constrained box OOM-killed itself under a real command-center
+    # prompt (2026-08-25). Groq's free-tier openai/gpt-oss-20b then rejected
+    # that same prompt outright (413, ~11k tokens vs its 8k TPM-per-request
+    # cap, 2026-08-28) -- Cloudflare Workers AI is the current choice.
     LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
     GROQ_API_KEY_FILE: /run/secrets/groq_api_key
     GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+    CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+    CLOUDFLARE_API_TOKEN_FILE: /run/secrets/cloudflare_api_token
+    CLOUDFLARE_WORKERS_AI_MODEL: ${CLOUDFLARE_WORKERS_AI_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
   secrets: &app-secrets
     - session_secret
     - app_database_dsn
@@ -75,6 +80,7 @@ x-app: &app
     - sync_ingest_token
     - google_sheets_relay_credentials
     - groq_api_key
+    - cloudflare_api_token
   networks:
     - backend
     - egress
@@ -299,8 +305,6 @@ services:
     build:
       context: .
       dockerfile: bot-bridge/Dockerfile
-      args:
-        APP_IMAGE: ${APP_IMAGE:-digital-bast:local}
     image: ${BOT_BRIDGE_IMAGE:-digital-bast-bot-bridge:local}
     restart: unless-stopped
     environment:
@@ -318,12 +322,6 @@ services:
     # Loopback-only: /allow and /try have no authentication of their own.
     ports:
       - "127.0.0.1:${BOT_SETUP_PORT:-8090}:8090"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
     networks:
       - backend
       - egress
@@ -375,6 +373,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/google_service_account.json
   groq_api_key:
     file: ${SECRETS_DIR:-./secrets}/groq_api_key
+  cloudflare_api_token:
+    file: ${SECRETS_DIR:-./secrets}/cloudflare_api_token
   sqlserver_connection_string:
     file: ${SECRETS_DIR:-./secrets}/sqlserver_connection_string
   sync_ingest_token:

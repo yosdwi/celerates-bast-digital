@@ -216,7 +216,7 @@ class Settings(BaseSettings):
     # Which TalentOpsChatClient production_dependencies() builds. Defaults to
     # the existing self-hosted Ollama path -- switching to a hosted provider
     # is opt-in, never a silent behavior change for an existing deployment.
-    llm_provider: Literal["ollama", "groq"] = Field(
+    llm_provider: Literal["ollama", "groq", "cloudflare"] = Field(
         default="ollama",
         validation_alias="LLM_PROVIDER",
     )
@@ -229,6 +229,27 @@ class Settings(BaseSettings):
         default="openai/gpt-oss-20b",
         min_length=1,
         validation_alias="GROQ_MODEL",
+    )
+    # Groq's free-tier openai/gpt-oss-20b rejects a real TalentOps
+    # investigation prompt outright (413, ~11k tokens vs an 8k TPM cap per
+    # request) -- Cloudflare Workers AI's free daily neuron pool and 32k
+    # context on qwen3-30b-a3b-fp8 has room for it.
+    cloudflare_account_id: str | None = Field(
+        default=None,
+        validation_alias="CLOUDFLARE_ACCOUNT_ID",
+    )
+    cloudflare_api_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="CLOUDFLARE_API_TOKEN",
+    )
+    cloudflare_api_token_file: FilePath | None = Field(
+        default=None,
+        validation_alias="CLOUDFLARE_API_TOKEN_FILE",
+    )
+    cloudflare_workers_ai_model: str = Field(
+        default="@cf/qwen/qwen3-30b-a3b-fp8",
+        min_length=1,
+        validation_alias="CLOUDFLARE_WORKERS_AI_MODEL",
     )
 
     @model_validator(mode="after")
@@ -285,6 +306,11 @@ class Settings(BaseSettings):
             self.groq_api_key,
             self.groq_api_key_file,
             "groq_api_key",
+        )
+        self.cloudflare_api_token = _read_secret(
+            self.cloudflare_api_token,
+            self.cloudflare_api_token_file,
+            "cloudflare_api_token",
         )
         if self.environment.casefold() == "production":
             self._validate_production()

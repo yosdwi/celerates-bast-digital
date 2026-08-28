@@ -5,11 +5,10 @@ from redis.asyncio import Redis
 
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
-from digital_bast.application.talentops_followups import (
-    TalentOpsFollowUpService,
-    WhatsAppOutboundGateway,
-)
 from digital_bast.config import get_settings
+from digital_bast.infrastructure.cloudflare_workers_ai_chat import (
+    CloudflareWorkersAiChatClient,
+)
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.groq_chat import GroqChatClient
 from digital_bast.infrastructure.local_completion_source import (
@@ -21,12 +20,6 @@ from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSourc
 from digital_bast.infrastructure.redis_url import parse_redis_url
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
-from digital_bast.infrastructure.talentops_followups import PostgresTalentOpsFollowUpRepository
-from digital_bast.infrastructure.whatsapp_identity import PostgresWhatsAppIdentityResolver
-from digital_bast.infrastructure.whatsapp_outbound import (
-    BotBridgeWhatsAppOutboundGateway,
-    UnavailableWhatsAppOutboundGateway,
-)
 from digital_bast.web.contracts import (
     AttendanceRow,
     AuthenticatedUser,
@@ -52,8 +45,6 @@ from digital_bast.web.nocodb_postgres_auth import NocoDBPostgresOwnerAuthenticat
 from digital_bast.web.postgres_backend import PostgresWebBackend
 from digital_bast.web.security import CookieSettings
 from digital_bast.web.sessions import RedisSessionStore
-
-_BOT_BRIDGE_INTERNAL_URL = "http://bot-bridge:8090"
 
 
 class UnavailableAuthenticator:
@@ -139,6 +130,9 @@ def production_dependencies() -> WebDependencies:
             decode_responses=True,
         )
         sessions = RedisSessionStore(redis_client)
+    # NOCODB_DATABASE_DSN is now *only* the login backend: admin credentials
+    # still live in the existing NocoDB's nc_users_v2, which V2 never writes.
+    # All business data comes from the app Postgres backend below.
     authenticator: OwnerAuthenticator = UnavailableAuthenticator()
     if settings.nocodb_database_dsn is not None and settings.nocodb_base_id is not None:
         authenticator = NocoDBPostgresOwnerAuthenticator(
@@ -149,7 +143,6 @@ def production_dependencies() -> WebDependencies:
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
-    talentops_followups: TalentOpsFollowUpService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
     if settings.database_dsn is not None:
         dsn = settings.database_dsn.get_secret_value()
@@ -169,7 +162,19 @@ def production_dependencies() -> WebDependencies:
             records,
             source_sync_state,
         )
-        if settings.llm_provider == "groq" and settings.groq_api_key is not None:
+        if (
+            settings.llm_provider == "cloudflare"
+            and settings.cloudflare_account_id is not None
+            and settings.cloudflare_api_token is not None
+        ):
+            talentops_ai = TalentOpsAiService(
+                CloudflareWorkersAiChatClient(
+                    settings.cloudflare_account_id,
+                    settings.cloudflare_api_token.get_secret_value(),
+                    settings.cloudflare_workers_ai_model,
+                )
+            )
+        elif settings.llm_provider == "groq" and settings.groq_api_key is not None:
             talentops_ai = TalentOpsAiService(
                 GroqChatClient(
                     settings.groq_api_key.get_secret_value(),
@@ -183,20 +188,6 @@ def production_dependencies() -> WebDependencies:
                     settings.bot_llm_model,
                 )
             )
-        outbound: WhatsAppOutboundGateway = UnavailableWhatsAppOutboundGateway()
-        if settings.sync_ingest_token is not None:
-            outbound = BotBridgeWhatsAppOutboundGateway(
-                _BOT_BRIDGE_INTERNAL_URL,
-                settings.sync_ingest_token.get_secret_value(),
-            )
-        talentops_followups = TalentOpsFollowUpService(
-            talentops,
-            employees,
-            PostgresWhatsAppIdentityResolver(dsn),
-            outbound,
-            PostgresTalentOpsFollowUpRepository(dsn),
-            talentops_ai,
-        )
 
     return WebDependencies(
         authenticator=authenticator,
@@ -205,7 +196,6 @@ def production_dependencies() -> WebDependencies:
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
         talentops_ai=talentops_ai,
-        talentops_followups=talentops_followups,
         source_sync_state=source_sync_state,
     )
 
