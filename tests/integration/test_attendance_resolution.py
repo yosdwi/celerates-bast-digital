@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 from collections.abc import Iterator
 from datetime import date, time
@@ -16,6 +18,7 @@ from digital_bast.bot.attendance_resolution import (
     ResolutionType,
     SubmitOutcome,
 )
+from digital_bast.web.postgres_backend import PostgresWebBackend
 
 
 @pytest.fixture(scope="module")
@@ -37,27 +40,41 @@ def seed_attendance(
     *,
     check_in: time | None,
     check_out: time | None,
-) -> tuple[str, str, str]:
+    role: str = "Developer",
+    work_date: date = date(2026, 8, 28),
+    schedule_in: str = "",
+    schedule_out: str = "",
+) -> tuple[str, str, str, str]:
     suffix = uuid4().hex[:10]
     employee_id = f"MTG-TF/RES-{suffix}"
     nrp = f"RES{suffix}"
+    full_name = f"Resolution Test {suffix}"
     attendance_key = f"ATT-{suffix}"
     with psycopg.connect(dsn) as connection, connection.cursor() as cursor:
         cursor.execute(
             """
             INSERT INTO employees (employee_id, nrp, full_name, role)
-            VALUES (%s, %s, %s, 'Developer')
+            VALUES (%s, %s, %s, %s)
             """,
-            (employee_id, nrp, f"Resolution Test {suffix}"),
+            (employee_id, nrp, full_name, role),
         )
         cursor.execute(
             """
             INSERT INTO attendance (
-                record_key, employee_id, work_date, check_in, check_out
-            ) VALUES (%s, %s, %s, %s, %s)
+                record_key, employee_id, work_date, schedule_in, schedule_out,
+                check_in, check_out
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (attendance_key, employee_id, date(2026, 8, 28), check_in, check_out),
+            (
+                attendance_key,
+                employee_id,
+                work_date,
+                schedule_in,
+                schedule_out,
+                check_in,
+                check_out,
+            ),
         )
         attendance_id = cursor.fetchone()[0]
         cursor.execute(
@@ -71,17 +88,21 @@ def seed_attendance(
             (
                 attendance_id,
                 employee_id,
-                date(2026, 8, 28),
+                work_date,
                 uuid4().hex,
                 b"abc",
             ),
         )
-    return employee_id, nrp, attendance_key
+    return employee_id, nrp, full_name, attendance_key
+
+
+def parse_legacy_csv(content: str) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(content), delimiter=";"))
 
 
 @pytest.mark.asyncio
 async def test_approved_missing_clock_out_never_mutates_client_attendance(database_dsn: str) -> None:
-    employee_id, _, attendance_key = seed_attendance(
+    employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=time(8, 3), check_out=None
     )
     service = AttendanceResolutionService(database_dsn)
@@ -113,7 +134,7 @@ async def test_approved_missing_clock_out_never_mutates_client_attendance(databa
 
 @pytest.mark.asyncio
 async def test_complete_source_attendance_cannot_enter_resolution_workflow(database_dsn: str) -> None:
-    employee_id, _, attendance_key = seed_attendance(
+    employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=time(8, 0), check_out=time(17, 0)
     )
     service = AttendanceResolutionService(database_dsn)
@@ -131,7 +152,7 @@ async def test_complete_source_attendance_cannot_enter_resolution_workflow(datab
 
 @pytest.mark.asyncio
 async def test_absence_requires_both_source_punches_empty(database_dsn: str) -> None:
-    employee_id, _, attendance_key = seed_attendance(
+    employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=None, check_out=None
     )
     service = AttendanceResolutionService(database_dsn)
@@ -149,7 +170,7 @@ async def test_absence_requires_both_source_punches_empty(database_dsn: str) -> 
 
 @pytest.mark.asyncio
 async def test_reject_requires_reason_and_decision_is_idempotent(database_dsn: str) -> None:
-    employee_id, _, attendance_key = seed_attendance(
+    employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=None, check_out=time(17, 12)
     )
     service = AttendanceResolutionService(database_dsn)
@@ -180,3 +201,97 @@ async def test_reject_requires_reason_and_decision_is_idempotent(database_dsn: s
     )
     assert replay.outcome is DecisionOutcome.ALREADY_RESOLVED
     assert replay.status is ResolutionStatus.REJECTED
+
+
+@pytest.mark.asyncio
+async def test_csv_projects_actual_plus_approved_missing_clock_out(database_dsn: str) -> None:
+    employee_id, _, full_name, attendance_key = seed_attendance(
+        database_dsn, check_in=time(8, 3), check_out=None
+    )
+    service = AttendanceResolutionService(database_dsn)
+    submitted = await service.submit(
+        employee_id,
+        attendance_key,
+        "628123@s.whatsapp.net",
+        ResolutionType.MISSING_CLOCK_OUT,
+        proposed_check_out=time(17, 23),
+    )
+    assert submitted.request_id is not None
+    await service.decide(submitted.request_id, "pmo@example.com", approve=True)
+
+    content, rows = await PostgresWebBackend(database_dsn).attendance_legacy(
+        "Developer", date(2026, 8, 28), date(2026, 8, 28), full_name
+    )
+    parsed = parse_legacy_csv(content)
+
+    assert rows == 1
+    assert parsed[1][9] == "08:03"
+    assert parsed[1][10] == "17:23"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("work_date", "expected_out"),
+    ((date(2026, 8, 27), "16:30"), (date(2026, 8, 28), "17:00")),
+)
+async def test_csv_projects_developer_absence_to_default_schedule(
+    database_dsn: str, work_date: date, expected_out: str
+) -> None:
+    employee_id, _, full_name, attendance_key = seed_attendance(
+        database_dsn,
+        check_in=None,
+        check_out=None,
+        work_date=work_date,
+    )
+    service = AttendanceResolutionService(database_dsn)
+    submitted = await service.submit(
+        employee_id,
+        attendance_key,
+        "628123@s.whatsapp.net",
+        ResolutionType.ABSENCE,
+        absence_type=AbsenceType.IZIN,
+    )
+    assert submitted.request_id is not None
+    await service.decide(submitted.request_id, "pmo@example.com", approve=True)
+
+    content, rows = await PostgresWebBackend(database_dsn).attendance_legacy(
+        "Developer", work_date, work_date, full_name
+    )
+    parsed = parse_legacy_csv(content)
+
+    assert rows == 1
+    assert parsed[1][9] == "07:30"
+    assert parsed[1][10] == expected_out
+
+
+@pytest.mark.asyncio
+async def test_csv_projects_iot_absence_from_shift_schedule(database_dsn: str) -> None:
+    work_date = date(2026, 8, 28)
+    employee_id, _, full_name, attendance_key = seed_attendance(
+        database_dsn,
+        check_in=None,
+        check_out=None,
+        role="IoT Operations",
+        work_date=work_date,
+        schedule_in="19:00",
+        schedule_out="07:00",
+    )
+    service = AttendanceResolutionService(database_dsn)
+    submitted = await service.submit(
+        employee_id,
+        attendance_key,
+        "628123@s.whatsapp.net",
+        ResolutionType.ABSENCE,
+        absence_type=AbsenceType.SAKIT,
+    )
+    assert submitted.request_id is not None
+    await service.decide(submitted.request_id, "pmo@example.com", approve=True)
+
+    content, rows = await PostgresWebBackend(database_dsn).attendance_legacy(
+        "IoT Operations", work_date, work_date, full_name
+    )
+    parsed = parse_legacy_csv(content)
+
+    assert rows == 1
+    assert parsed[1][9] == "19:00"
+    assert parsed[1][10] == "07:00"
