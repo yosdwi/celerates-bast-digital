@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf bot-bridge > release-assets.tar
+          git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf wa-session bot-worker > release-assets.tar
       - name: Blue-green production deployment
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
@@ -103,7 +103,8 @@ jobs:
           test -x "$stage_dir/scripts/deploy.sh"
           test -f "$stage_dir/compose.yaml"
           test -f "$stage_dir/config/nginx/nginx.conf"
-          test -f "$stage_dir/bot-bridge/Dockerfile"
+          test -f "$stage_dir/wa-session/Dockerfile"
+          test -f "$stage_dir/bot-worker/Dockerfile"
           mkdir -p "$DEPLOY_PATH/releases"
           release_dir="$DEPLOY_PATH/releases/$RELEASE_SHA-$(date +%s)-$$"
           mv "$stage_dir" "$release_dir"

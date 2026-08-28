@@ -1,15 +1,18 @@
 "use strict";
 
-// WhatsApp bridge for the Digital BAST bot.
-// It owns transport concerns: pair the number, receive messages, and hand
-// business interpretation to `digital-bast`. TalentOps outbound follow-ups
-// enter through an authenticated internal endpoint but business rules remain
-// in the Python application.
+// WhatsApp session holder for the Digital BAST bot.
+// It owns ONLY transport concerns: pair the number, keep the socket alive,
+// receive messages, and hand each one to bot-worker over HTTP for the actual
+// business reply. Deliberately has no `digital-bast` CLI/business logic of
+// its own and is not built FROM the app image, so it never rebuilds just
+// because the app changed -- see docs/bast-bot.md and the split's plan for
+// why: recreating this container drops the live WhatsApp connection, and
+// WhatsApp's own anti-abuse system revokes the session after a few rapid
+// reconnects, which is exactly what coupling this to every app deploy caused.
 
 const http = require("node:http");
 const path = require("node:path");
 const fs = require("node:fs");
-const { execFile } = require("node:child_process");
 const QRCode = require("qrcode");
 const {
   default: makeWASocket,
@@ -22,15 +25,13 @@ const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = requ
 const { waitingReply } = require("./greeting");
 const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
 
-const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
 const DATA_DIR = process.env.BOT_DATA_DIR || path.join(__dirname, "data");
 const EVIDENCE_DIR = path.join(DATA_DIR, "evidence-uploads");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
-const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
-const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
+const BOT_WORKER_BASE_URL = process.env.BOT_WORKER_BASE_URL || "http://bot-worker:8091";
 const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 " +
   "Tinggal kirim foto/dokumennya langsung ke DM aku.";
@@ -100,21 +101,23 @@ function messageText(message) {
   );
 }
 
-function runCli(args) {
-  return new Promise((resolve) => {
-    execFile(
-      CLI[0],
-      [...CLI.slice(1), ...args],
-      { cwd: ROOT, timeout: CLI_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          resolve({ ok: false, text: (stderr || stdout || String(error)).trim() });
-          return;
-        }
-        resolve({ ok: true, text: stdout.trim() });
-      },
-    );
-  });
+// bot-worker holds no WhatsApp state, so recreating it (every deploy, like
+// today's combined bridge used to) never touches this process's live socket.
+async function callBotWorker(payload) {
+  try {
+    const response = await fetch(`${BOT_WORKER_BASE_URL}/internal/v1/reply`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-bridge-token": configuredToken() },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => null);
+    if (!data || typeof data.ok !== "boolean") {
+      return { ok: false, text: `bot-worker returned an unexpected response (HTTP ${response.status})` };
+    }
+    return data;
+  } catch (error) {
+    return { ok: false, text: `bot-worker unreachable: ${error}` };
+  }
 }
 
 function requestId() {
@@ -290,7 +293,7 @@ async function handleGroupMessage(sock, message, jid) {
     );
   }
   const startedAt = Date.now();
-  const result = await runCli(["bot-reply", "--text", text]);
+  const result = await callBotWorker({ kind: "text", text });
   const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const filePayload = result.ok ? parseFileReply(result.text) : null;
   if (filePayload) {
@@ -317,7 +320,7 @@ async function handleDirectMessage(sock, message, jid) {
   if (!looksLikeDmFastPath(text)) {
     await sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message });
   }
-  const result = await runCli(["bot-reply", "--text", text, "--jid", jid, "--channel", "dm"]);
+  const result = await callBotWorker({ kind: "text", text, jid, channel: "dm" });
   const reply = result.ok
     ? result.text
     : friendlyErrorReply("menjalankan perintah", result.text);
@@ -347,15 +350,7 @@ async function handleEvidenceUpload(sock, message, jid, media) {
     );
     fs.writeFileSync(filePath, buffer);
     log(`evidence upload from ${jid} (${buffer.length} bytes)`);
-    const result = await runCli([
-      "bot-evidence",
-      "--jid",
-      jid,
-      "--file",
-      filePath,
-      "--caption",
-      caption,
-    ]);
+    const result = await callBotWorker({ kind: "evidence", jid, filePath, caption });
     const reply = result.ok
       ? result.text
       : friendlyErrorReply("menyimpan evidence", result.text);
@@ -482,7 +477,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === "POST" && url.pathname === "/try") {
     const body = await readBody(request);
-    const result = await runCli(["bot-reply", "--text", body.get("text") || ""]);
+    const result = await callBotWorker({ kind: "text", text: body.get("text") || "" });
     response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
     response.end(result.text || "(kosong)");
     return;

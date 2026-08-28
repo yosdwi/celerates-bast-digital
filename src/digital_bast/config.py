@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import stat
 from functools import lru_cache
+from pathlib import Path  # noqa: TC003
 from typing import ClassVar, Final, Literal, Self, final, override
 
 from pydantic import AnyHttpUrl, Field, FilePath, SecretStr, model_validator
@@ -142,12 +143,21 @@ class Settings(BaseSettings):
         validation_alias="SYNC_INGEST_TOKEN_FILE",
     )
     # Lets the web app proxy a narrow, read-only WhatsApp pairing status
-    # (connection + QR) from bot-bridge into TalentOps -- shares
+    # (connection + QR) from wa-session into TalentOps -- shares
     # sync_ingest_token as the internal call's bearer token, same secret
-    # bot-bridge already checks incoming outbound-message requests against.
+    # wa-session already checks incoming outbound-message requests against.
     bot_bridge_base_url: AnyHttpUrl | None = Field(
         default=None,
         validation_alias="BOT_BRIDGE_BASE_URL",
+    )
+    # bot-worker (the CLI-shelling half of the former single bot-bridge
+    # process) writes export/BAST/status-matrix files here for wa-session to
+    # attach and send -- unset everywhere else, where operations.py's
+    # in-image default is correct since nothing outside that one process
+    # needs to read the file back afterward.
+    bast_exports_dir: Path | None = Field(
+        default=None,
+        validation_alias="BAST_EXPORTS_DIR",
     )
     nocodb_attendance_mapping: str | None = Field(
         default=None,

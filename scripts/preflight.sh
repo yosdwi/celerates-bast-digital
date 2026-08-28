@@ -16,12 +16,14 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
-# Every deploy rebuilds bot-bridge and pulls a fresh digest-pinned release
+# Every deploy rebuilds bot-worker and pulls a fresh digest-pinned release
 # image, so old ones from prior deploys pile up unbounded -- this was
-# repeatedly hitting the disk gate below. Blue/green always keeps the
-# current and previous release images referenced by running containers, so
-# `-a` here only ever removes ones no container still points to. Never
-# volumes: those hold real data (Postgres, NocoDB, WhatsApp auth session).
+# repeatedly hitting the disk gate below. wa-session is not part of this
+# flow (see scripts/deploy-wa-session.sh) so it never contributes to this.
+# Blue/green always keeps the current and previous release images
+# referenced by running containers, so `-a` here only ever removes ones no
+# container still points to. Never volumes: those hold real data (Postgres,
+# NocoDB, WhatsApp auth session).
 docker image prune -af >/dev/null 2>&1 || true
 docker builder prune -f >/dev/null 2>&1 || true
 
@@ -29,7 +31,7 @@ docker builder prune -f >/dev/null 2>&1 || true
 # postgres, pgadmin) that this deploy does not own and will not stop to free
 # space, so 10GB stopped being reachable even right after a full prune. A
 # deploy needs roughly 4.5GB (nocodb-v2 ~1.5, Ollama llama3.2:3b ~2,
-# bot-bridge ~1); 8GB keeps a margin above that without requiring space this
+# bot-worker ~1); 8GB keeps a margin above that without requiring space this
 # box does not have spare.
 available_min_gb=${AVAILABLE_MIN_GB:-8}
 root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')

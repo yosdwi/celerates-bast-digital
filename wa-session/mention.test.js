@@ -4,7 +4,7 @@
 // group participant using either the phone-number JID or the privacy "@lid"
 // JID depending on the group's addressing mode, and a bot's LID shares no
 // digits with its phone number. Fixture values below are the bot's own real
-// id/lid pair as Baileys wrote them to bot-bridge/auth/creds.json.
+// id/lid pair as Baileys wrote them to wa-session/auth/creds.json.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

@@ -51,11 +51,17 @@ jobs:
       - name: Frontend production build
         working-directory: frontend
         run: npm run build
-      - name: Install WhatsApp bridge
-        working-directory: bot-bridge
+      - name: Install wa-session
+        working-directory: wa-session
         run: npm ci --no-audit --no-fund
-      - name: WhatsApp bridge tests
-        working-directory: bot-bridge
+      - name: wa-session tests
+        working-directory: wa-session
+        run: npm test
+      - name: Install bot-worker
+        working-directory: bot-worker
+        run: npm ci --no-audit --no-fund
+      - name: bot-worker tests
+        working-directory: bot-worker
         run: npm test
 
   secrets:
@@ -84,12 +90,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: test "$(docker image inspect digital-bast:ci --format '{{.Config.User}}')" = "10001:10001"
-      - name: Build WhatsApp bridge image
-        run: docker build -f bot-bridge/Dockerfile --build-arg APP_IMAGE=digital-bast:ci -t digital-bast-bot-bridge:ci .
-      - name: Verify WhatsApp bridge runtime package
+      - name: Build wa-session image
+        run: docker build -f wa-session/Dockerfile -t digital-bast-wa-session:ci .
+      - name: Verify wa-session runtime package
         run: |
-          test "$(docker image inspect digital-bast-bot-bridge:ci --format '{{.Config.User}}')" = "10001:10001"
-          docker run --rm --entrypoint node digital-bast-bot-bridge:ci -e "require('/opt/digital-bast/bot-bridge/outbound.js')"
+          test "$(docker image inspect digital-bast-wa-session:ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint node digital-bast-wa-session:ci -e "require('/opt/wa-session/outbound.js')"
+      - name: Build bot-worker image
+        run: docker build -f bot-worker/Dockerfile --build-arg APP_IMAGE=digital-bast:ci -t digital-bast-bot-worker:ci .
+      - name: Verify bot-worker runtime package
+        run: |
+          test "$(docker image inspect digital-bast-bot-worker:ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint node digital-bast-bot-worker:ci -e "require('/opt/digital-bast/bot-worker/server.js')"
       - name: Verify secure runtime dependency floors
         run: >-
           docker run --rm --entrypoint python digital-bast:ci -c

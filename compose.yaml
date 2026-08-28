@@ -17,7 +17,7 @@ x-app: &app
   # Ollama runs on the host (not a container), bound to 0.0.0.0:11434 with
   # ufw scoped to this box's compose networks. host-gateway resolves
   # correctly regardless of which attached network Docker treats as primary,
-  # unlike a hardcoded bridge gateway IP -- see bot-bridge's own copy of this,
+  # unlike a hardcoded bridge gateway IP -- see bot-worker's own copy of this,
   # which predates web-blue/web-green needing it for TalentOps AI.
   extra_hosts:
     - "host.docker.internal:host-gateway"
@@ -45,17 +45,17 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
-    # web -> bot-bridge, internal Docker network only: lets TalentOps proxy a
+    # web -> wa-session, internal Docker network only: lets TalentOps proxy a
     # read-only WhatsApp pairing status/QR (see talentops_router.py's
-    # /system/whatsapp) without exposing bot-bridge's setup page publicly.
-    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://bot-bridge:8090}
+    # /system/whatsapp) without exposing wa-session's setup page publicly.
+    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://wa-session:8090}
     # scripts/sheet_replay_poller.py: a distinct credential and sheet from
     # the IoT sheet's (that one is dead -- invalid_grant). Optional -- the
     # poller is the only thing that reads it, and only when actually invoked.
     GOOGLE_SHEETS_RELAY_CREDENTIALS: /run/secrets/google_sheets_relay_credentials
     GOOGLE_SHEETS_RELAY_SHEET_ID: ${GOOGLE_SHEETS_RELAY_SHEET_ID:-}
     # TalentOps AI (application/talentops_ai.py) reads this the same way the
-    # WhatsApp bot does -- see bot-bridge's BOT_LLM_URL below, same host.
+    # WhatsApp bot does -- see bot-worker's BOT_LLM_URL below, same host.
     BOT_LLM_URL: ${BOT_LLM_URL:-}
     BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
     # TalentOps AI provider -- defaults to ollama (groq/cloudflare below are
@@ -305,40 +305,91 @@ services:
   # The WhatsApp bridge moves off the dev laptop. It shells out to the
   # digital-bast CLI, so it runs from the app image with node added rather
   # than reaching into a container from the host.
-  bot-bridge:
+  # WhatsApp session holder ONLY -- Baileys socket, auth persistence, setup
+  # page. Deliberately NOT built FROM the app image and NOT part of
+  # scripts/deploy.sh's blue/green flow: it must never rebuild/recreate just
+  # because the app changed, or WhatsApp's anti-abuse system revokes the
+  # session after the resulting rapid reconnects (see scripts/deploy-wa-session.sh
+  # for its own, separate, manually-run deploy path). All business/CLI logic
+  # lives in bot-worker below, reached over HTTP.
+  wa-session:
     build:
       context: .
-      dockerfile: bot-bridge/Dockerfile
-      args:
-        APP_IMAGE: ${APP_IMAGE:-digital-bast:local}
-    image: ${BOT_BRIDGE_IMAGE:-digital-bast-bot-bridge:local}
+      dockerfile: wa-session/Dockerfile
+    image: ${WA_SESSION_IMAGE:-digital-bast-wa-session:local}
     restart: unless-stopped
     environment:
-      <<: *app-environment
       BOT_SETUP_HOST: 0.0.0.0
       BOT_SETUP_PORT: "8090"
       BOT_AUTH_DIR: /data/auth
-      BAST_CLI: digital-bast
+      BOT_DATA_DIR: /data
       BOT_ALLOWED_GROUPS: ${BOT_ALLOWED_GROUPS:-}
-      BOT_LLM_URL: ${BOT_LLM_URL:-}
-      BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+      BOT_WORKER_BASE_URL: ${BOT_WORKER_BASE_URL:-http://bot-worker:8091}
+      SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
       # Digits-only international format (e.g. 6281234567890) -- lets a
       # phone-only user re-pair via WhatsApp's "Link with phone number"
       # code entry instead of needing a second screen to scan a QR. Only
       # takes effect while unregistered; a no-op once already paired.
       BOT_PAIRING_NUMBER: ${BOT_PAIRING_NUMBER:-}
-    secrets: *app-secrets
+    secrets:
+      - sync_ingest_token
     group_add:
       - "${SECRETS_GID:?SECRETS_GID is required}"
     # Loopback-only: /allow and /try have no authentication of their own.
     ports:
       - "127.0.0.1:${BOT_SETUP_PORT:-8090}:8090"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8090/health"]
+      # No curl in this minimal, non-app-based image -- Node itself checks.
+      test: ["CMD", "node", "-e", "require('node:http').get('http://127.0.0.1:8090/health',(r)=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+    networks:
+      - backend
+      - egress
+      - digital-bast-network
+    volumes:
+      - bot-bridge-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 384M
+
+  # Stateless HTTP wrapper around the `digital-bast` CLI -- the business/LLM
+  # logic half of the former single bot-bridge process. Holds no WhatsApp
+  # state, so scripts/deploy.sh rebuilds and recreates it on every deploy
+  # exactly like the combined service used to, harmlessly: there is no live
+  # session here to interrupt.
+  bot-worker:
+    build:
+      context: .
+      dockerfile: bot-worker/Dockerfile
+      args:
+        APP_IMAGE: ${APP_IMAGE:-digital-bast:local}
+    image: ${BOT_WORKER_IMAGE:-digital-bast-bot-worker:local}
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      BAST_CLI: digital-bast
+      BOT_LLM_URL: ${BOT_LLM_URL:-}
+      BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+      BOT_WORKER_HOST: 0.0.0.0
+      BOT_WORKER_PORT: "8091"
+      # wa-session hands off exported/BAST/status-matrix files and evidence
+      # uploads through the volume shared below -- see operations.py's
+      # _exports_directory() and wa-session's BOT_DATA_DIR=/data.
+      BAST_EXPORTS_DIR: /data/exports
+    secrets: *app-secrets
+    group_add:
+      - "${SECRETS_GID:?SECRETS_GID is required}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     networks:
       - backend
       - egress
