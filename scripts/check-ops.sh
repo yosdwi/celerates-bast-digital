@@ -30,9 +30,14 @@ grep -q 'no-new-privileges:true' compose.yaml
 grep -q 'internal: true' compose.yaml
 grep -q 'flock -n' scripts/deploy.sh
 grep -q 'migration gate failed; active slot preserved' scripts/deploy.sh
-grep -q 'proxy and bridge rolled back' scripts/deploy.sh
-grep -q 'compose build bot-bridge' scripts/deploy.sh
-grep -q 'bot bridge failed health gate; previous bridge restored' scripts/deploy.sh
-grep -q 'rollback_bridge' scripts/deploy.sh
-grep -q 'bot-bridge/outbound.js' bot-bridge/Dockerfile
+grep -q 'proxy and bot-worker rolled back' scripts/deploy.sh
+grep -q 'compose build bot-worker' scripts/deploy.sh
+grep -q 'bot-worker failed health gate; previous image restored' scripts/deploy.sh
+grep -q 'rollback_worker' scripts/deploy.sh
+grep -q 'wa-session/outbound.js' wa-session/Dockerfile
+grep -q 'flock -n' scripts/deploy-wa-session.sh
+# wa-session must never be touched by the automated blue/green flow -- that
+# coupling is exactly what caused WhatsApp to revoke the session in the
+# first place. Keep this a standing guard against it regressing silently.
+! grep -q 'wa-session' scripts/deploy.sh
 printf '%s\n' "operations static checks passed"

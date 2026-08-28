@@ -20,7 +20,9 @@ if TYPE_CHECKING:
     from digital_bast.web.contracts import AttendanceRow
     from digital_bast.web.postgres_backend import PostgresWebBackend
 
-_EXPORTS_DIRECTORY: Final = Path(__file__).resolve().parents[2] / "bot-bridge" / "data" / "exports"
+_DEFAULT_EXPORTS_DIRECTORY: Final = (
+    Path(__file__).resolve().parents[2] / "bot-worker" / "data" / "exports"
+)
 _REPORT_TYPE_ROLE: Final = {"developer": "Developer", "shifting": "IoT Operations"}
 _REPORT_TYPE_SUFFIX: Final = {"developer": "DEVELOPER", "shifting": "SHIFTING"}
 _MISSING_APP_DSN: Final = "APP_DATABASE_DSN"
@@ -32,6 +34,17 @@ def _settings() -> Settings:
         return get_settings()
     except (ValidationError, SettingsConfigurationError, OSError) as error:
         raise OperationConfigurationError(_INVALID_SETTINGS) from error
+
+
+def _exports_directory() -> Path:
+    # Only bot-worker (the process wa-session hands file-reply requests to)
+    # sets BAST_EXPORTS_DIR, pointing this at the volume shared with
+    # wa-session so it can read the file back and attach it. Every other
+    # caller (web-blue/web-green's own report routes) serves the file
+    # directly over HTTP in the same request and never needs another process
+    # to see it, so the in-image default is correct and unchanged for them.
+    configured = _settings().bast_exports_dir
+    return configured if configured is not None else _DEFAULT_EXPORTS_DIRECTORY
 
 
 class OperationConfigurationError(RuntimeError):
@@ -169,8 +182,9 @@ async def export_attendance_report(
         f"Attendance_Celerates_Combined_{period.start.isoformat()}"
         f"_to_{period.end.isoformat()} ({suffix}).csv"
     )
-    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    path = _EXPORTS_DIRECTORY / filename
+    exports_directory = _exports_directory()
+    exports_directory.mkdir(parents=True, exist_ok=True)
+    path = exports_directory / filename
     _ = path.write_text(content, encoding="utf-8", newline="")
     return path, rows
 
@@ -183,9 +197,10 @@ async def generate_status_matrix(period: DateRange) -> Path:
 
     report = await completion_status(period)
     png_bytes = await render_png(render_status_matrix_html(report))
-    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    exports_directory = _exports_directory()
+    exports_directory.mkdir(parents=True, exist_ok=True)
     filename = f"BAST_status_{period.start.isoformat()}_{period.end.isoformat()}.png"
-    path = _EXPORTS_DIRECTORY / filename
+    path = exports_directory / filename
     _ = path.write_bytes(png_bytes)
     return path
 
@@ -210,8 +225,9 @@ async def generate_bast(
     report = await assemble(report_type, period.start.year, period.start.month, secret)
     pdf_bytes = await render_pdf(report.editor_html)
     _ = await PostgresBastArtifactStore(secret).save(report)
-    _EXPORTS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    exports_directory = _exports_directory()
+    exports_directory.mkdir(parents=True, exist_ok=True)
     filename = f"BAST_{report_type}_{report.year}-{report.month:02d}.pdf"
-    path = _EXPORTS_DIRECTORY / filename
+    path = exports_directory / filename
     _ = path.write_bytes(pdf_bytes)
     return path, report

@@ -1,0 +1,15 @@
+{
+  "name": "digital-bast-bot-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stateless HTTP wrapper around the digital-bast CLI for WhatsApp bot replies -- no session state, safe to redeploy on every release. See ../wa-session/ for the WhatsApp connection itself.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test *.test.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=20"
+  }
+}

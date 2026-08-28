@@ -1,8 +1,8 @@
 {
-  "name": "digital-bast-bot-bridge",
+  "name": "digital-bast-wa-session",
   "version": "1.0.0",
   "private": true,
-  "description": "WhatsApp (Baileys) bridge and setup page for the Digital BAST bot",
+  "description": "WhatsApp (Baileys) session holder and setup page for the Digital BAST bot -- transport only, no business logic. See bot-worker/ for the CLI-shelling reply logic.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
