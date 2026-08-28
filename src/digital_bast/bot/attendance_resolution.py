@@ -120,11 +120,11 @@ class _ResolutionRow:
         "employee_id",
         "evidence_id",
         "full_name",
-        "id",
         "nrp",
         "proposed_check_in",
         "proposed_check_out",
         "rejection_reason",
+        "request_id",
         "requested_by_jid",
         "resolution_type",
         "reviewed_at",
@@ -136,7 +136,7 @@ class _ResolutionRow:
 
     def __init__(  # noqa: PLR0913, PLR0917 - mirrors one database row
         self,
-        id: UUID,
+        request_id: UUID,
         attendance_id: int,
         employee_id: str,
         nrp: str,
@@ -154,7 +154,7 @@ class _ResolutionRow:
         reviewed_at: datetime | None,
         rejection_reason: str | None,
     ) -> None:
-        self.id = id
+        self.request_id = request_id
         self.attendance_id = attendance_id
         self.employee_id = employee_id
         self.nrp = nrp
@@ -190,19 +190,35 @@ def _valid_request_shape(
     absence_type: AbsenceType | None,
 ) -> bool:
     if resolution_type is ResolutionType.MISSING_CLOCK_IN:
-        return proposed_check_in is not None and proposed_check_out is None and absence_type is None
+        return (
+            proposed_check_in is not None
+            and proposed_check_out is None
+            and absence_type is None
+        )
     if resolution_type is ResolutionType.MISSING_CLOCK_OUT:
-        return proposed_check_in is None and proposed_check_out is not None and absence_type is None
+        return (
+            proposed_check_in is None
+            and proposed_check_out is not None
+            and absence_type is None
+        )
     if resolution_type is ResolutionType.MISSING_BOTH_WORKED:
-        return proposed_check_in is not None and proposed_check_out is not None and absence_type is None
+        return (
+            proposed_check_in is not None
+            and proposed_check_out is not None
+            and absence_type is None
+        )
     if resolution_type is ResolutionType.ABSENCE:
-        return proposed_check_in is None and proposed_check_out is None and absence_type is not None
+        return (
+            proposed_check_in is None
+            and proposed_check_out is None
+            and absence_type is not None
+        )
     return False
 
 
 def _to_resolution(row: _ResolutionRow) -> AttendanceResolution:
     return AttendanceResolution(
-        id=row.id,
+        id=row.request_id,
         attendance_id=row.attendance_id,
         employee_id=row.employee_id,
         nrp=row.nrp,
@@ -223,7 +239,7 @@ def _to_resolution(row: _ResolutionRow) -> AttendanceResolution:
 
 
 _RESOLUTION_SELECT = """
-    SELECT r.id,
+    SELECT r.id AS request_id,
            r.attendance_id,
            r.employee_id,
            e.nrp,
@@ -254,7 +270,7 @@ class AttendanceResolutionService:
     def _connect(self) -> psycopg.Connection[tuple[object, ...]]:
         return psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds)
 
-    async def submit(
+    async def submit(  # noqa: PLR0913
         self,
         employee_id: str,
         attendance_key: str,
@@ -306,7 +322,7 @@ class AttendanceResolutionService:
             )
             return rows.fetchone()
 
-    def _submit(  # noqa: PLR0913, PLR0917
+    def _submit(  # noqa: PLR0911, PLR0913, PLR0917
         self,
         employee_id: str,
         attendance_key: str,
@@ -394,7 +410,8 @@ class AttendanceResolutionService:
             ):
                 _ = cursor.execute(
                     _RESOLUTION_SELECT
-                    + " WHERE r.status = 'pending' ORDER BY r.submitted_at, r.work_date, e.full_name"
+                    + " WHERE r.status = 'pending' "
+                    "ORDER BY r.submitted_at, r.work_date, e.full_name"
                 )
                 return tuple(_to_resolution(row) for row in cursor.fetchall())
         except psycopg.Error as error:
