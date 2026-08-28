@@ -56,6 +56,11 @@ ATTENDANCE = """
     ORDER BY a.work_date, e.full_name
 """
 
+# The BAST renderer reads the raw attendance row directly and therefore keeps
+# missing punches empty. This legacy CSV path is the only projection layer:
+# an approved attendance resolution may fill a missing punch or map a verified
+# absence onto the contractual schedule, without ever UPDATE-ing the client
+# source-of-truth attendance row.
 ATTENDANCE_LEGACY = """
     SELECT jsonb_build_object(
                'employee_id', a.employee_id,
@@ -65,12 +70,45 @@ ATTENDANCE_LEGACY = """
                'schedule_in', a.schedule_in,
                'schedule_out', a.schedule_out,
                'attendance_code', a.attendance_code,
-               'check_in', COALESCE(to_char(a.check_in, 'HH24:MI'), ''),
-               'check_out', COALESCE(to_char(a.check_out, 'HH24:MI'), ''),
+               'check_in',
+                   CASE
+                       WHEN r.resolution_type = 'missing_clock_in'
+                           THEN to_char(r.proposed_check_in, 'HH24:MI')
+                       WHEN r.resolution_type = 'missing_both_worked'
+                           THEN to_char(r.proposed_check_in, 'HH24:MI')
+                       WHEN r.resolution_type = 'absence' AND e.role = 'Developer'
+                           THEN '07:30'
+                       WHEN r.resolution_type = 'absence' AND e.role = 'IoT Operations'
+                           THEN a.schedule_in
+                       ELSE COALESCE(to_char(a.check_in, 'HH24:MI'), '')
+                   END,
+               'check_out',
+                   CASE
+                       WHEN r.resolution_type = 'missing_clock_out'
+                           THEN to_char(r.proposed_check_out, 'HH24:MI')
+                       WHEN r.resolution_type = 'missing_both_worked'
+                           THEN to_char(r.proposed_check_out, 'HH24:MI')
+                       WHEN r.resolution_type = 'absence' AND e.role = 'Developer'
+                           THEN CASE
+                               WHEN EXTRACT(ISODOW FROM a.work_date) = 5 THEN '17:00'
+                               ELSE '16:30'
+                           END
+                       WHEN r.resolution_type = 'absence' AND e.role = 'IoT Operations'
+                           THEN a.schedule_out
+                       ELSE COALESCE(to_char(a.check_out, 'HH24:MI'), '')
+                   END,
                'notes', a.notes
            ) AS payload
     FROM attendance a
     JOIN employees e ON e.employee_id = a.employee_id
+    LEFT JOIN LATERAL (
+        SELECT resolution_type, proposed_check_in, proposed_check_out
+        FROM attendance_resolution_requests rr
+        WHERE rr.attendance_id = a.id
+          AND rr.status = 'approved'
+        ORDER BY rr.reviewed_at DESC
+        LIMIT 1
+    ) r ON true
     WHERE a.work_date BETWEEN %s AND %s
       AND e.role = %s
       AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
