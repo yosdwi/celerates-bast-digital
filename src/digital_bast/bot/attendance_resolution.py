@@ -10,7 +10,7 @@ raw attendance plus evidence.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import time
+from datetime import date, time
 from enum import StrEnum
 from typing import TYPE_CHECKING, final
 from uuid import UUID
@@ -22,7 +22,7 @@ from psycopg.rows import class_row
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
-    from datetime import date, datetime
+    from datetime import datetime
 
 
 class ResolutionType(StrEnum):
@@ -51,6 +51,7 @@ class SubmitOutcome(StrEnum):
     SOURCE_NOT_ELIGIBLE = "source_not_eligible"
     EVIDENCE_REQUIRED = "evidence_required"
     ALREADY_OPEN = "already_open"
+    INVALID_REQUEST = "invalid_request"
 
 
 class DecisionOutcome(StrEnum):
@@ -182,6 +183,23 @@ def _eligible(row: _AttendanceRow, resolution_type: ResolutionType) -> bool:
     return False
 
 
+def _valid_request_shape(
+    resolution_type: ResolutionType,
+    proposed_check_in: time | None,
+    proposed_check_out: time | None,
+    absence_type: AbsenceType | None,
+) -> bool:
+    if resolution_type is ResolutionType.MISSING_CLOCK_IN:
+        return proposed_check_in is not None and proposed_check_out is None and absence_type is None
+    if resolution_type is ResolutionType.MISSING_CLOCK_OUT:
+        return proposed_check_in is None and proposed_check_out is not None and absence_type is None
+    if resolution_type is ResolutionType.MISSING_BOTH_WORKED:
+        return proposed_check_in is not None and proposed_check_out is not None and absence_type is None
+    if resolution_type is ResolutionType.ABSENCE:
+        return proposed_check_in is None and proposed_check_out is None and absence_type is not None
+    return False
+
+
 def _to_resolution(row: _ResolutionRow) -> AttendanceResolution:
     return AttendanceResolution(
         id=row.id,
@@ -298,6 +316,10 @@ class AttendanceResolutionService:
         proposed_check_out: time | None,
         absence_type: AbsenceType | None,
     ) -> SubmitResult:
+        if not _valid_request_shape(
+            resolution_type, proposed_check_in, proposed_check_out, absence_type
+        ):
+            return SubmitResult(SubmitOutcome.INVALID_REQUEST)
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 row = self._load_attendance(cursor, attendance_key)
@@ -349,9 +371,12 @@ class AttendanceResolutionService:
                         ),
                     )
                     created = cursor.fetchone()
-                except (psycopg.errors.UniqueViolation, psycopg.errors.CheckViolation):
+                except psycopg.errors.UniqueViolation:
                     connection.rollback()
                     return SubmitResult(SubmitOutcome.ALREADY_OPEN)
+                except psycopg.errors.CheckViolation:
+                    connection.rollback()
+                    return SubmitResult(SubmitOutcome.INVALID_REQUEST)
                 return SubmitResult(
                     SubmitOutcome.CREATED,
                     UUID(str(created[0])) if created is not None else None,
