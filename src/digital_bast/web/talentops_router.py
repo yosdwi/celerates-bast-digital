@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
-from uuid import UUID
+from uuid import UUID  # noqa: TC003 - FastAPI path annotation is runtime metadata
 
 from anyio.to_thread import run_sync
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -105,7 +105,11 @@ def _decision_error(outcome: DecisionOutcome, existing: ResolutionStatus | None)
     if outcome is DecisionOutcome.NOT_FOUND:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
     if outcome is DecisionOutcome.ALREADY_RESOLVED:
-        detail = f"Request already {existing.value}" if existing is not None else "Request already resolved"
+        detail = (
+            f"Request already {existing.value}"
+            if existing is not None
+            else "Request already resolved"
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
     if outcome is DecisionOutcome.SOURCE_CHANGED:
         raise HTTPException(
