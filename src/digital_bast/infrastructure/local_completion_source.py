@@ -53,11 +53,11 @@ class LocalEmployeeSource:
 
 class _AttendanceFactRow:
     __slots__ = (
-        "approved_resolution_count",
         "check_in",
         "check_out",
         "employee_id",
         "evidence_note",
+        "evidence_photo_count",
         "work_date",
     )
 
@@ -68,25 +68,27 @@ class _AttendanceFactRow:
         check_in: str,
         check_out: str,
         evidence_note: str,
-        approved_resolution_count: int,
+        evidence_photo_count: int,
     ) -> None:
         self.employee_id = employee_id
         self.work_date = work_date
         self.check_in = check_in
         self.check_out = check_out
         self.evidence_note = evidence_note
-        self.approved_resolution_count = approved_resolution_count
+        self.evidence_photo_count = evidence_photo_count
 
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the immutable client attendance row.
+    """Derives AttendanceFact from the `attendance` table.
 
-    `evidence_note` is the legacy human-maintained/admin evidence signal and is
-    grandfathered as valid. New WhatsApp attendance photos do NOT make a gap
-    complete by upload alone: only an approved attendance_resolution_request
-    satisfies readiness. This keeps PMO approval meaningful without rewriting
-    the client's check_in/check_out source-of-truth fields.
+    Until the new Talent DM resolution state machine is fully wired, the
+    existing readiness contract remains unchanged: either the legacy
+    evidence_note or an uploaded attendance photo satisfies has_evidence.
+    This is deliberate regression protection. The approval request table is
+    already available for the new workflow, but switching readiness to
+    approved-only happens atomically with the DM submission flow, never in an
+    intermediate deploy where existing uploads would suddenly stop counting.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -111,11 +113,9 @@ class PostgresAttendanceFactReader:
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
                            a.evidence_note,
-                           COUNT(r.id) FILTER (WHERE r.status = 'approved')
-                               AS approved_resolution_count
+                           COUNT(ae.id) AS evidence_photo_count
                     FROM attendance a
-                    LEFT JOIN attendance_resolution_requests r
-                           ON r.attendance_id = a.id
+                    LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s
                     GROUP BY a.id
                     """,
@@ -129,7 +129,7 @@ class PostgresAttendanceFactReader:
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=bool(row.evidence_note.strip()) or row.approved_resolution_count > 0,
+                has_evidence=bool(row.evidence_note.strip()) or row.evidence_photo_count > 0,
             )
             for row in rows
         }
