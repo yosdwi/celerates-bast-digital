@@ -62,9 +62,9 @@ class PostgresWebBackend:
         return await run_sync(self._attendance, employee_names, start_date, end_date)
 
     async def attendance_legacy(
-        self, role: str, start_date: date, end_date: date
+        self, role: str, start_date: date, end_date: date, employee: str | None = None
     ) -> tuple[str, int]:
-        return await run_sync(self._attendance_legacy, role, start_date, end_date)
+        return await run_sync(self._attendance_legacy, role, start_date, end_date, employee)
 
     async def create_plan(self, request: GenerationPlanInput) -> GenerationResult:
         return await run_sync(self._create_plan, request)
@@ -150,10 +150,14 @@ class PostgresWebBackend:
             for row in rows
         )
 
-    def _attendance_legacy(self, role: str, start_date: date, end_date: date) -> tuple[str, int]:
+    def _attendance_legacy(
+        self, role: str, start_date: date, end_date: date, employee: str | None
+    ) -> tuple[str, int]:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                _ = cursor.execute(ATTENDANCE_LEGACY, (start_date, end_date, role))
+                _ = cursor.execute(
+                    ATTENDANCE_LEGACY, (start_date, end_date, role, employee, employee)
+                )
                 rows = tuple(row[0] for row in cursor.fetchall())
         except psycopg.Error as error:
             raise WebBackendUnavailableError(operation="attendance_legacy") from error

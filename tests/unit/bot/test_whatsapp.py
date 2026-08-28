@@ -67,6 +67,24 @@ def test_intents_are_detected_from_mentions() -> None:
     )
 
 
+def test_export_attendance_extracts_employee_name_filter() -> None:
+    command = parse_command(
+        "export attendance developer atas nama Muhammad Taufiq dari tanggal "
+        "21 agustus - 27 agustus 2026",
+        TODAY,
+    )
+    assert command.intent is Intent.EXPORT_ATTENDANCE
+    assert command.report_type == "developer"
+    assert command.employee == "Muhammad Taufiq"
+    assert command.period == DateRange(date(2026, 8, 21), date(2026, 8, 27))
+
+
+def test_export_attendance_without_a_name_has_no_employee_filter() -> None:
+    command = parse_command("export attendance developer 1 sampai 31 Agustus", TODAY)
+    assert command.intent is Intent.EXPORT_ATTENDANCE
+    assert command.employee is None
+
+
 def test_container_mutation_is_rejected() -> None:
     assert parse_command("@BAST Bot restart postgres", TODAY).intent is Intent.UNSUPPORTED_MUTATION
 

@@ -1144,10 +1144,14 @@ def _group_reply(text: str) -> str:  # noqa: PLR0911 -- one short-circuit per in
     return _business_reply(command.intent, command.period, command.report_type, command.employee)
 
 
-def _echo_interpretation(intent: Intent, period: DateRange, report_type: str | None) -> str:
+def _echo_interpretation(
+    intent: Intent, period: DateRange, report_type: str | None, employee: str | None = None
+) -> str:
     match intent:
         case Intent.EXPORT_ATTENDANCE:
             body = f"export attendance {report_type}, {period.label()}"
+            if employee:
+                body += f", atas nama {employee}"
         case Intent.COMPLETION_STATUS:
             body = f"status {period.label()}"
         case Intent.EVIDENCE_RESUME:
@@ -1176,10 +1180,33 @@ def _employee_detail_reply(period: DateRange, employee: str) -> str:
     return format_employee_detail(next(iter(matches)), period)
 
 
+async def _export_attendance_reply(
+    period: DateRange, report_type: str, employee: str | None, echo: str
+) -> str:
+    path, rows = await export_attendance_report(period, report_type, employee)
+    if rows == 0 and employee:
+        return (
+            f'{echo}\nTidak ada data attendance untuk "{employee}" pada '
+            f"periode {period.label()} ({report_type})."
+        )
+    who = f" atas nama {employee}" if employee else ""
+    return json.dumps(
+        {
+            "kind": "file",
+            "path": str(path),
+            "filename": path.name,
+            "caption": (
+                f"{echo}\nExport attendance {period.label()} ({report_type}){who}: {rows} baris."
+            ),
+        }
+    )
+
+
 def _business_reply(
     intent: Intent, period: DateRange, report_type: str | None, employee: str | None = None
 ) -> str:
-    echo = _echo_interpretation(intent, period, report_type)
+    export_employee = employee if intent is Intent.EXPORT_ATTENDANCE else None
+    echo = _echo_interpretation(intent, period, report_type, export_employee)
     match intent:
         case Intent.COMPLETION_STATUS if employee:
             return _employee_detail_reply(period, employee)
@@ -1200,16 +1227,8 @@ def _business_reply(
         case Intent.EXPORT_ATTENDANCE:
             if report_type is None:
                 return MISSING_REPORT_TYPE_REPLY
-            path, rows = anyio.run(export_attendance_report, period, report_type)
-            return json.dumps(
-                {
-                    "kind": "file",
-                    "path": str(path),
-                    "filename": path.name,
-                    "caption": (
-                        f"{echo}\nExport attendance {period.label()} ({report_type}): {rows} baris."
-                    ),
-                }
+            return anyio.run(
+                _export_attendance_reply, period, report_type, export_employee, echo
             )
         case _:
             resolved_type = _BAST_REPORT_TYPE.get(report_type or "", "developer")

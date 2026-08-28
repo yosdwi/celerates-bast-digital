@@ -73,6 +73,7 @@ ATTENDANCE_LEGACY = """
     JOIN employees e ON e.employee_id = a.employee_id
     WHERE a.work_date BETWEEN %s AND %s
       AND e.role = %s
+      AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
     ORDER BY e.full_name, a.work_date
 """
 
