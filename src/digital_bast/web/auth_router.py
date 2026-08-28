@@ -47,7 +47,7 @@ def auth_router(deps: WebDependencies, templates: Jinja2Templates) -> APIRouter:
     async def login_page(request: Request) -> HTMLResponse | RedirectResponse:
         loaded = await load_session(request, deps.sessions, deps.cookie, deps.now)
         if loaded is not None:
-            return RedirectResponse("/admin/", status_code=status.HTTP_303_SEE_OTHER)
+            return RedirectResponse("/admin/talentops/", status_code=status.HTTP_303_SEE_OTHER)
         return templates.TemplateResponse(request, "login.html", {})
 
     router.add_api_route(
@@ -92,7 +92,7 @@ def auth_router(deps: WebDependencies, templates: Jinja2Templates) -> APIRouter:
         session_id = SessionId(deps.session_id())
         record = new_session_record(user, deps.now(), deps.cookie.ttl_seconds)
         await deps.sessions.create(session_id, record, deps.cookie.ttl_seconds)
-        response = RedirectResponse("/admin/", status_code=status.HTTP_303_SEE_OTHER)
+        response = RedirectResponse("/admin/talentops/", status_code=status.HTTP_303_SEE_OTHER)
         set_session_cookie(response, session_id, deps.cookie)
         return response
 

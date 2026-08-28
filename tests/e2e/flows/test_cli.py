@@ -338,9 +338,12 @@ def test_bot_reply_llm_disambiguates_ambiguous_date_range(
     )
     monkeypatch.setattr(cli, "create_llm_interpreter", lambda: _FakeInterpreter(command))
 
-    async def fake_export(period: DateRange, report_type: str) -> tuple[Path, int]:
+    async def fake_export(
+        period: DateRange, report_type: str, employee: str | None = None
+    ) -> tuple[Path, int]:
         assert period == DateRange(date(2026, 8, 1), date(2026, 8, 20))
         assert report_type == "shifting"
+        assert employee is None
         return Path("attendance.csv"), 7
 
     monkeypatch.setattr(cli, "export_attendance_report", fake_export)
