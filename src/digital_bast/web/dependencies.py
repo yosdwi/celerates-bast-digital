@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_ai import TalentOpsAiService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+    from digital_bast.bot.attendance_resolution import AttendanceResolutionService
     from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
     from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.contracts import OwnerAuthenticator, SessionStore, WebBackend
@@ -26,6 +27,7 @@ class WebDependencies:
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
+    attendance_resolutions: AttendanceResolutionService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
     bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
