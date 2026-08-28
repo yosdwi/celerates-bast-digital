@@ -8,6 +8,7 @@ import type {
   PeriodView,
   TalentDetailResponse,
   TalentOpsSession,
+  WhatsAppStatus,
 } from "./types";
 
 const BASE = "/api/talentops/v1";
@@ -21,6 +22,10 @@ export interface GeneratedBastFile {
 
 export function getSession(): Promise<TalentOpsSession> {
   return apiFetch<TalentOpsSession>(`${BASE}/session`);
+}
+
+export function getWhatsAppStatus(): Promise<WhatsAppStatus> {
+  return apiFetch<WhatsAppStatus>(`${BASE}/system/whatsapp`);
 }
 
 export function getCommandCenter(year?: number, month?: number): Promise<CommandCenterResponse> {

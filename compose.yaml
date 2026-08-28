@@ -45,6 +45,10 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
+    # web -> bot-bridge, internal Docker network only: lets TalentOps proxy a
+    # read-only WhatsApp pairing status/QR (see talentops_router.py's
+    # /system/whatsapp) without exposing bot-bridge's setup page publicly.
+    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://bot-bridge:8090}
     # scripts/sheet_replay_poller.py: a distinct credential and sheet from
     # the IoT sheet's (that one is dead -- invalid_grant). Optional -- the
     # poller is the only thing that reads it, and only when actually invoked.

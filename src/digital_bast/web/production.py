@@ -20,6 +20,7 @@ from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSourc
 from digital_bast.infrastructure.redis_url import parse_redis_url
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
+from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
 from digital_bast.web.contracts import (
     AttendanceRow,
     AuthenticatedUser,
@@ -140,6 +141,13 @@ def production_dependencies() -> WebDependencies:
             settings.nocodb_base_id,
         )
 
+    bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
+    if settings.bot_bridge_base_url is not None and settings.sync_ingest_token is not None:
+        bot_bridge_status = BotBridgeWhatsAppOutboundGateway(
+            str(settings.bot_bridge_base_url),
+            settings.sync_ingest_token.get_secret_value(),
+        )
+
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
@@ -197,6 +205,7 @@ def production_dependencies() -> WebDependencies:
         talentops=talentops,
         talentops_ai=talentops_ai,
         source_sync_state=source_sync_state,
+        bot_bridge_status=bot_bridge_status,
     )
 
 

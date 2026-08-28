@@ -20,7 +20,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
-const { handleOutboundRequest } = require("./outbound");
+const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
 
 const ROOT = path.resolve(__dirname, "..");
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -421,6 +421,27 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ connection: state.connection, me: state.me }));
+    return;
+  }
+  // Narrow, read-only mirror of the setup page's QR/status for TalentOps
+  // (System & sync) to proxy in -- never exposes /allow or /try, which have
+  // no auth of their own and must stay loopback-only.
+  if (request.method === "GET" && url.pathname === "/internal/v1/status") {
+    const expected = configuredToken();
+    const supplied = request.headers["x-bridge-token"];
+    if (!expected || !safeEqual(supplied, expected)) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: "forbidden" }));
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        connection: state.connection,
+        me: state.me,
+        qrDataUrl: state.qrDataUrl || null,
+      }),
+    );
     return;
   }
   if (request.method === "POST" && url.pathname === "/allow") {

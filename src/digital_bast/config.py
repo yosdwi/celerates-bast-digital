@@ -141,6 +141,14 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="SYNC_INGEST_TOKEN_FILE",
     )
+    # Lets the web app proxy a narrow, read-only WhatsApp pairing status
+    # (connection + QR) from bot-bridge into TalentOps -- shares
+    # sync_ingest_token as the internal call's bearer token, same secret
+    # bot-bridge already checks incoming outbound-message requests against.
+    bot_bridge_base_url: AnyHttpUrl | None = Field(
+        default=None,
+        validation_alias="BOT_BRIDGE_BASE_URL",
+    )
     nocodb_attendance_mapping: str | None = Field(
         default=None,
         validation_alias="NOCODB_ATTENDANCE_MAPPING",
