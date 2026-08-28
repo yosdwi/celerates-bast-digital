@@ -158,11 +158,12 @@ async def export_attendance(
 async def export_attendance_report(
     period: DateRange,
     report_type: str,
+    employee: str | None = None,
     backend: PostgresWebBackend | None = None,
 ) -> tuple[Path, int]:
     active = backend if backend is not None else create_attendance_backend()
     role = _REPORT_TYPE_ROLE[report_type]
-    content, rows = await active.attendance_legacy(role, period.start, period.end)
+    content, rows = await active.attendance_legacy(role, period.start, period.end, employee)
     suffix = _REPORT_TYPE_SUFFIX[report_type]
     filename = (
         f"Attendance_Celerates_Combined_{period.start.isoformat()}"

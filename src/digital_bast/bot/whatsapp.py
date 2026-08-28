@@ -308,6 +308,17 @@ _INTENT_RULES: Final[tuple[tuple[Intent, tuple[str, ...]], ...]] = (
 # anyway; this fallback only degrades to a full group summary for those.
 _EMPLOYEE_DETAIL_PATTERN: Final = re.compile(r"\bdetail\s+([A-Za-z][\w.\-]*)", re.IGNORECASE)
 
+# "export attendance developer atas nama Muhammad Taufiq dari tanggal 21
+# agustus - 27 agustus 2026" -- capture everything after "atas nama" up to
+# whatever date/period phrasing follows, not just one word, since a person's
+# full name is routinely multiple words and the date range sits in the same
+# message with no other delimiter.
+_EXPORT_EMPLOYEE_PATTERN: Final = re.compile(
+    r"atas\s+nama\s+([A-Za-z][\w'.\-]*(?:\s+[A-Za-z][\w'.\-]*)*?)"
+    r"(?=\s+(?:dari|tanggal|periode|untuk|,)\b|\s*$)",
+    re.IGNORECASE,
+)
+
 
 def _intent_of(text: str) -> Intent:
     for intent, words in _INTENT_RULES:
@@ -349,6 +360,14 @@ def _employee_of(text: str) -> str | None:
     return None if _month_of(word) is not None else word
 
 
+def _export_employee_of(text: str) -> str | None:
+    match = _EXPORT_EMPLOYEE_PATTERN.search(text)
+    if match is None:
+        return None
+    name = match[1].strip()
+    return name or None
+
+
 def parse_command(text: str, today: date) -> BotCommand:
     normalized = strip_mentions(text)
     lowered = normalized.casefold()
@@ -362,7 +381,12 @@ def parse_command(text: str, today: date) -> BotCommand:
         return BotCommand(intent)
     period = parse_period(normalized, today)
     if intent is Intent.EXPORT_ATTENDANCE:
-        return BotCommand(intent, period, report_type=_report_type_of(lowered))
+        return BotCommand(
+            intent,
+            period,
+            report_type=_report_type_of(lowered),
+            employee=_export_employee_of(normalized),
+        )
     employee = _employee_of(normalized) if intent is Intent.COMPLETION_STATUS else None
     return BotCommand(intent, period, employee=employee)
 
