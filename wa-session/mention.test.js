@@ -87,15 +87,18 @@ test("business commands are never treated as conversation, even if casual", () =
   assert.equal(looksLikeConversation("@conform restart postgres dong"), false);
 });
 
-test("DM keyword fast paths skip the wait notice", () => {
+test("DM deterministic paths skip the wait notice", () => {
   assert.equal(looksLikeDmFastPath("tasklist aku bulan ini"), true);
   assert.equal(looksLikeDmFastPath("attendance"), true);
   assert.equal(looksLikeDmFastPath("evidence yang kurang apa"), true);
   assert.equal(looksLikeDmFastPath("1"), true);
   assert.equal(looksLikeDmFastPath(""), true);
+  assert.equal(looksLikeDmFastPath("halo"), true);
+  assert.equal(looksLikeDmFastPath("menu"), true);
+  assert.equal(looksLikeDmFastPath("kembali"), true);
 });
 
-test("DM free-form questions get the wait notice (LLM fallback)", () => {
+test("DM free-form questions may show a delayed wait notice", () => {
   assert.equal(looksLikeDmFastPath("yang belum closed apa aja"), false);
   assert.equal(looksLikeDmFastPath("clock in aku yang belum lengkap yang mana"), false);
 });
