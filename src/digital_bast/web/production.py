@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
+from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.config import get_settings
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import (
     CloudflareWorkersAiChatClient,
@@ -151,6 +152,7 @@ def production_dependencies() -> WebDependencies:
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
+    attendance_resolutions: AttendanceResolutionService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
     if settings.database_dsn is not None:
         dsn = settings.database_dsn.get_secret_value()
@@ -164,6 +166,7 @@ def production_dependencies() -> WebDependencies:
             PostgresTaskEvidenceReader(dsn),
         )
         source_sync_state = PostgresSourceSyncStateStore(dsn)
+        attendance_resolutions = AttendanceResolutionService(dsn)
         talentops = TalentOpsService(
             completion,
             employees,
@@ -204,6 +207,7 @@ def production_dependencies() -> WebDependencies:
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
         talentops_ai=talentops_ai,
+        attendance_resolutions=attendance_resolutions,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
     )
