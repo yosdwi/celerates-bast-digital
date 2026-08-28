@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime  # noqa: TC003
+from datetime import date, datetime, time  # noqa: TC003
 from typing import Annotated, ClassVar, Literal
 from uuid import UUID  # noqa: TC003
 
@@ -189,6 +189,41 @@ class TalentDetailResponse(_FrozenModel):
     tasks: tuple[TalentTaskResponse, ...]
     availability: TalentDataAvailabilityResponse
     signals: tuple[OperationalSignalResponse, ...] = ()
+
+
+class AttendanceResolutionResponse(_FrozenModel):
+    id: UUID
+    attendance_id: int
+    employee_id: str
+    nrp: str
+    full_name: str
+    work_date: date
+    resolution_type: Literal[
+        "missing_clock_in",
+        "missing_clock_out",
+        "missing_both_worked",
+        "absence",
+    ]
+    absence_type: Literal["cuti", "izin", "sakit"] | None
+    proposed_check_in: time | None
+    proposed_check_out: time | None
+    status: Literal["pending", "approved", "rejected"]
+    evidence_id: UUID
+    submitted_at: datetime
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    rejection_reason: str | None
+
+
+class AttendanceResolutionRejectInput(_FrozenModel):
+    reason: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+    ]
+
+
+class AttendanceResolutionDecisionResponse(_FrozenModel):
+    status: Literal["approved", "rejected"]
 
 
 class AiCommandCenterInput(_FrozenModel):
