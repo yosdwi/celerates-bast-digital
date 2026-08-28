@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
+from uuid import UUID
 
 from anyio.to_thread import run_sync
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -10,6 +11,7 @@ from digital_bast.application.operational_signals import (
     talent_signals,
 )
 from digital_bast.application.talentops_followups import FollowUpSendCommand
+from digital_bast.bot.attendance_resolution import DecisionOutcome, ResolutionStatus
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
 from digital_bast.operations import generate_bast as generate_bast_artifact
@@ -18,6 +20,9 @@ from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
     AiCommandCenterResponse,
     AiInvestigationResponse,
+    AttendanceResolutionDecisionResponse,
+    AttendanceResolutionRejectInput,
+    AttendanceResolutionResponse,
     CommandCenterResponse,
     FollowUpDraftInput,
     FollowUpDraftResponse,
@@ -35,6 +40,7 @@ if TYPE_CHECKING:
 
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+    from digital_bast.bot.attendance_resolution import AttendanceResolutionService
     from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.dependencies import WebDependencies
 
@@ -77,6 +83,15 @@ def _followups(deps: WebDependencies) -> TalentOpsFollowUpService:
     return deps.talentops_followups
 
 
+def _attendance_resolutions(deps: WebDependencies) -> AttendanceResolutionService:
+    if deps.attendance_resolutions is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance approval service is unavailable",
+        )
+    return deps.attendance_resolutions
+
+
 def _bot_bridge(deps: WebDependencies) -> BotBridgeWhatsAppOutboundGateway:
     if deps.bot_bridge_status is None:
         raise HTTPException(
@@ -84,6 +99,28 @@ def _bot_bridge(deps: WebDependencies) -> BotBridgeWhatsAppOutboundGateway:
             detail="WhatsApp bridge status is unavailable",
         )
     return deps.bot_bridge_status
+
+
+def _decision_error(outcome: DecisionOutcome, existing: ResolutionStatus | None) -> None:
+    if outcome is DecisionOutcome.NOT_FOUND:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+    if outcome is DecisionOutcome.ALREADY_RESOLVED:
+        detail = f"Request already {existing.value}" if existing is not None else "Request already resolved"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    if outcome is DecisionOutcome.SOURCE_CHANGED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Client attendance changed; refresh before reviewing this request",
+        )
+    if outcome is DecisionOutcome.REJECTION_REASON_REQUIRED:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Rejection reason is required",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Attendance decision failed",
+    )
 
 
 def talentops_router(  # noqa: C901, PLR0915 - one composition root for related API routes
@@ -176,6 +213,65 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
             )
         )
         return response.model_copy(update={"signals": signals})
+
+    async def attendance_resolution_queue(
+        request: Request,
+    ) -> tuple[AttendanceResolutionResponse, ...]:
+        _ = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        requests = await _attendance_resolutions(deps).pending()
+        return tuple(AttendanceResolutionResponse.model_validate(item) for item in requests)
+
+    async def approve_attendance_resolution(
+        request: Request,
+        request_id: UUID,
+        csrf_token: HeaderCsrf = None,
+    ) -> AttendanceResolutionDecisionResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        result = await _attendance_resolutions(deps).decide(
+            request_id,
+            record.user.email,
+            approve=True,
+        )
+        if result.outcome is not DecisionOutcome.UPDATED or result.status is None:
+            _decision_error(result.outcome, result.status)
+        return AttendanceResolutionDecisionResponse(status="approved")
+
+    async def reject_attendance_resolution(
+        request: Request,
+        request_id: UUID,
+        payload: AttendanceResolutionRejectInput,
+        csrf_token: HeaderCsrf = None,
+    ) -> AttendanceResolutionDecisionResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        result = await _attendance_resolutions(deps).decide(
+            request_id,
+            record.user.email,
+            approve=False,
+            rejection_reason=payload.reason,
+        )
+        if result.outcome is not DecisionOutcome.UPDATED or result.status is None:
+            _decision_error(result.outcome, result.status)
+        return AttendanceResolutionDecisionResponse(status="rejected")
 
     async def ask_command_center(
         request: Request,
@@ -332,6 +428,24 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         talent_detail,
         methods=["GET"],
         response_model=TalentDetailResponse,
+    )
+    router.add_api_route(
+        "/attendance-resolutions",
+        attendance_resolution_queue,
+        methods=["GET"],
+        response_model=tuple[AttendanceResolutionResponse, ...],
+    )
+    router.add_api_route(
+        "/attendance-resolutions/{request_id}/approve",
+        approve_attendance_resolution,
+        methods=["POST"],
+        response_model=AttendanceResolutionDecisionResponse,
+    )
+    router.add_api_route(
+        "/attendance-resolutions/{request_id}/reject",
+        reject_attendance_resolution,
+        methods=["POST"],
+        response_model=AttendanceResolutionDecisionResponse,
     )
     router.add_api_route(
         "/ai/command-center",
