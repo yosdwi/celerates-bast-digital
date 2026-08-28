@@ -1,7 +1,6 @@
 import csv
 import io
 import os
-from collections.abc import Iterator
 from datetime import date, time
 from uuid import uuid4
 
@@ -22,7 +21,7 @@ from digital_bast.web.postgres_backend import PostgresWebBackend
 
 
 @pytest.fixture(scope="module")
-def database_dsn() -> Iterator[str]:
+def database_dsn() -> str:
     dsn = os.getenv("TEST_DATABASE_DSN")
     if dsn is None:
         pytest.skip("TEST_DATABASE_DSN is not configured")
@@ -32,10 +31,10 @@ def database_dsn() -> Iterator[str]:
     except psycopg.OperationalError as error:
         pytest.skip(f"TEST_DATABASE_DSN is unavailable: {error.sqlstate or 'connection failed'}")
     command.upgrade(Config("alembic.ini"), "head")
-    yield dsn
+    return dsn
 
 
-def seed_attendance(
+def seed_attendance(  # noqa: PLR0913
     dsn: str,
     *,
     check_in: time | None,
@@ -101,7 +100,9 @@ def parse_legacy_csv(content: str) -> list[list[str]]:
 
 
 @pytest.mark.asyncio
-async def test_approved_missing_clock_out_never_mutates_client_attendance(database_dsn: str) -> None:
+async def test_approved_missing_clock_out_never_mutates_client_attendance(
+    database_dsn: str,
+) -> None:
     employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=time(8, 3), check_out=None
     )
@@ -133,7 +134,9 @@ async def test_approved_missing_clock_out_never_mutates_client_attendance(databa
 
 
 @pytest.mark.asyncio
-async def test_complete_source_attendance_cannot_enter_resolution_workflow(database_dsn: str) -> None:
+async def test_complete_source_attendance_cannot_enter_resolution_workflow(
+    database_dsn: str,
+) -> None:
     employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=time(8, 0), check_out=time(17, 0)
     )
@@ -232,7 +235,7 @@ async def test_csv_projects_actual_plus_approved_missing_clock_out(database_dsn:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("work_date", "expected_out"),
-    ((date(2026, 8, 27), "16:30"), (date(2026, 8, 28), "17:00")),
+    [(date(2026, 8, 27), "16:30"), (date(2026, 8, 28), "17:00")],
 )
 async def test_csv_projects_developer_absence_to_default_schedule(
     database_dsn: str, work_date: date, expected_out: str
