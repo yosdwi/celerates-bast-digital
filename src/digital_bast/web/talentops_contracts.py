@@ -29,6 +29,12 @@ class TalentOpsSessionResponse(_FrozenModel):
     timezone: str
 
 
+class WhatsAppStatusResponse(_FrozenModel):
+    connection: str
+    me: str
+    qr_data_url: str | None
+
+
 class PeriodResponse(_FrozenModel):
     year: int
     month: int

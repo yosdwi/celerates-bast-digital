@@ -19,6 +19,12 @@ export interface TalentOpsSession {
   timezone: string;
 }
 
+export interface WhatsAppStatus {
+  connection: string;
+  me: string;
+  qr_data_url: string | null;
+}
+
 export interface PeriodView {
   year: number;
   month: number;

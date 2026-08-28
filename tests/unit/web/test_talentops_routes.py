@@ -27,6 +27,7 @@ from digital_bast.application.talentops_investigation import (
 )
 from digital_bast.domain.completion import CheckState
 from digital_bast.domain.models import EmployeeRole
+from digital_bast.infrastructure.whatsapp_outbound import BotBridgeStatus
 from digital_bast.web import (
     AttendanceRow,
     AuthenticatedUser,
@@ -233,7 +234,12 @@ class FollowUps:
         )
 
 
-def make_client(authenticated: bool) -> TestClient:
+class BotBridge:
+    async def get_status(self) -> BotBridgeStatus:
+        return BotBridgeStatus(connection="connected", me="62881080735871", qr_data_url=None)
+
+
+def make_client(authenticated: bool, *, bot_bridge_status: bool = True) -> TestClient:
     now = datetime(2026, 8, 3, 8, tzinfo=UTC)
     record = (
         SessionRecord(
@@ -253,6 +259,7 @@ def make_client(authenticated: bool) -> TestClient:
         talentops=TalentOps(),  # type: ignore[arg-type]
         talentops_ai=TalentOpsAi(),  # type: ignore[arg-type]
         talentops_followups=FollowUps(),  # type: ignore[arg-type]
+        bot_bridge_status=BotBridge() if bot_bridge_status else None,  # type: ignore[arg-type]
         now=lambda: now,
     )
     client = TestClient(create_app(dependencies), base_url="https://testserver")
@@ -264,6 +271,27 @@ def make_client(authenticated: bool) -> TestClient:
 def test_talentops_api_requires_session() -> None:
     response = make_client(authenticated=False).get("/api/talentops/v1/command-center")
     assert response.status_code == 401
+
+
+def test_whatsapp_status_requires_session() -> None:
+    response = make_client(authenticated=False).get("/api/talentops/v1/system/whatsapp")
+    assert response.status_code == 401
+
+
+def test_whatsapp_status_returns_bridge_status() -> None:
+    response = make_client(authenticated=True).get("/api/talentops/v1/system/whatsapp")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["connection"] == "connected"
+    assert payload["me"] == "62881080735871"
+    assert payload["qr_data_url"] is None
+
+
+def test_whatsapp_status_is_503_when_bridge_not_configured() -> None:
+    response = make_client(authenticated=True, bot_bridge_status=False).get(
+        "/api/talentops/v1/system/whatsapp"
+    )
+    assert response.status_code == 503
 
 
 def test_talentops_session_bootstrap_returns_csrf() -> None:

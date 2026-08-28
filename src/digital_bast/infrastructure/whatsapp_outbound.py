@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Literal, final
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 
@@ -12,6 +13,19 @@ from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 class _BridgeResponse(BaseModel):
     status: Literal["sent"]
     provider_message_id: str | None = None
+
+
+class _BridgeStatusResponse(BaseModel):
+    connection: str
+    me: str = ""
+    qr_data_url: str | None = Field(default=None, alias="qrDataUrl")
+
+
+@dataclass(frozen=True, slots=True)
+class BotBridgeStatus:
+    connection: str
+    me: str = ""
+    qr_data_url: str | None = None
 
 
 @final
@@ -78,4 +92,29 @@ class BotBridgeWhatsAppOutboundGateway:
         return WhatsAppSendReceipt(
             status="sent",
             provider_message_id=parsed.provider_message_id,
+        )
+
+    async def get_status(self) -> BotBridgeStatus:
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url,
+                timeout=self._timeout_seconds,
+            ) as client:
+                response = await client.get(
+                    "/internal/v1/status",
+                    headers={"X-Bridge-Token": self._token},
+                )
+        except httpx.HTTPError:
+            return BotBridgeStatus(connection="unavailable")
+
+        if response.status_code != HTTPStatus.OK:
+            return BotBridgeStatus(connection="unavailable")
+        try:
+            parsed = _BridgeStatusResponse.model_validate(response.json())
+        except (ValueError, ValidationError):
+            return BotBridgeStatus(connection="unavailable")
+        return BotBridgeStatus(
+            connection=parsed.connection,
+            me=parsed.me,
+            qr_data_url=parsed.qr_data_url,
         )

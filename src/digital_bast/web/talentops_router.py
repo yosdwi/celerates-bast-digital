@@ -27,6 +27,7 @@ from digital_bast.web.talentops_contracts import (
     SessionUserResponse,
     TalentDetailResponse,
     TalentOpsSessionResponse,
+    WhatsAppStatusResponse,
 )
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+    from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1"
@@ -75,6 +77,15 @@ def _followups(deps: WebDependencies) -> TalentOpsFollowUpService:
     return deps.talentops_followups
 
 
+def _bot_bridge(deps: WebDependencies) -> BotBridgeWhatsAppOutboundGateway:
+    if deps.bot_bridge_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="WhatsApp bridge status is unavailable",
+        )
+    return deps.bot_bridge_status
+
+
 def talentops_router(  # noqa: C901, PLR0915 - one composition root for related API routes
     deps: WebDependencies,
 ) -> APIRouter:
@@ -95,6 +106,21 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
             ),
             csrf_token=record.csrf_token,
             timezone=_TIMEZONE_NAME,
+        )
+
+    async def whatsapp_status(request: Request) -> WhatsAppStatusResponse:
+        _ = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        result = await _bot_bridge(deps).get_status()
+        return WhatsAppStatusResponse(
+            connection=result.connection,
+            me=result.me,
+            qr_data_url=result.qr_data_url,
         )
 
     async def command_center(
@@ -287,6 +313,12 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
         session,
         methods=["GET"],
         response_model=TalentOpsSessionResponse,
+    )
+    router.add_api_route(
+        "/system/whatsapp",
+        whatsapp_status,
+        methods=["GET"],
+        response_model=WhatsAppStatusResponse,
     )
     router.add_api_route(
         "/command-center",

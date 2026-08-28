@@ -157,4 +157,4 @@ async function handleOutboundRequest(request, response, state, log) {
   return true;
 }
 
-module.exports = { handleOutboundRequest, safeEqual, sendOutboundOnce, validJid };
+module.exports = { handleOutboundRequest, safeEqual, sendOutboundOnce, validJid, configuredToken };
