@@ -23,6 +23,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
+const { withDelayedNotice } = require("./delayed-notice");
 const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
 
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -32,6 +33,11 @@ const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const BOT_WORKER_BASE_URL = process.env.BOT_WORKER_BASE_URL || "http://bot-worker:8091";
+// A wait acknowledgement is useful only after real latency exists. The old
+// behaviour sent it immediately based on keyword guesses, which made even a
+// simple "halo" read as if a heavy operation had started. Keep this delay
+// transport-only and configurable; deterministic paths skip the timer.
+const WAIT_NOTICE_DELAY_MS = Number(process.env.BOT_WAIT_NOTICE_DELAY_MS || 2500);
 const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 " +
   "Tinggal kirim foto/dokumennya langsung ke DM aku.";
@@ -285,15 +291,15 @@ async function handleGroupMessage(sock, message, jid) {
     return;
   }
   log(`command from ${jid}: ${text.slice(0, 120)}`);
-  if (!looksLikeConversation(text)) {
-    await sock.sendMessage(
-      jid,
-      { text: waitingReply(message.pushName) },
-      { quoted: message },
-    );
-  }
   const startedAt = Date.now();
-  const result = await callBotWorker({ kind: "text", text });
+  const operation = () => callBotWorker({ kind: "text", text });
+  const result = looksLikeConversation(text)
+    ? await operation()
+    : await withDelayedNotice(
+        operation,
+        () => sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message }),
+        WAIT_NOTICE_DELAY_MS,
+      );
   const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const filePayload = result.ok ? parseFileReply(result.text) : null;
   if (filePayload) {
@@ -317,10 +323,14 @@ async function handleDirectMessage(sock, message, jid) {
   const text = messageText(message);
   if (!text) return;
   log(`dm from ${jid}: ${text.slice(0, 120)}`);
-  if (!looksLikeDmFastPath(text)) {
-    await sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message });
-  }
-  const result = await callBotWorker({ kind: "text", text, jid, channel: "dm" });
+  const operation = () => callBotWorker({ kind: "text", text, jid, channel: "dm" });
+  const result = looksLikeDmFastPath(text)
+    ? await operation()
+    : await withDelayedNotice(
+        operation,
+        () => sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message }),
+        WAIT_NOTICE_DELAY_MS,
+      );
   const reply = result.ok
     ? result.text
     : friendlyErrorReply("menjalankan perintah", result.text);
@@ -370,7 +380,7 @@ function escapeHtml(value) {
   return String(value).replace(
     /[&<>"']/g,
     (character) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#39;" })[character],
   );
 }
 
