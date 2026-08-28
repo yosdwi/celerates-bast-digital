@@ -285,6 +285,7 @@ def test_whatsapp_status_returns_bridge_status() -> None:
     assert payload["connection"] == "connected"
     assert payload["me"] == "62881080735871"
     assert payload["qr_data_url"] is None
+    assert payload["pairing_code"] is None
 
 
 def test_whatsapp_status_is_503_when_bridge_not_configured() -> None:

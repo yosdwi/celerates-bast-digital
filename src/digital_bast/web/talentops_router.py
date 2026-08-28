@@ -121,6 +121,7 @@ def talentops_router(  # noqa: C901, PLR0915 - one composition root for related 
             connection=result.connection,
             me=result.me,
             qr_data_url=result.qr_data_url,
+            pairing_code=result.pairing_code,
         )
 
     async def command_center(

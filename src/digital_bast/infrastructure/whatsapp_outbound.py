@@ -19,6 +19,7 @@ class _BridgeStatusResponse(BaseModel):
     connection: str
     me: str = ""
     qr_data_url: str | None = Field(default=None, alias="qrDataUrl")
+    pairing_code: str | None = Field(default=None, alias="pairingCode")
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,7 @@ class BotBridgeStatus:
     connection: str
     me: str = ""
     qr_data_url: str | None = None
+    pairing_code: str | None = None
 
 
 @final
@@ -117,4 +119,5 @@ class BotBridgeWhatsAppOutboundGateway:
             connection=parsed.connection,
             me=parsed.me,
             qr_data_url=parsed.qr_data_url,
+            pairing_code=parsed.pairing_code,
         )

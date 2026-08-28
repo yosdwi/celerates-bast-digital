@@ -322,6 +322,11 @@ services:
       BOT_ALLOWED_GROUPS: ${BOT_ALLOWED_GROUPS:-}
       BOT_LLM_URL: ${BOT_LLM_URL:-}
       BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
+      # Digits-only international format (e.g. 6281234567890) -- lets a
+      # phone-only user re-pair via WhatsApp's "Link with phone number"
+      # code entry instead of needing a second screen to scan a QR. Only
+      # takes effect while unregistered; a no-op once already paired.
+      BOT_PAIRING_NUMBER: ${BOT_PAIRING_NUMBER:-}
     secrets: *app-secrets
     group_add:
       - "${SECRETS_GID:?SECRETS_GID is required}"
