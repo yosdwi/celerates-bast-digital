@@ -14,6 +14,7 @@ const { execFile } = require("node:child_process");
 const DEFAULT_TOKEN_FILE = "/run/secrets/sync_ingest_token";
 const ROOT = path.resolve(__dirname, "..");
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
+const PYTHON = process.env.BAST_PYTHON || "python";
 const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
 const PORT = Number(process.env.BOT_WORKER_PORT || 8091);
 const HOST = process.env.BOT_WORKER_HOST || "0.0.0.0";
@@ -36,11 +37,41 @@ function configuredToken() {
   }
 }
 
+function optionValue(args, name) {
+  const index = args.indexOf(name);
+  if (index < 0 || index + 1 >= args.length) return null;
+  return args[index + 1];
+}
+
+// Keep the public worker request -> legacy CLI mapping unchanged. Only the
+// executable chosen below differs for DM/evidence, so group behavior and the
+// wa-session<->bot-worker HTTP contract remain byte-for-byte compatible.
+function executionFor(args) {
+  if (args[0] === "bot-evidence") {
+    return {
+      command: PYTHON,
+      args: ["-m", "digital_bast.bot.dm_workflow", "evidence", ...args.slice(1)],
+    };
+  }
+  if (args[0] === "bot-reply" && optionValue(args, "--channel") === "dm") {
+    const text = optionValue(args, "--text");
+    const jid = optionValue(args, "--jid");
+    if (text !== null && jid) {
+      return {
+        command: PYTHON,
+        args: ["-m", "digital_bast.bot.dm_workflow", "reply", "--text", text, "--jid", jid],
+      };
+    }
+  }
+  return { command: CLI[0], args: [...CLI.slice(1), ...args] };
+}
+
 function runCli(args) {
+  const execution = executionFor(args);
   return new Promise((resolve) => {
     execFile(
-      CLI[0],
-      [...CLI.slice(1), ...args],
+      execution.command,
+      execution.args,
       { cwd: ROOT, timeout: CLI_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
@@ -139,4 +170,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { safeEqual, configuredToken, cliArgsFor, runCli, server };
+module.exports = { safeEqual, configuredToken, cliArgsFor, executionFor, runCli, server };
