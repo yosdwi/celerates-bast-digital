@@ -44,5 +44,5 @@ jobs:
           test -x "$release_dir/scripts/deploy-wa-session.sh"
           test -f "$release_dir/wa-session/Dockerfile"
           cd "$release_dir"
-          scripts/deploy-wa-session.sh
+          SECRETS_DIR="$DEPLOY_PATH/secrets" scripts/deploy-wa-session.sh
           REMOTE
