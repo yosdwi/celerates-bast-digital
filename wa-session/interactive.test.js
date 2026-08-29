@@ -98,6 +98,7 @@ test("sendInteractiveReply relays a native-flow message and never falls back on 
     display_text: "Status Saya",
     id: "status",
   });
+  assert.equal(nativeFlow.messageVersion, 1);
   // Insurance against WhatsApp silently not rendering the buttons at all.
   assert.match(message.interactiveMessage.body.text, /Atau ketik: Status Saya, Attendance/);
 });

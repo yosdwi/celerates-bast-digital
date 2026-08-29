@@ -87,6 +87,15 @@ function fallbackText(payload) {
 // comes back -- this was previously never used on the sending side. Still
 // not guaranteed (unofficial client), so `body.text` always embeds the
 // typed-option hint too, in case it renders as plain text instead of chips.
+//
+// `messageVersion` is optional in the protobuf schema (WAProto
+// Message.InteractiveMessage.NativeFlowMessage) so omitting it encodes fine
+// locally and relayMessage() resolves without error -- but a live test
+// against a real number showed the message never arrives at all (not even
+// as a decrypt failure), which points at WhatsApp's server silently
+// rejecting an unversioned native-flow payload during delivery routing.
+// Real WhatsApp clients always send messageVersion: 1 for quick_reply
+// buttons, so we do too.
 function nativeFlowContent(payload) {
   const bodyText = [payload.text, "", typedOptionsHint(payload)].filter(Boolean).join("\n");
   return {
@@ -99,6 +108,7 @@ function nativeFlowContent(payload) {
           buttonParamsJson: JSON.stringify({ display_text: action.label, id: action.id }),
         })),
         messageParamsJson: "",
+        messageVersion: 1,
       },
     },
   };
