@@ -173,9 +173,12 @@ class TalentOpsFollowUpService:
 
     async def send(self, command: FollowUpSendCommand) -> FollowUpSendView | None:
         previous = await self._repository.by_idempotency(command.idempotency_key)
-        if previous is not None:
+        # A successful delivery is immutable/idempotent. Failed bridge attempts
+        # may retry with the same key on a later worker cycle; the repository
+        # upserts that delivery record instead of creating a second logical send.
+        if previous is not None and previous.status == "sent":
             return FollowUpSendView(
-                status=_known_status(previous.status),
+                status="sent",
                 delivery_id=previous.id,
                 provider_message_id=previous.provider_message_id,
                 sent_at=previous.sent_at,
