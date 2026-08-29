@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from prefect.deployments.runner import RunnerDeployment
 from prefect.schedules import Cron
 
+from digital_bast.flows.notifications import pmo_notifications_flow
 from digital_bast.flows.pipelines import (
     iot_pic_update_flow,
     monthly_timesheets_flow,
@@ -24,6 +25,7 @@ class DeploymentSchedule:
 
 _SCHEDULES: tuple[DeploymentSchedule, ...] = (
     DeploymentSchedule("operational-import", "*/15 * * * *"),
+    DeploymentSchedule("pmo-notifications", "*/15 * * * *"),
     DeploymentSchedule("nightly-reconciliation", "30 2 * * *"),
     DeploymentSchedule("reference-data", "15 0 * * *"),
     DeploymentSchedule("monthly-timesheets", "30 0 1 * *"),
@@ -36,13 +38,19 @@ def deployment_schedules() -> tuple[DeploymentSchedule, ...]:
 
 
 def build_deployments() -> tuple[RunnerDeployment, ...]:
-    operational, reconciliation, references, timesheets, iot_pic = _SCHEDULES
+    operational, notifications, reconciliation, references, timesheets, iot_pic = _SCHEDULES
     return (
         RunnerDeployment.from_flow(
             operational_import_flow,
             name=operational.name,
             schedule=Cron(operational.cron, timezone=operational.timezone),
             concurrency_limit=operational.concurrency_limit,
+        ),
+        RunnerDeployment.from_flow(
+            pmo_notifications_flow,
+            name=notifications.name,
+            schedule=Cron(notifications.cron, timezone=notifications.timezone),
+            concurrency_limit=notifications.concurrency_limit,
         ),
         RunnerDeployment.from_flow(
             nightly_reconciliation_flow,
