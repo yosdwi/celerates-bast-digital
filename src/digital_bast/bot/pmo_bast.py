@@ -27,6 +27,8 @@ _REPORT_LABELS: Final = {
     "iotoperation": "IoT Operations",
 }
 _FORCE_REASON: Final = "Confirmed via PMO WhatsApp after readiness warning"
+_INVALID_SETTINGS: Final = "application settings are invalid"
+_MISSING_DSN: Final = "APP_DATABASE_DSN"
 
 
 def _period_now() -> DateRange:
@@ -61,9 +63,9 @@ def _bast_service() -> BastWorkflowService:
     try:
         settings = get_settings()
     except (ValidationError, SettingsConfigurationError, OSError) as error:
-        raise OperationConfigurationError("application settings are invalid") from error
+        raise OperationConfigurationError(_INVALID_SETTINGS) from error
     if settings.database_dsn is None:
-        raise OperationConfigurationError("APP_DATABASE_DSN")
+        raise OperationConfigurationError(_MISSING_DSN)
     dsn = settings.database_dsn.get_secret_value()
     employees = PostgresEmployeeSource(dsn)
     records = PostgresDomainRepository(dsn)
@@ -83,8 +85,12 @@ def _bast_service() -> BastWorkflowService:
 
 
 def _team_menu() -> str:
+    text = (
+        "*BAST — pilih tim*\n"
+        "Status dan generation memakai readiness yang sama dengan TalentOps Web."
+    )
     return interactive(
-        "*BAST — pilih tim*\nStatus dan generation memakai readiness yang sama dengan TalentOps Web.",
+        text,
         ("pmo:bast:developer", "Developer"),
         ("pmo:bast:iotoperation", "IoT Operations"),
         ("pmo:menu", "Kembali"),
@@ -113,9 +119,7 @@ def _status_text(readiness: BastReadiness, period: DateRange) -> str:
             count = counts.get(domain, 0)
             if count:
                 lines.append(f"• {count} {labels[domain]} blocker")
-        other_count = sum(
-            count for domain, count in counts.items() if domain not in labels
-        )
+        other_count = sum(count for domain, count in counts.items() if domain not in labels)
         if other_count:
             lines.append(f"• {other_count} blocker lain")
     return "\n".join(lines)
@@ -216,7 +220,10 @@ def _report_type_from_text(lowered: str) -> str | None:
     return None
 
 
-async def reply(operator: WorkflowOperator, text: str) -> str:  # noqa: PLR0911
+async def reply(  # noqa: C901, PLR0911, PLR0912, PLR2004
+    operator: WorkflowOperator,
+    text: str,
+) -> str:
     """Handle only the PMO BAST sub-flow; caller owns the top-level PMO menu."""
     normalized = text.strip()
     lowered = normalized.casefold()
