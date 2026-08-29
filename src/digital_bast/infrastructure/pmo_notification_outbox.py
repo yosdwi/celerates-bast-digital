@@ -6,7 +6,10 @@ import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
-from digital_bast.application.pmo_notifications import NotificationOutboxItem
+from digital_bast.application.pmo_notifications import (
+    NotificationEnqueueCommand,
+    NotificationOutboxItem,
+)
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
@@ -81,25 +84,8 @@ class PostgresPmoNotificationOutbox:
     def _connect(self) -> psycopg.Connection[tuple[object, ...]]:
         return psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds)
 
-    async def enqueue(  # noqa: PLR0913 - explicit durable outbox fields
-        self,
-        *,
-        operator_email: str,
-        scope_key: str,
-        kind: NotificationKind,
-        dedupe_key: str,
-        message: str,
-        available_at: datetime,
-    ) -> bool:
-        return await run_sync(
-            self._enqueue,
-            operator_email,
-            scope_key,
-            kind,
-            dedupe_key,
-            message,
-            available_at,
-        )
+    async def enqueue(self, command: NotificationEnqueueCommand) -> bool:
+        return await run_sync(self._enqueue, command)
 
     async def due(self, now: datetime, limit: int = 100) -> tuple[NotificationOutboxItem, ...]:
         return await run_sync(self._due, now, limit)
@@ -117,15 +103,7 @@ class PostgresPmoNotificationOutbox:
     ) -> None:
         await run_sync(self._mark_failed, item_id, error_code, next_attempt_at, terminal)
 
-    def _enqueue(  # noqa: PLR0913, PLR0917 - persistence boundary fields
-        self,
-        operator_email: str,
-        scope_key: str,
-        kind: NotificationKind,
-        dedupe_key: str,
-        message: str,
-        available_at: datetime,
-    ) -> bool:
+    def _enqueue(self, command: NotificationEnqueueCommand) -> bool:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
@@ -135,7 +113,14 @@ class PostgresPmoNotificationOutbox:
                     ) VALUES (%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (operator_email, dedupe_key) DO NOTHING
                     """,
-                    (operator_email, scope_key, kind, dedupe_key, message, available_at),
+                    (
+                        command.operator_email,
+                        command.scope_key,
+                        command.kind,
+                        command.dedupe_key,
+                        command.message,
+                        command.available_at,
+                    ),
                 )
                 return cursor.rowcount > 0
         except psycopg.Error as error:
