@@ -33,6 +33,17 @@ function isAdmin(session: TalentOpsSession): boolean {
   return ["owner", "admin"].includes(session.user.role.toLowerCase());
 }
 
+function parseReminderDays(value: string): number[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((day) => Number.isInteger(day) && day >= 1 && day <= 31),
+    ),
+  ).sort((a, b) => a - b);
+}
+
 export default function WorkflowSettings({ session }: Props) {
   const admin = isAdmin(session);
   const [operators, setOperators] = useState<WorkflowOperator[]>([]);
@@ -136,7 +147,7 @@ export default function WorkflowSettings({ session }: Props) {
       const { scope_key: scopeKey, ...input } = notifications;
       setNotifications(await saveNotificationSettings(session.csrf_token, input, scopeKey));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Notification settings update failed.");
+      setError(caught instanceof Error ? caught.message : "Reminder policy update failed.");
     } finally {
       setBusy(false);
     }
@@ -148,20 +159,27 @@ export default function WorkflowSettings({ session }: Props) {
 
       <section className="panel settings-card">
         <div className="panel-title-row">
-          <div><h2>Workflow notifications</h2><span>Routing is separate from approval authority</span></div>
+          <div>
+            <h2>WhatsApp reminders</h2>
+            <span>Choose calendar dates separately for Talent and PMO</span>
+          </div>
           {admin && notifications ? <button className="primary-button" type="button" disabled={busy} onClick={() => void saveNotifications()}>Save policy</button> : null}
         </div>
         {notifications ? (
           <div className="workflow-form-grid">
             <label>Scope<input value={notifications.scope_key} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, scope_key: event.target.value })} /></label>
-            <label>Digest hour<input type="number" min={0} max={23} value={notifications.digest_hour} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, digest_hour: Number(event.target.value) })} /></label>
-            <label>Deadline reminder days<input value={notifications.deadline_reminder_days.join(", ")} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, deadline_reminder_days: event.target.value.split(",").map((value) => Number(value.trim())).filter(Number.isFinite) })} /></label>
-            <label className="workflow-toggle"><input type="checkbox" checked={notifications.digest_enabled} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, digest_enabled: event.target.checked })} />Daily digest</label>
+            <label>Reminder hour<input type="number" min={0} max={23} value={notifications.reminder_hour} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, reminder_hour: Number(event.target.value) })} /></label>
+            <label>Talent reminder dates<input value={notifications.talent_reminder_days.join(", ")} placeholder="20, 25, 28" disabled={!admin} onChange={(event) => setNotifications({ ...notifications, talent_reminder_days: parseReminderDays(event.target.value) })} /></label>
+            <label>PMO reminder dates<input value={notifications.pmo_reminder_days.join(", ")} placeholder="27, 29, 30" disabled={!admin} onChange={(event) => setNotifications({ ...notifications, pmo_reminder_days: parseReminderDays(event.target.value) })} /></label>
             <label className="workflow-toggle"><input type="checkbox" checked={notifications.attendance_immediate} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, attendance_immediate: event.target.checked })} />Immediate attendance approval alert</label>
             <label className="workflow-toggle"><input type="checkbox" checked={notifications.rebind_immediate} disabled={!admin} onChange={(event) => setNotifications({ ...notifications, rebind_immediate: event.target.checked })} />Immediate rebind alert</label>
           </div>
-        ) : <div className="empty-state">Notification policy unavailable.</div>}
-        <p>Default behavior is digest/deadline-oriented to avoid one WhatsApp notification per Talent action.</p>
+        ) : <div className="empty-state">Reminder policy unavailable.</div>}
+        <p>
+          Dates are day-of-month values. On a configured date, Talent is reminded only when
+          personal BAST work is still outstanding; PMO is reminded only when its shared queue
+          still needs action. Empty dates mean no scheduled reminder for that audience.
+        </p>
       </section>
 
       {admin ? (
