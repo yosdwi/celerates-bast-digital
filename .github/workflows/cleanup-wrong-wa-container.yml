@@ -1,0 +1,42 @@
+name: Cleanup Accidental WA Container
+
+on:
+  push:
+    branches:
+      - ops/deploy-wa-session-once-20260829
+    paths:
+      - .github/workflows/cleanup-wrong-wa-container.yml
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Remove only accidental Docker wa-session container
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'sh -s' <<'REMOTE'
+          set -eu
+          name=digital-bast-v2-wa-session-1
+          if docker ps -a --format '{{.Names}}' | grep -Fxq "$name"; then
+            docker stop "$name" >/dev/null 2>&1 || true
+            docker rm "$name" >/dev/null
+          fi
+          echo 'container removed; volumes were not removed'
+          docker ps -a --filter "name=$name" --format 'name={{.Names}} status={{.Status}}' || true
+          REMOTE
