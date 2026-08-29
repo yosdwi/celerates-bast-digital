@@ -86,6 +86,7 @@ class PostgresPmoNotificationOutbox:
         kind: NotificationKind,
         dedupe_key: str,
         message: str,
+        available_at: datetime,
     ) -> bool:
         return await run_sync(
             self._enqueue,
@@ -94,6 +95,7 @@ class PostgresPmoNotificationOutbox:
             kind,
             dedupe_key,
             message,
+            available_at,
         )
 
     async def due(self, now: datetime, limit: int = 100) -> tuple[NotificationOutboxItem, ...]:
@@ -119,17 +121,18 @@ class PostgresPmoNotificationOutbox:
         kind: NotificationKind,
         dedupe_key: str,
         message: str,
+        available_at: datetime,
     ) -> bool:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
                     """
                     INSERT INTO workflow_notification_outbox (
-                        operator_email, scope_key, kind, dedupe_key, message
-                    ) VALUES (%s,%s,%s,%s,%s)
+                        operator_email, scope_key, kind, dedupe_key, message, next_attempt_at
+                    ) VALUES (%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (operator_email, dedupe_key) DO NOTHING
                     """,
-                    (operator_email, scope_key, kind, dedupe_key, message),
+                    (operator_email, scope_key, kind, dedupe_key, message, available_at),
                 )
                 return cursor.rowcount > 0
         except psycopg.Error as error:
