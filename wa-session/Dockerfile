@@ -17,7 +17,14 @@ RUN groupadd -g 10001 wasession \
 COPY wa-session/package.json wa-session/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY wa-session/server.js wa-session/mention.js wa-session/greeting.js wa-session/outbound.js ./
+# Keep this list aligned with server.js runtime requires. CI loads server.js
+# from the built image so a missing local module fails before production.
+COPY wa-session/server.js \
+     wa-session/mention.js \
+     wa-session/greeting.js \
+     wa-session/delayed-notice.js \
+     wa-session/interactive.js \
+     wa-session/outbound.js ./
 
 # The Baileys auth session lives on a volume shared with bot-worker (which
 # needs it for evidence-upload/export file hand-off, not for the session
