@@ -31,7 +31,7 @@ def _review(deps: WebDependencies) -> TaskEvidenceReviewService:
 def task_evidence_router(deps: WebDependencies) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX)
 
-    async def list_task_evidence(
+    async def list_task_evidence(  # noqa: PLR0913, PLR0917 - FastAPI parameters
         request: Request,
         year: Annotated[int, Query(ge=2020, le=2100)],
         month: Annotated[int, Query(ge=1, le=12)],
