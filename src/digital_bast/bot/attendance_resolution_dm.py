@@ -17,6 +17,7 @@ from typing import Final
 from digital_bast.bot.attendance_resolution import AbsenceType, ResolutionType
 
 _CLOCK_RE: Final = re.compile(r"(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)")
+_MAX_CLOCK_VALUES: Final = 2
 _ABSENCE_WORDS: Final = {
     "cuti": AbsenceType.CUTI,
     "izin": AbsenceType.IZIN,
@@ -41,7 +42,10 @@ def parse_clock_times(text: str) -> tuple[time, ...]:
     More than two clock values is treated as ambiguous by ``proposals`` rather
     than guessing which pair the talent intended.
     """
-    return tuple(time(int(match.group(1)), int(match.group(2))) for match in _CLOCK_RE.finditer(text))
+    return tuple(
+        time(int(match.group(1)), int(match.group(2)))
+        for match in _CLOCK_RE.finditer(text)
+    )
 
 
 def _absence_type(text: str) -> AbsenceType | None:
@@ -77,9 +81,9 @@ def proposals(text: str) -> tuple[ResolutionProposal, ...]:
         if times:
             return ()
         return (ResolutionProposal(ResolutionType.ABSENCE, absence_type=absence),)
-    if len(times) > 2:
+    if len(times) > _MAX_CLOCK_VALUES:
         return ()
-    if len(times) == 2:
+    if len(times) == _MAX_CLOCK_VALUES:
         check_in, check_out = times
         return (
             ResolutionProposal(
