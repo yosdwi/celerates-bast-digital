@@ -12,7 +12,7 @@ changed here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import final
+from typing import cast, final
 
 import psycopg
 from anyio.to_thread import run_sync
@@ -112,10 +112,10 @@ class AttendanceResolutionDmStateService:
                 if raw is None:
                     return None
                 row = _AttendanceGapRow(
-                    attendance_id=int(raw[0]),
+                    attendance_id=cast("int", raw[0]),
                     employee_id=str(raw[1]),
-                    check_in_missing=bool(raw[2]),
-                    check_out_missing=bool(raw[3]),
+                    check_in_missing=cast("bool", raw[2]),
+                    check_out_missing=cast("bool", raw[3]),
                 )
                 resolution_type = _resolution_type(row)
                 if resolution_type is None:
