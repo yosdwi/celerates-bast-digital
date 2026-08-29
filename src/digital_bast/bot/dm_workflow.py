@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import anyio
+from anyio.to_thread import run_sync
 
 from digital_bast import cli
 from digital_bast.bot.attendance_resolution import SubmitOutcome
@@ -62,6 +63,11 @@ def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
         "Kalau tidak masuk, kirim salah satu: `cuti`, `izin`, atau `sakit`.\n"
         "Setelah itu pengajuan masuk ke PMO untuk approval."
     )
+
+
+def _legacy_dm_reply(text: str, jid: str) -> str:
+    """Run the unchanged synchronous CLI DM entrypoint outside our event loop."""
+    return cli.bot_reply(text, jid=jid, channel="dm")
 
 
 async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
@@ -128,7 +134,7 @@ async def reply(text: str, jid: str) -> str:
     state = create_attendance_resolution_dm_state_service()
     draft = await state.pending(jid)
     if draft is None:
-        return cli.bot_reply(text, jid=jid, channel="dm")
+        return await run_sync(_legacy_dm_reply, text, jid)
 
     activation = create_activation_service()
     bound_employee_id = await activation.resolve(jid)
@@ -136,7 +142,7 @@ async def reply(text: str, jid: str) -> str:
         # Identity changed/reset while a draft existed. Do not submit it under
         # a different identity; clear the stale draft and restore legacy flow.
         await state.clear(jid)
-        return cli.bot_reply(text, jid=jid, channel="dm")
+        return await run_sync(_legacy_dm_reply, text, jid)
 
     if looks_like_resolution_input(text):
         return await _submit_resolution(text, jid, draft)
