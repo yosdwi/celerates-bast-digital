@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import final
+from typing import TYPE_CHECKING, final
 from uuid import UUID
 
 import psycopg
 from anyio.to_thread import run_sync
 
 from digital_bast.infrastructure.errors import InfrastructureError
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +57,10 @@ class AttendanceReviewService:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="attendance_review_evidence") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="attendance_review_evidence",
+            ) from error
         if row is None:
             return None
         return AttendanceReviewEvidence(
