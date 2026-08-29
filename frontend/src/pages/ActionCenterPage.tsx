@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type { AttentionItem, CheckState, CommandCenterResponse, EmployeeRole, TalentOpsSession } from "../api/types";
+import ApprovalQueue from "../components/ApprovalQueue";
 import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
 import { StatusBadge } from "../components/StatusBadge";
@@ -94,7 +95,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
         <div className="page-heading">
           <div>
             <h1>Action Center</h1>
-            <p>{data.period.label} · deterministic readiness queue</p>
+            <p>{data.period.label} · deterministic readiness + shared PMO workflow queue</p>
           </div>
         </div>
 
@@ -107,13 +108,15 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
 
         <div className="ai-insight-strip action-ai-strip">
           <span className="ai-insight-icon"><SparkleIcon /></span>
-          <div><strong>Actions are explicit.</strong> AI may explain or draft, but WhatsApp is sent only after PMO reviews the composer and presses Send.</div>
+          <div><strong>Actions are explicit.</strong> AI may explain or draft, but approval and WhatsApp sending remain explicit deterministic actions.</div>
           <button type="button" onClick={() => setAiOpen(true)}>Ask AI</button>
         </div>
 
+        <ApprovalQueue session={session} />
+
         <section className="panel action-queue-panel">
           <div className="panel-title-row">
-            <div><h2>Action queue</h2><span>{data.attention.length} talents from current readiness rules</span></div>
+            <div><h2>Readiness action queue</h2><span>{data.attention.length} talents from current readiness rules</span></div>
           </div>
           <div className="toolbar action-toolbar">
             <div className="panel-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search talent or NRP" aria-label="Search action queue" /></div>
@@ -163,7 +166,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
         </section>
 
         <div className="action-rule-note">
-          <strong>Queue semantics:</strong> one row per talent needing attention. Readiness remains owned by typed business data; the follow-up audit records communication only, not a second task lifecycle.
+          <strong>Queue semantics:</strong> readiness and approval are separate concerns. Approval changes typed workflow state; follow-up audit records communication only and never becomes a second task lifecycle.
         </div>
       </div>
 
@@ -190,7 +193,7 @@ export default function ActionCenterPage({ session, data, onNavigate, onOpenTale
           <label htmlFor="action-ai-question">Question</label>
           <textarea id="action-ai-question" rows={4} maxLength={1000} value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} />
           <button className="primary-button" type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? "Thinking…" : "Ask"}</button>
-          <div className="ai-safety-note">AI explains current facts. WhatsApp sending is a separate explicit action.</div>
+          <div className="ai-safety-note">AI explains current facts. WhatsApp sending and approval are separate explicit actions.</div>
           {aiUnavailable ? <div className="ai-unavailable">AI is unavailable right now. The deterministic action queue remains valid.</div> : null}
           {aiAnswer ? <div className="ai-answer"><span>Answer</span><p>{aiAnswer}</p></div> : null}
         </form>
