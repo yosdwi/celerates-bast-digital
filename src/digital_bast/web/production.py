@@ -3,6 +3,7 @@ from datetime import date
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
+from digital_bast.application.attendance_review import AttendanceReviewService
 from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
@@ -160,6 +161,7 @@ def production_dependencies() -> WebDependencies:
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
+    attendance_review: AttendanceReviewService | None = None
     workflow_control: WorkflowControlService | None = None
     identity_rebinds: IdentityRebindService | None = None
     bast_workflow: BastWorkflowService | None = None
@@ -177,6 +179,7 @@ def production_dependencies() -> WebDependencies:
         )
         source_sync_state = PostgresSourceSyncStateStore(app_dsn)
         attendance_resolutions = AttendanceResolutionService(app_dsn)
+        attendance_review = AttendanceReviewService(app_dsn)
         workflow_control = WorkflowControlService(app_dsn)
         identity_rebinds = IdentityRebindService(app_dsn)
         talentops = TalentOpsService(
@@ -222,6 +225,7 @@ def production_dependencies() -> WebDependencies:
         talentops=talentops,
         talentops_ai=talentops_ai,
         attendance_resolutions=attendance_resolutions,
+        attendance_review=attendance_review,
         workflow_control=workflow_control,
         identity_rebinds=identity_rebinds,
         bast_workflow=bast_workflow,
