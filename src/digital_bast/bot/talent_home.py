@@ -12,18 +12,19 @@ from typing import TYPE_CHECKING, Final
 
 from digital_bast.bot.attendance_resolution import ResolutionStatus, ResolutionType
 from digital_bast.bot.interactive import interactive
-from digital_bast.domain.completion import CheckState, DateRange, MONTH_NAMES, format_day
+from digital_bast.domain.completion import MONTH_NAMES, CheckState, DateRange, format_day
 from digital_bast.domain.time import JAKARTA
 from digital_bast.operations import completion_status, create_attendance_resolution_service
 
 if TYPE_CHECKING:
     from digital_bast.bot.attendance_resolution import AttendanceResolution
-    from digital_bast.domain.completion import EmployeeCompletion
+    from digital_bast.domain.completion import CompletionReport, EmployeeCompletion
 
 _STATUS_WORDS: Final = frozenset({"status", "status saya", "lihat status", "cek status"})
 _REQUEST_WORDS: Final = frozenset(
     {"request", "requests", "request saya", "pengajuan", "pengajuan saya"}
 )
+_REQUEST_HISTORY_LIMIT: Final = 10
 
 
 def looks_like_status(text: str) -> bool:
@@ -51,9 +52,8 @@ def _state_icon(state: CheckState) -> str:
     return "❌"
 
 
-def _mine(report: object, employee_id: str) -> EmployeeCompletion | None:
-    employees = getattr(report, "employees", ())
-    return next((item for item in employees if item.employee_id == employee_id), None)
+def _mine(report: CompletionReport, employee_id: str) -> EmployeeCompletion | None:
+    return next((item for item in report.employees if item.employee_id == employee_id), None)
 
 
 def _time_label(value: time | None) -> str:
@@ -180,7 +180,7 @@ async def requests(employee_id: str) -> str:
         ResolutionStatus.REJECTED: "Rejected",
     }
     lines = [f"*Request Saya — {_period_label(period)}*", ""]
-    for request in items[:10]:
+    for request in items[:_REQUEST_HISTORY_LIMIT]:
         lines.append(
             f"{icons[request.status]} {format_day(request.work_date)} — "
             f"{_resolution_description(request)}"
@@ -189,8 +189,9 @@ async def requests(employee_id: str) -> str:
         if request.status is ResolutionStatus.REJECTED and request.rejection_reason:
             lines.append(f"   Alasan: {request.rejection_reason}")
         lines.append("")
-    if len(items) > 10:
-        lines.append(f"+ {len(items) - 10} request lain di TalentOps Web")
+    if len(items) > _REQUEST_HISTORY_LIMIT:
+        remaining = len(items) - _REQUEST_HISTORY_LIMIT
+        lines.append(f"+ {remaining} request lain di TalentOps Web")
 
     return interactive(
         "\n".join(lines).strip(),
