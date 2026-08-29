@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import anyio
 import pytest
 
 from digital_bast.bot import dm_workflow
@@ -108,6 +109,28 @@ async def test_reply_without_resolution_draft_preserves_legacy_dm(
     result = await dm_workflow.reply("tasklist", _JID)
 
     assert result == f"legacy:dm:{_JID}:tasklist"
+
+
+@pytest.mark.asyncio
+async def test_legacy_dm_with_its_own_event_loop_runs_outside_wrapper_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _FakeState(None)
+    monkeypatch.setattr(
+        dm_workflow, "create_attendance_resolution_dm_state_service", lambda: state
+    )
+
+    def legacy_reply(text: str, *, jid: str, channel: str) -> str:
+        async def inner() -> str:
+            return f"legacy-loop:{channel}:{jid}:{text}"
+
+        return anyio.run(inner)
+
+    monkeypatch.setattr(dm_workflow.cli, "bot_reply", legacy_reply)
+
+    result = await dm_workflow.reply("halo", _JID)
+
+    assert result == f"legacy-loop:dm:{_JID}:halo"
 
 
 @pytest.mark.asyncio
