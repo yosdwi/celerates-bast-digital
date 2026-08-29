@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { safeEqual, cliArgsFor } = require("./server");
+const { safeEqual, cliArgsFor, executionFor } = require("./server");
 
 test("safeEqual only accepts equal non-empty tokens", () => {
   assert.equal(safeEqual("secret-value", "secret-value"), true);
@@ -44,6 +44,58 @@ test("cliArgsFor maps an evidence upload", () => {
       "bukti kerja",
     ],
   );
+});
+
+test("executionFor keeps group replies on the legacy digital-bast CLI", () => {
+  const execution = executionFor(["bot-reply", "--text", "status hari ini"]);
+  assert.equal(execution.command, "digital-bast");
+  assert.deepEqual(execution.args, ["bot-reply", "--text", "status hari ini"]);
+});
+
+test("executionFor routes DM text through the Python DM workflow wrapper", () => {
+  const execution = executionFor([
+    "bot-reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--channel",
+    "dm",
+  ]);
+  assert.equal(execution.command, "python");
+  assert.deepEqual(execution.args, [
+    "-m",
+    "digital_bast.bot.dm_workflow",
+    "reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
+  ]);
+});
+
+test("executionFor routes evidence through the Python DM workflow wrapper", () => {
+  const execution = executionFor([
+    "bot-evidence",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--file",
+    "/data/evidence-uploads/1-a.jpg",
+    "--caption",
+    "bukti kerja",
+  ]);
+  assert.equal(execution.command, "python");
+  assert.deepEqual(execution.args, [
+    "-m",
+    "digital_bast.bot.dm_workflow",
+    "evidence",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--file",
+    "/data/evidence-uploads/1-a.jpg",
+    "--caption",
+    "bukti kerja",
+  ]);
 });
 
 test("cliArgsFor rejects malformed or unknown payloads", () => {
