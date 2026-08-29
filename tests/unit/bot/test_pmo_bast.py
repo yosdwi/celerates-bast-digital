@@ -72,15 +72,39 @@ def _readiness(*, ready: bool) -> BastReadiness:
 class Workflow:
     def __init__(self, readiness: BastReadiness) -> None:
         self.value = readiness
-        self.audit: list[dict[str, Any]] = []
+        self.audit: list[dict[str, object]] = []
 
     async def readiness(self, period: DateRange, report_type: str) -> BastReadiness:
         assert period == _FIXED_PERIOD
         assert report_type == "developer"
         return self.value
 
-    async def record_generation(self, **kwargs: Any) -> UUID:
-        self.audit.append(kwargs)
+    async def record_generation(  # noqa: PLR0913
+        self,
+        *,
+        report_type: str,
+        period: DateRange,
+        mode: BastGenerationMode,
+        forced: bool,
+        force_reason: str | None,
+        readiness: BastReadiness,
+        generated_by: str,
+        artifact_name: str | None,
+        fingerprint: str | None,
+    ) -> UUID:
+        self.audit.append(
+            {
+                "report_type": report_type,
+                "period": period,
+                "mode": mode,
+                "forced": forced,
+                "force_reason": force_reason,
+                "readiness": readiness,
+                "generated_by": generated_by,
+                "artifact_name": artifact_name,
+                "fingerprint": fingerprint,
+            }
+        )
         return UUID("11111111-1111-4111-8111-111111111111")
 
 
@@ -137,7 +161,7 @@ async def test_blocked_final_does_not_generate_without_force(
     async def generate(_period: DateRange, _report_type: str) -> tuple[Path, object]:
         nonlocal calls
         calls += 1
-        raise AssertionError("blocked Final must not generate")
+        return Path("unused.pdf"), SimpleNamespace(fingerprint="unused")
 
     monkeypatch.setattr(pmo_bast, "_period_now", lambda: _FIXED_PERIOD)
     monkeypatch.setattr(pmo_bast, "_bast_service", lambda: workflow)
