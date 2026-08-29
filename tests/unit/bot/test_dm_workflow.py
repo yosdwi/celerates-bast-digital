@@ -21,12 +21,27 @@ class _FakeWorkflowControl:
         assert wa_jid == _JID
 
 
+class _FakeRebindState:
+    async def staged(self, wa_jid: str) -> None:
+        assert wa_jid == _JID
+
+
 @pytest.fixture(autouse=True)
 def _isolate_pmo_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         dm_workflow,
         "create_workflow_control_service",
         _FakeWorkflowControl,
+    )
+    monkeypatch.setattr(
+        dm_workflow,
+        "create_activation_service",
+        lambda: _FakeActivation(None),
+    )
+    monkeypatch.setattr(
+        dm_workflow,
+        "create_identity_rebind_service",
+        _FakeRebindState,
     )
 
 
@@ -71,6 +86,9 @@ class _FakeActivation:
     async def resolve(self, wa_jid: str) -> str | None:
         assert wa_jid == _JID
         return self.employee_id
+
+    async def pending_claim(self, wa_jid: str) -> None:
+        assert wa_jid == _JID
 
 
 class _FakeResolutionService:
