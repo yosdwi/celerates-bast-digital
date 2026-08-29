@@ -7,6 +7,7 @@ from digital_bast.application.attendance_review import AttendanceReviewService
 from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
+from digital_bast.application.talentops_followups import TalentOpsFollowUpService
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.rebind import IdentityRebindService
@@ -25,7 +26,14 @@ from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSourc
 from digital_bast.infrastructure.redis_url import parse_redis_url
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
-from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
+from digital_bast.infrastructure.talentops_followup_store import (
+    PostgresTalentOpsFollowUpRepository,
+    PostgresWhatsAppIdentityResolver,
+)
+from digital_bast.infrastructure.whatsapp_outbound import (
+    BotBridgeWhatsAppOutboundGateway,
+    UnavailableWhatsAppOutboundGateway,
+)
 from digital_bast.web.contracts import (
     AttendanceRow,
     AuthenticatedUser,
@@ -160,6 +168,7 @@ def production_dependencies() -> WebDependencies:
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
+    talentops_followups: TalentOpsFollowUpService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
     attendance_review: AttendanceReviewService | None = None
     workflow_control: WorkflowControlService | None = None
@@ -217,6 +226,20 @@ def production_dependencies() -> WebDependencies:
                 )
             )
 
+        # Follow-up is a production workflow, not just a Web route. Resolve the
+        # talent's durable WA identity and send through the same bot bridge used
+        # for status. When the bridge is intentionally unconfigured, keep the
+        # service available so the API returns bridge_unavailable deterministically.
+        outbound = bot_bridge_status or UnavailableWhatsAppOutboundGateway()
+        talentops_followups = TalentOpsFollowUpService(
+            talentops,
+            employees,
+            PostgresWhatsAppIdentityResolver(app_dsn),
+            outbound,
+            PostgresTalentOpsFollowUpRepository(app_dsn),
+            ai=talentops_ai,
+        )
+
     return WebDependencies(
         authenticator=authenticator,
         sessions=sessions,
@@ -224,6 +247,7 @@ def production_dependencies() -> WebDependencies:
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
         talentops_ai=talentops_ai,
+        talentops_followups=talentops_followups,
         attendance_resolutions=attendance_resolutions,
         attendance_review=attendance_review,
         workflow_control=workflow_control,
