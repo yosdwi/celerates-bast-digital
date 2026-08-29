@@ -10,12 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Protocol, final
-from uuid import UUID
 
 from digital_bast.application.workflow_control import WorkflowOperator, WorkflowRole
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from digital_bast.application.talentops_followups import WhatsAppSendReceipt
     from digital_bast.application.workflow_control import NotificationSettings
     from digital_bast.bot.attendance_resolution import AttendanceResolution
@@ -70,7 +71,7 @@ class RebindQueueSource(Protocol):
 
 
 class NotificationOutbox(Protocol):
-    async def enqueue(
+    async def enqueue(  # noqa: PLR0913 - explicit durable outbox fields
         self,
         *,
         operator_email: str,
@@ -242,7 +243,11 @@ class PmoNotificationService:
         dead = 0
         for item in await self._outbox.due(now):
             operator = await self._control.operator(item.operator_email)
-            if not self._can_receive(item, operator):
+            if (
+                operator is None
+                or operator.whatsapp_jid is None
+                or not self._can_receive(item, operator)
+            ):
                 await self._outbox.mark_failed(
                     item.id,
                     error_code="target_unavailable",
@@ -251,7 +256,6 @@ class PmoNotificationService:
                 )
                 dead += 1
                 continue
-            assert operator is not None and operator.whatsapp_jid is not None
             receipt = await self._outbound.send(
                 operator.whatsapp_jid,
                 item.message,
