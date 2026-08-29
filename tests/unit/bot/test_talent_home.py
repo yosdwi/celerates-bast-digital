@@ -14,6 +14,7 @@ from digital_bast.bot.attendance_resolution import (
     ResolutionType,
 )
 from digital_bast.domain.completion import CheckResult, CheckState, DateRange, EmployeeCompletion
+from digital_bast.domain.time import JAKARTA
 
 _EMPLOYEE_ID = "MTG-TF/TEST1"
 _PERIOD = DateRange(date(2026, 8, 1), date(2026, 8, 29))
@@ -50,7 +51,11 @@ def _employee(*, complete: bool = False) -> EmployeeCompletion:
     )
 
 
-def _request(status: ResolutionStatus, *, rejected_reason: str | None = None) -> AttendanceResolution:
+def _request(
+    status: ResolutionStatus,
+    *,
+    rejected_reason: str | None = None,
+) -> AttendanceResolution:
     return AttendanceResolution(
         id=UUID("11111111-1111-4111-8111-111111111111"),
         attendance_id=1,
@@ -65,9 +70,9 @@ def _request(status: ResolutionStatus, *, rejected_reason: str | None = None) ->
         status=status,
         evidence_id=UUID("22222222-2222-4222-8222-222222222222"),
         requested_by_jid="628123@s.whatsapp.net",
-        submitted_at=datetime(2026, 8, 27, 18, 0),
+        submitted_at=datetime(2026, 8, 27, 18, 0, tzinfo=JAKARTA),
         reviewed_by="pmo@example.com" if status is not ResolutionStatus.PENDING else None,
-        reviewed_at=datetime(2026, 8, 28, 14, 22)
+        reviewed_at=datetime(2026, 8, 28, 14, 22, tzinfo=JAKARTA)
         if status is not ResolutionStatus.PENDING
         else None,
         rejection_reason=rejected_reason,
