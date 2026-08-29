@@ -37,6 +37,18 @@ class _FakeState:
         return self.draft
 
 
+class _FakeStateMarkReady(_FakeState):
+    def __init__(self, ready_draft: AttendanceResolutionDraft) -> None:
+        super().__init__(None)
+        self.ready_draft = ready_draft
+
+    async def mark_evidence_ready(
+        self, wa_jid: str, employee_id: str, attendance_key: str
+    ) -> AttendanceResolutionDraft:
+        self.marked = (wa_jid, employee_id, attendance_key)
+        return self.ready_draft
+
+
 class _FakeActivation:
     def __init__(self, employee_id: str | None = _EMPLOYEE_ID) -> None:
         self.employee_id = employee_id
@@ -190,8 +202,7 @@ async def test_media_is_not_rerouted_while_resolution_draft_is_active(
 async def test_successful_legacy_attendance_upload_opens_resolution_draft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    draft = _draft(ResolutionType.MISSING_CLOCK_OUT)
-    state = _FakeState(None)
+    state = _FakeStateMarkReady(_draft(ResolutionType.MISSING_CLOCK_OUT))
     attendance = _FakeAttendanceEvidence(_ATTENDANCE_KEY)
     monkeypatch.setattr(
         dm_workflow, "create_attendance_resolution_dm_state_service", lambda: state
@@ -207,13 +218,6 @@ async def test_successful_legacy_attendance_upload_opens_resolution_draft(
         assert caption == "bukti"
         return "✅ Evidence tersimpan."
 
-    async def mark_ready(
-        wa_jid: str, employee_id: str, attendance_key: str
-    ) -> AttendanceResolutionDraft:
-        state.marked = (wa_jid, employee_id, attendance_key)
-        return draft
-
-    state.mark_evidence_ready = mark_ready  # type: ignore[method-assign]
     monkeypatch.setattr(dm_workflow.cli, "bot_evidence", legacy_evidence)
 
     result = await dm_workflow.evidence(_JID, Path("evidence.jpg"), "bukti")
