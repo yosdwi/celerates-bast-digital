@@ -109,7 +109,14 @@ class AttendanceEvidenceService:
                     SELECT a.record_key, a.work_date, COUNT(ae.id) AS evidence_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
-                    WHERE a.employee_id = %s AND a.work_date = ANY(%s)
+                    WHERE a.employee_id = %s
+                      AND a.work_date = ANY(%s)
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM attendance_resolution_requests r
+                          WHERE r.attendance_id = a.id
+                            AND r.status = 'pending'
+                      )
                     GROUP BY a.id
                     ORDER BY a.work_date
                     """,
