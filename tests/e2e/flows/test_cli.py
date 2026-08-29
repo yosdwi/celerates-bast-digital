@@ -40,7 +40,7 @@ def test_list_reports_deployable_schedule_contract(capsys: CaptureFixture[str]) 
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert len(payload) == 5
+    assert len(payload) == 6
     assert all(item["timezone"] == "Asia/Jakarta" for item in payload)
     assert all(item["concurrency_limit"] == 1 for item in payload)
 
