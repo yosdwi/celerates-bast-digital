@@ -95,7 +95,7 @@ jobs:
       - name: Verify wa-session runtime package
         run: |
           test "$(docker image inspect digital-bast-wa-session:ci --format '{{.Config.User}}')" = "10001:10001"
-          docker run --rm --entrypoint node digital-bast-wa-session:ci -e "require('/opt/wa-session/outbound.js')"
+          docker run --rm --entrypoint node digital-bast-wa-session:ci -e "require('/opt/wa-session/outbound.js'); require('/opt/wa-session/delayed-notice.js'); require('/opt/wa-session/interactive.js')"
       - name: Build bot-worker image
         run: docker build -f bot-worker/Dockerfile --build-arg APP_IMAGE=digital-bast:ci -t digital-bast-bot-worker:ci .
       - name: Verify bot-worker runtime package
