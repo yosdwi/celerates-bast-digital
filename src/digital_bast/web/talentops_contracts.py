@@ -226,6 +226,106 @@ class AttendanceResolutionDecisionResponse(_FrozenModel):
     status: Literal["approved", "rejected"]
 
 
+class IdentityRebindResponse(_FrozenModel):
+    id: UUID
+    employee_id: str
+    nrp: str
+    full_name: str
+    old_wa_jid: str
+    new_wa_jid: str
+    scope_key: str
+    status: Literal["pending", "approved", "rejected"]
+    requested_at: datetime
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    rejection_reason: str | None
+
+
+class IdentityRebindRejectInput(_FrozenModel):
+    reason: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+    ]
+
+
+class IdentityRebindDecisionResponse(_FrozenModel):
+    status: Literal["approved", "rejected"]
+
+
+class WorkflowOperatorResponse(_FrozenModel):
+    email: str
+    display_name: str
+    role: Literal["admin", "pmo"]
+    scope_key: str
+    active: bool
+    can_approve_attendance: bool
+    can_approve_rebind: bool
+    can_generate_bast: bool
+    whatsapp_notify: bool
+    whatsapp_jid: str | None
+
+
+class WorkflowOperatorUpsertInput(_FrozenModel):
+    display_name: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=120),
+    ]
+    scope_key: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=120),
+    ] = "default"
+    active: bool = True
+    can_approve_attendance: bool = True
+    can_approve_rebind: bool = True
+    can_generate_bast: bool = True
+    whatsapp_notify: bool = False
+
+
+class WhatsAppInviteResponse(_FrozenModel):
+    operator_email: str
+    token: str
+    expires_at: datetime
+
+
+class WhatsAppUnlinkResponse(_FrozenModel):
+    removed: bool
+
+
+class NotificationSettingsResponse(_FrozenModel):
+    scope_key: str
+    attendance_immediate: bool
+    rebind_immediate: bool
+    digest_enabled: bool
+    digest_hour: int
+    deadline_reminder_days: tuple[int, ...]
+
+
+class NotificationSettingsInput(_FrozenModel):
+    attendance_immediate: bool = False
+    rebind_immediate: bool = False
+    digest_enabled: bool = True
+    digest_hour: int = Field(default=9, ge=0, le=23)
+    deadline_reminder_days: tuple[int, ...] = (7, 3, 1)
+
+
+class BastBlockerResponse(_FrozenModel):
+    employee_id: str
+    nrp: str
+    name: str
+    domain: str
+    state: str
+    issues: tuple[str, ...]
+
+
+class BastReadinessResponse(_FrozenModel):
+    report_type: Literal["developer", "iotoperation"]
+    role: EmployeeRole
+    total_talents: int
+    ready_talents: int
+    ready: bool
+    blockers: tuple[BastBlockerResponse, ...]
+
+
 class AiCommandCenterInput(_FrozenModel):
     year: int | None = Field(default=None, ge=2020, le=2100)
     month: int | None = Field(default=None, ge=1, le=12)
