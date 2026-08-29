@@ -14,6 +14,7 @@ from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
 from digital_bast.bot.pmo_state import PmoDmStateService
 from digital_bast.bot.rebind import IdentityRebindService
+from digital_bast.bot.rebind_onboarding import RebindOnboardingService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.completion_source import CompletionSource
@@ -115,6 +116,10 @@ def create_workflow_control_service() -> WorkflowControlService:
 
 def create_identity_rebind_service() -> IdentityRebindService:
     return IdentityRebindService(_application_dsn())
+
+
+def create_rebind_onboarding_service() -> RebindOnboardingService:
+    return RebindOnboardingService(_application_dsn())
 
 
 def create_pmo_dm_state_service() -> PmoDmStateService:
