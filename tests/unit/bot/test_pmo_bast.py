@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,11 +22,7 @@ from digital_bast.bot import pmo_bast
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.models import EmployeeRole
 
-_PERIOD = DateRange.fromisoformat if False else DateRange  # keep import runtime explicit
-_FIXED_PERIOD = DateRange(
-    __import__("datetime").date(2026, 8, 1),
-    __import__("datetime").date(2026, 8, 31),
-)
+_FIXED_PERIOD = DateRange(date(2026, 8, 1), date(2026, 8, 31))
 
 
 def _operator(*, can_generate: bool = True) -> WorkflowOperator:
@@ -165,12 +162,7 @@ async def test_force_confirm_generates_to_dm_and_records_forced_audit(
     async def generate(period: DateRange, report_type: str) -> tuple[Path, object]:
         assert period == _FIXED_PERIOD
         assert report_type == "developer"
-        report = SimpleNamespace(
-            report_type="developer",
-            year=2026,
-            month=8,
-            fingerprint="fingerprint-1",
-        )
+        report = SimpleNamespace(fingerprint="fingerprint-1")
         return artifact, report
 
     monkeypatch.setattr(pmo_bast, "_period_now", lambda: _FIXED_PERIOD)
