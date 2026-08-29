@@ -24,7 +24,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
-      - name: Trace WhatsApp process owner read-only
+      - name: Locate WhatsApp runtime read-only
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
@@ -32,30 +32,30 @@ jobs:
           set -euo pipefail
           ssh "$DEPLOY_USER@$DEPLOY_HOST" 'sh -s' <<'REMOTE'
           set +e
-          echo '=== node processes with unit/cgroup ==='
-          ps -eo unit,pid,ppid,user,lstart,cmd | grep -E 'node (docker/main\.js|server\.js)' | grep -v grep || true
-          for pid in $(ps -eo pid,cmd | awk '/node docker\/main\.js/ && !/awk/ {print $1}'); do
-            echo "=== PID $pid ==="
-            echo '-- cwd --'
-            readlink -f "/proc/$pid/cwd" || true
-            echo '-- cmdline --'
-            tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null; echo
-            echo '-- cgroup --'
-            cat "/proc/$pid/cgroup" 2>/dev/null || true
-            echo '-- parent tree --'
-            pstree -sp "$pid" 2>/dev/null || true
-            echo '-- systemctl status PID --'
-            systemctl status "$pid" --no-pager 2>&1 | head -n 35 || true
+          echo '=== docker containers identity ==='
+          docker ps -a --no-trunc --format 'id={{.ID}} name={{.Names}} image={{.Image}} status={{.Status}} ports={{.Ports}}' 2>/dev/null || true
+          echo '=== all host processes plausibly related ==='
+          ps -eo unit,pid,ppid,user,lstart,cmd | grep -Ei 'whatsapp|baileys|bridge|session|celerates|bast|node|npm|pnpm|bun|pm2' | grep -v grep || true
+          echo '=== system unit files under /etc/systemd/system ==='
+          find /etc/systemd/system -maxdepth 3 -type f -o -type l 2>/dev/null | sort | while read -r file; do
+            if grep -Eiq 'whatsapp|baileys|bridge|session|celerates|bast|node|npm|pnpm|bun|pm2' "$file" 2>/dev/null; then
+              echo "--- $file ---"
+              sed -n '1,160p' "$file" 2>/dev/null
+            fi
           done
-          echo '=== running services with MainPID ==='
-          systemctl list-units --type=service --state=running --no-legend --no-pager | awk '{print $1}' | while read -r unit; do
-            mainpid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null)
-            [ "$mainpid" != '0' ] || continue
-            cmd=$(tr '\0' ' ' < "/proc/$mainpid/cmdline" 2>/dev/null)
-            case "$cmd" in
-              *node*|*npm*|*pm2*) printf '%s pid=%s cmd=%s\n' "$unit" "$mainpid" "$cmd" ;;
-            esac
+          echo '=== debian user systemd files ==='
+          for base in /home/debian/.config/systemd/user /home/debian/.local/share/systemd/user; do
+            [ -d "$base" ] || continue
+            find "$base" -maxdepth 3 -type f -o -type l 2>/dev/null | sort | while read -r file; do
+              echo "--- $file ---"
+              sed -n '1,160p' "$file" 2>/dev/null
+            done
           done
+          echo '=== debian user running units ==='
+          uid=$(id -u debian 2>/dev/null)
+          if [ -n "$uid" ] && [ -S "/run/user/$uid/bus" ]; then
+            sudo -u debian XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" systemctl --user list-units --type=service --all --no-pager 2>/dev/null || true
+          fi
           echo '=== erroneous docker wa container ==='
           docker ps -a --filter 'name=digital-bast-v2-wa-session-1' --format 'name={{.Names}} status={{.Status}} image={{.Image}}' 2>/dev/null || true
           REMOTE
