@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, final
+from typing import final
 from uuid import UUID
 
 import psycopg
@@ -18,9 +18,6 @@ from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
 from digital_bast.infrastructure.errors import InfrastructureError
-
-if TYPE_CHECKING:
-    from datetime import date
 
 
 class RebindStatus(StrEnum):
@@ -250,7 +247,10 @@ class IdentityRebindService:
                 _ = cursor.execute("SELECT 1 FROM wa_identity WHERE wa_jid = %s", (new_wa_jid,))
                 if cursor.fetchone() is not None:
                     return RebindRequestResult(RebindRequestOutcome.NEW_NUMBER_ALREADY_BOUND)
-                _ = cursor.execute("SELECT 1 FROM wa_operator_identity WHERE wa_jid = %s", (new_wa_jid,))
+                _ = cursor.execute(
+                    "SELECT 1 FROM wa_operator_identity WHERE wa_jid = %s",
+                    (new_wa_jid,),
+                )
                 if cursor.fetchone() is not None:
                     return RebindRequestResult(RebindRequestOutcome.NEW_NUMBER_ALREADY_BOUND)
                 try:
