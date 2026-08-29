@@ -75,56 +75,31 @@ test("fallbackText lists every action so it stays usable without tappable button
   assert.match(text, /Task & Evidence: tasklist/);
 });
 
-test("sendInteractiveReply relays a native-flow message and never falls back on success", async () => {
-  const relayed = [];
+// Native-flow sending is disabled (see the comment above sendInteractiveReply
+// in interactive.js): three live tests all showed relayMessage() resolving
+// with no error while the message never reached the recipient at all, which
+// meant real talent replies with buttons were being silently dropped in
+// production. sendInteractiveReply now always uses the plain-text fallback,
+// which every one of those same live tests confirmed actually delivers.
+test("sendInteractiveReply always sends the text fallback (native-flow is disabled)", async () => {
+  const sent = [];
+  const relayCalls = [];
   const sock = {
     user: { id: "62881080735871:2@s.whatsapp.net" },
     relayMessage: async (jid, message, options) => {
-      relayed.push({ jid, message, options });
+      relayCalls.push({ jid, message, options });
     },
-    sendMessage: async () => {
-      throw new Error("fallback should not be used when relayMessage succeeds");
+    sendMessage: async (jid, content, options) => {
+      sent.push({ jid, content, options });
     },
   };
 
   await sendInteractiveReply(sock, "628123@s.whatsapp.net", INCOMING_MESSAGE, PAYLOAD);
 
-  assert.equal(relayed.length, 1);
-  const { jid, message } = relayed[0];
-  assert.equal(jid, "628123@s.whatsapp.net");
-  const nativeFlow = message.interactiveMessage.nativeFlowMessage;
-  assert.equal(nativeFlow.buttons.length, 3);
-  assert.deepEqual(JSON.parse(nativeFlow.buttons[0].buttonParamsJson), {
-    display_text: "Status Saya",
-    id: "status",
-  });
-  assert.equal(nativeFlow.messageVersion, 1);
-  // Insurance against WhatsApp silently not rendering the buttons at all.
-  assert.match(message.interactiveMessage.body.text, /Atau ketik: Status Saya, Attendance/);
-});
-
-test("sendInteractiveReply falls back to plain text if the native-flow send throws", async () => {
-  const sent = [];
-  const sock = {
-    user: { id: "62881080735871:2@s.whatsapp.net" },
-    relayMessage: async () => {
-      throw new Error("WhatsApp rejected it");
-    },
-    sendMessage: async (jid, content) => {
-      sent.push({ jid, content });
-    },
-  };
-  const logs = [];
-
-  await sendInteractiveReply(
-    sock,
-    "628123@s.whatsapp.net",
-    INCOMING_MESSAGE,
-    PAYLOAD,
-    (line) => logs.push(line),
-  );
-
+  assert.equal(relayCalls.length, 0);
   assert.equal(sent.length, 1);
+  assert.equal(sent[0].jid, "628123@s.whatsapp.net");
   assert.match(sent[0].content.text, /Pilihan:/);
-  assert.equal(logs.some((line) => line.includes("text fallback")), true);
+  assert.match(sent[0].content.text, /Status Saya: status/);
+  assert.deepEqual(sent[0].options, { quoted: INCOMING_MESSAGE });
 });

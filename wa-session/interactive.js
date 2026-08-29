@@ -114,20 +114,19 @@ function nativeFlowContent(payload) {
   };
 }
 
+// Disabled 2026-08-29: three live sends (two JIDs, with and without
+// messageVersion set) all returned success from relayMessage() with zero
+// exception and zero WhatsApp-side error/receipt, yet nothing ever reached
+// the recipient -- not the buttons, not even plain text. Because relayMessage
+// never throws in this failure mode, the try/catch fallback below never ran,
+// so every real talent interaction that hit this path (any bot reply with
+// buttons, e.g. the main menu) was silently dropped in production -- strictly
+// worse than the original bug (legacy buttonsMessage silently stripped by
+// WhatsApp but the surrounding text still delivered). Until there's a
+// confirmed-working way to send native-flow interactive messages from this
+// account, always use the text fallback; nativeFlowContent is kept for the
+// next investigation rather than deleted.
 async function sendInteractiveReply(sock, jid, message, payload, log = () => {}) {
-  if (payload.actions.length > 0) {
-    try {
-      const { generateWAMessageFromContent } = require("@whiskeysockets/baileys");
-      const full = generateWAMessageFromContent(jid, nativeFlowContent(payload), {
-        userJid: sock.user?.id,
-        quoted: message,
-      });
-      await sock.relayMessage(jid, full.message, { messageId: full.key.id });
-      return;
-    } catch (error) {
-      log(`native-flow interactive reply failed; using text fallback: ${error}`);
-    }
-  }
   await sock.sendMessage(jid, { text: fallbackText(payload) }, { quoted: message });
 }
 
