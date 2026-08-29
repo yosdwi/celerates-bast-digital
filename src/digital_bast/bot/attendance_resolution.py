@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, time
 from enum import StrEnum
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, cast, final
 from uuid import UUID
 
 import psycopg
@@ -468,8 +468,8 @@ class AttendanceResolutionService:
                     attendance_id=0,
                     employee_id="",
                     work_date=date.min,
-                    check_in=row[2],
-                    check_out=row[3],
+                    check_in=cast(time | None, row[2]),
+                    check_out=cast(time | None, row[3]),
                 )
                 if approve and not _eligible(source, ResolutionType(str(row[1]))):
                     return DecisionResult(DecisionOutcome.SOURCE_CHANGED)
