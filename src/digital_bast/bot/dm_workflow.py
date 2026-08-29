@@ -29,13 +29,10 @@ from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_inpu
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
-from digital_bast.bot.talent_home import (
-    home as talent_home,
-    looks_like_requests,
-    looks_like_status,
-    requests as talent_requests,
-    status as talent_status,
-)
+from digital_bast.bot.talent_home import home as talent_home
+from digital_bast.bot.talent_home import looks_like_requests, looks_like_status
+from digital_bast.bot.talent_home import requests as talent_requests
+from digital_bast.bot.talent_home import status as talent_status
 from digital_bast.bot.whatsapp import GROUP_ONLY_DM_INTENTS, parse_command, strip_mentions
 from digital_bast.domain.completion import DateRange, format_day
 from digital_bast.domain.time import JAKARTA
