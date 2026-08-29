@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast, final
-from uuid import UUID
 
 import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
-from digital_bast.application.pmo_notifications import (
-    NotificationKind,
-    NotificationOutboxItem,
-    NotificationStatus,
-)
+from digital_bast.application.pmo_notifications import NotificationOutboxItem
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from uuid import UUID
+
+    from digital_bast.application.pmo_notifications import NotificationKind, NotificationStatus
 
 
 class _OutboxRow:
@@ -31,7 +29,7 @@ class _OutboxRow:
         "status",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - mirrors selected database columns
         self,
         outbox_id: UUID,
         operator_email: str,
@@ -70,7 +68,12 @@ def _item(row: _OutboxRow) -> NotificationOutboxItem:
 
 @final
 class PostgresPmoNotificationOutbox:
-    def __init__(self, dsn: str, scope_key: str = "default", connect_timeout_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        scope_key: str = "default",
+        connect_timeout_seconds: int = 5,
+    ) -> None:
         self._dsn = dsn
         self._scope_key = scope_key
         self._connect_timeout_seconds = connect_timeout_seconds
@@ -78,7 +81,7 @@ class PostgresPmoNotificationOutbox:
     def _connect(self) -> psycopg.Connection[tuple[object, ...]]:
         return psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds)
 
-    async def enqueue(
+    async def enqueue(  # noqa: PLR0913 - explicit durable outbox fields
         self,
         *,
         operator_email: str,
@@ -114,7 +117,7 @@ class PostgresPmoNotificationOutbox:
     ) -> None:
         await run_sync(self._mark_failed, item_id, error_code, next_attempt_at, terminal)
 
-    def _enqueue(
+    def _enqueue(  # noqa: PLR0913, PLR0917 - persistence boundary fields
         self,
         operator_email: str,
         scope_key: str,
