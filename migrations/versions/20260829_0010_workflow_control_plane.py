@@ -57,6 +57,14 @@ def upgrade() -> None:
             linked_at       timestamptz NOT NULL DEFAULT now()
         );
 
+        CREATE TABLE pmo_conversations (
+            wa_jid              text PRIMARY KEY REFERENCES wa_operator_identity(wa_jid)
+                ON DELETE CASCADE,
+            pending_action      text,
+            pending_request_id  uuid,
+            updated_at          timestamptz NOT NULL DEFAULT now()
+        );
+
         CREATE TABLE identity_rebind_requests (
             id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             employee_id       text NOT NULL REFERENCES employees(employee_id) ON UPDATE CASCADE,
@@ -129,6 +137,7 @@ def downgrade() -> None:
         DROP INDEX IF EXISTS uq_identity_rebind_pending_new_jid;
         DROP INDEX IF EXISTS uq_identity_rebind_pending_employee;
         DROP TABLE IF EXISTS identity_rebind_requests;
+        DROP TABLE IF EXISTS pmo_conversations;
         DROP TABLE IF EXISTS wa_operator_identity;
         DROP INDEX IF EXISTS ix_pmo_whatsapp_invites_operator;
         DROP TABLE IF EXISTS pmo_whatsapp_invites;
