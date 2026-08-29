@@ -3,9 +3,12 @@ from datetime import date
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
+from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
+from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
+from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.config import get_settings
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import (
     CloudflareWorkersAiChatClient,
@@ -116,6 +119,9 @@ def production_dependencies() -> WebDependencies:
         settings = get_settings()
     except (OSError, ValidationError):
         return _unavailable_dependencies()
+
+    app_dsn = settings.database_dsn.get_secret_value() if settings.database_dsn is not None else None
+
     sessions: SessionStore = UnavailableSessionStore()
     if settings.redis_url is not None:
         endpoint = parse_redis_url(settings.redis_url.get_secret_value())
@@ -132,14 +138,15 @@ def production_dependencies() -> WebDependencies:
             decode_responses=True,
         )
         sessions = RedisSessionStore(redis_client)
-    # NOCODB_DATABASE_DSN is now *only* the login backend: admin credentials
-    # still live in the existing NocoDB's nc_users_v2, which V2 never writes.
-    # All business data comes from the app Postgres backend below.
+
+    # Credentials stay in NocoDB. NocoDB owners are admins; other NocoDB users
+    # can sign in only when an admin provisions them in workflow_operators.
     authenticator: OwnerAuthenticator = UnavailableAuthenticator()
     if settings.nocodb_database_dsn is not None and settings.nocodb_base_id is not None:
         authenticator = NocoDBPostgresOwnerAuthenticator(
             settings.nocodb_database_dsn.get_secret_value(),
             settings.nocodb_base_id,
+            app_dsn=app_dsn,
         )
 
     bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
@@ -153,26 +160,33 @@ def production_dependencies() -> WebDependencies:
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
+    workflow_control: WorkflowControlService | None = None
+    identity_rebinds: IdentityRebindService | None = None
+    bast_workflow: BastWorkflowService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
-    if settings.database_dsn is not None:
-        dsn = settings.database_dsn.get_secret_value()
-        backend = PostgresWebBackend(dsn)
-        employees = PostgresEmployeeSource(dsn)
-        records = PostgresDomainRepository(dsn)
+
+    if app_dsn is not None:
+        backend = PostgresWebBackend(app_dsn)
+        employees = PostgresEmployeeSource(app_dsn)
+        records = PostgresDomainRepository(app_dsn)
         completion = CompletionSource(
             employees,
             records,
-            PostgresAttendanceFactReader(dsn),
-            PostgresTaskEvidenceReader(dsn),
+            PostgresAttendanceFactReader(app_dsn),
+            PostgresTaskEvidenceReader(app_dsn),
         )
-        source_sync_state = PostgresSourceSyncStateStore(dsn)
-        attendance_resolutions = AttendanceResolutionService(dsn)
+        source_sync_state = PostgresSourceSyncStateStore(app_dsn)
+        attendance_resolutions = AttendanceResolutionService(app_dsn)
+        workflow_control = WorkflowControlService(app_dsn)
+        identity_rebinds = IdentityRebindService(app_dsn)
         talentops = TalentOpsService(
             completion,
             employees,
             records,
             source_sync_state,
         )
+        bast_workflow = BastWorkflowService(app_dsn, talentops)
+
         if (
             settings.llm_provider == "cloudflare"
             and settings.cloudflare_account_id is not None
@@ -208,6 +222,9 @@ def production_dependencies() -> WebDependencies:
         talentops=talentops,
         talentops_ai=talentops_ai,
         attendance_resolutions=attendance_resolutions,
+        workflow_control=workflow_control,
+        identity_rebinds=identity_rebinds,
+        bast_workflow=bast_workflow,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
     )
