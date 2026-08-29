@@ -272,9 +272,9 @@ export interface NotificationSettings {
   scope_key: string;
   attendance_immediate: boolean;
   rebind_immediate: boolean;
-  digest_enabled: boolean;
-  digest_hour: number;
-  deadline_reminder_days: number[];
+  reminder_hour: number;
+  talent_reminder_days: number[];
+  pmo_reminder_days: number[];
 }
 
 export interface BastBlocker {
