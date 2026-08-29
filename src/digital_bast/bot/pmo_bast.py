@@ -29,6 +29,8 @@ _REPORT_LABELS: Final = {
 _FORCE_REASON: Final = "Confirmed via PMO WhatsApp after readiness warning"
 _INVALID_SETTINGS: Final = "application settings are invalid"
 _MISSING_DSN: Final = "APP_DATABASE_DSN"
+_BASE_ACTION_PARTS: Final = 3
+_ACTION_PARTS: Final = 4
 
 
 def _period_now() -> DateRange:
@@ -220,7 +222,7 @@ def _report_type_from_text(lowered: str) -> str | None:
     return None
 
 
-async def reply(  # noqa: C901, PLR0911, PLR0912, PLR2004
+async def reply(  # noqa: C901, PLR0911, PLR0912
     operator: WorkflowOperator,
     text: str,
 ) -> str:
@@ -231,13 +233,13 @@ async def reply(  # noqa: C901, PLR0911, PLR0912, PLR2004
         return _team_menu()
 
     parts = lowered.split(":")
-    if len(parts) >= 3 and parts[0] == "pmo" and parts[1] == "bast":
+    if len(parts) >= _BASE_ACTION_PARTS and parts[0] == "pmo" and parts[1] == "bast":
         report_type = parts[2]
         if report_type not in _REPORT_LABELS:
             return _team_menu()
-        if len(parts) == 3:
+        if len(parts) == _BASE_ACTION_PARTS:
             return await _status(operator, report_type)
-        if len(parts) == 4:
+        if len(parts) == _ACTION_PARTS:
             action = parts[3]
             if action == "preview":
                 return await _generate(operator, report_type, BastGenerationMode.PREVIEW)
