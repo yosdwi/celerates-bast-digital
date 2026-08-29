@@ -12,6 +12,7 @@ import type {
   PeriodView,
   TalentDetailResponse,
   TalentOpsSession,
+  TaskEvidencePage,
   WhatsAppInvite,
   WhatsAppStatus,
   WorkflowOperator,
@@ -47,6 +48,20 @@ export function getCommandCenter(year?: number, month?: number): Promise<Command
 export function getTalentDetail(nrp: string, year: number, month: number): Promise<TalentDetailResponse> {
   const query = new URLSearchParams({ year: String(year), month: String(month) });
   return apiFetch<TalentDetailResponse>(`${BASE}/talents/${encodeURIComponent(nrp)}?${query.toString()}`);
+}
+
+export function getTaskEvidence(
+  period: Pick<PeriodView, "year" | "month">,
+  options: { nrp?: string; limit?: number; offset?: number } = {},
+): Promise<TaskEvidencePage> {
+  const query = new URLSearchParams({
+    year: String(period.year),
+    month: String(period.month),
+    limit: String(options.limit ?? 60),
+    offset: String(options.offset ?? 0),
+  });
+  if (options.nrp?.trim()) query.set("nrp", options.nrp.trim());
+  return apiFetch<TaskEvidencePage>(`${BASE}/task-evidence?${query.toString()}`);
 }
 
 export function getAttendanceResolutions(): Promise<AttendanceResolution[]> {
