@@ -20,6 +20,7 @@ from digital_bast.web.report_router import report_router
 from digital_bast.web.sync_router import router as sync_router
 from digital_bast.web.talentops_page_router import talentops_page_router
 from digital_bast.web.talentops_router import talentops_router
+from digital_bast.web.task_evidence_router import task_evidence_router
 
 
 def create_app(dependencies: WebDependencies) -> FastAPI:
@@ -50,6 +51,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
     app.include_router(talentops_router(dependencies))
+    app.include_router(task_evidence_router(dependencies))
     app.include_router(talentops_page_router(dependencies, talentops_dist))
     # Machine-to-machine ingest from the PAMA bridge: bearer-token auth of
     # its own, no session cookie, and excluded from the schema.
