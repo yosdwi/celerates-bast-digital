@@ -500,19 +500,22 @@ def talentops_router(  # noqa: C901, PLR0915
         _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
         verify_csrf(record, csrf_token)
         _require_admin(record)
-        invalid_days = tuple(day for day in payload.deadline_reminder_days if not 0 <= day <= 31)
-        if invalid_days:
+        invalid_talent_days = tuple(
+            day for day in payload.talent_reminder_days if not 1 <= day <= 31
+        )
+        invalid_pmo_days = tuple(day for day in payload.pmo_reminder_days if not 1 <= day <= 31)
+        if invalid_talent_days or invalid_pmo_days:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="deadline_reminder_days must be between 0 and 31",
+                detail="Reminder dates must be calendar days between 1 and 31",
             )
         saved = await _workflow(deps).save_notification_settings(
             scope_key=scope_key,
             attendance_immediate=payload.attendance_immediate,
             rebind_immediate=payload.rebind_immediate,
-            digest_enabled=payload.digest_enabled,
-            digest_hour=payload.digest_hour,
-            deadline_reminder_days=payload.deadline_reminder_days,
+            reminder_hour=payload.reminder_hour,
+            talent_reminder_days=payload.talent_reminder_days,
+            pmo_reminder_days=payload.pmo_reminder_days,
             actor=record.user.email,
         )
         return NotificationSettingsResponse.model_validate(saved)
