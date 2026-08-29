@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from digital_bast.application.workflow_control import WorkflowRole
 from digital_bast.domain.completion import DateRange
-from digital_bast.domain.time import JAKARTA, month_dates
+from digital_bast.domain.time import month_dates
 from digital_bast.web.security import require_session
 from digital_bast.web.task_evidence_contracts import (
     TaskEvidenceItemResponse,
@@ -15,8 +15,6 @@ from digital_bast.web.task_evidence_contracts import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from digital_bast.application.task_evidence_review import TaskEvidenceReviewService
     from digital_bast.web.contracts import SessionRecord
     from digital_bast.web.dependencies import WebDependencies
@@ -34,9 +32,7 @@ def _review(deps: WebDependencies) -> TaskEvidenceReviewService:
     return deps.task_evidence_review
 
 
-def _selected_period(year: int, month: int, now: datetime) -> DateRange:
-    local_now = now.astimezone(JAKARTA)
-    _ = local_now  # timezone-normalize the clock consistently with TalentOps
+def _selected_period(year: int, month: int) -> DateRange:
     dates = month_dates(year, month)
     return DateRange(dates[0], dates[-1])
 
@@ -70,7 +66,7 @@ def task_evidence_router(deps: WebDependencies) -> APIRouter:
     ) -> TaskEvidencePageResponse:
         _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
         await _authorize_read(deps, record)
-        selected_period = _selected_period(year, month, deps.now())
+        selected_period = _selected_period(year, month)
         page = await _review(deps).list_evidence(
             selected_period,
             nrp=nrp,
