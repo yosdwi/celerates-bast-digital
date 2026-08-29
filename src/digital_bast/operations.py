@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
+from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDmStateService
 from digital_bast.bot.evidence import EvidenceService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
@@ -129,6 +130,14 @@ def create_attendance_resolution_service() -> AttendanceResolutionService:
     if dsn is None:
         raise OperationConfigurationError(_MISSING_APP_DSN)
     return AttendanceResolutionService(dsn.get_secret_value())
+
+
+def create_attendance_resolution_dm_state_service() -> AttendanceResolutionDmStateService:
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return AttendanceResolutionDmStateService(dsn.get_secret_value())
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
