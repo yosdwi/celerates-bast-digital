@@ -240,8 +240,9 @@ class AttendanceEvidenceService:
                         """
                         INSERT INTO attendance_evidence (
                             attendance_id, employee_id, work_date,
-                            caption, content_type, byte_size, sha256, image
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            caption, content_type, byte_size, sha256, image,
+                            requires_resolution
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                         """,
                         (
                             row.attendance_id,
