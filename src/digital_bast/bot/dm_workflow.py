@@ -29,6 +29,13 @@ from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_inpu
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
+from digital_bast.bot.talent_home import (
+    home as talent_home,
+    looks_like_requests,
+    looks_like_status,
+    requests as talent_requests,
+    status as talent_status,
+)
 from digital_bast.bot.whatsapp import GROUP_ONLY_DM_INTENTS, parse_command, strip_mentions
 from digital_bast.domain.completion import DateRange, format_day
 from digital_bast.domain.time import JAKARTA
@@ -99,16 +106,6 @@ def _resolution_prompt(draft: AttendanceResolutionDraft, prefix: str = "") -> st
         ("izin", "Izin"),
         ("sakit", "Sakit"),
         footer="Raw attendance client tetap tidak diubah",
-    )
-
-
-def _talent_menu(name: str | None = None) -> str:
-    greeting = f"Halo {name}." if name else "Halo."
-    return interactive(
-        f"{greeting}\nPilih yang mau kamu cek. Kamu juga tetap bisa ketik dengan bahasa biasa.",
-        ("attendance", "Attendance"),
-        ("tasklist", "Task List"),
-        ("evidence", "Evidence Task"),
     )
 
 
@@ -240,7 +237,7 @@ async def _attendance_status_reply(employee_id: str, jid: str) -> str:
     )
     return interactive(
         text,
-        ("tasklist", "Task List"),
+        ("tasklist", "Task & Evidence"),
         ("attendance", "Refresh"),
         ("menu", "Menu"),
     )
@@ -274,6 +271,7 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
                 "Status: *Menunggu approval*.\n"
                 "Data attendance client asli tidak diubah.",
                 ("attendance", "Cek Attendance"),
+                ("status", "Status Saya"),
                 ("menu", "Menu"),
             )
         if result.outcome is SubmitOutcome.ALREADY_OPEN:
@@ -413,7 +411,11 @@ async def reply(text: str, jid: str) -> str:
         employee_id = await activation.resolve(jid)
         lowered = text.strip().casefold()
         if employee_id is not None and lowered in _MENU_WORDS:
-            return _talent_menu()
+            return await talent_home(employee_id)
+        if employee_id is not None and looks_like_status(text):
+            return await talent_status(employee_id)
+        if employee_id is not None and looks_like_requests(text):
+            return await talent_requests(employee_id)
         if employee_id is not None and _wants_attendance_summary(text):
             return await _attendance_status_reply(employee_id, jid)
         return await run_sync(_legacy_dm_reply, text, jid)
