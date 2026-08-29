@@ -3,24 +3,34 @@
 All existing DM behavior falls through to ``digital_bast.cli`` unchanged until
 an attendance evidence upload opens a correction draft. Once that draft exists,
 its selected attendance row is kept focused until a proposal is submitted to
-PMO's shared approval queue. This prevents legacy Task List selection from
-clearing ``pending_attendance_id`` and orphaning durable attendance evidence.
+PMO's shared approval queue. The wrapper also owns the approval-aware attendance
+summary so a submitted correction is shown as "menunggu PMO", never as another
+upload candidate or as falsely complete.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 import anyio
 from anyio.to_thread import run_sync
 
 from digital_bast import cli
-from digital_bast.bot.attendance_resolution import SubmitOutcome
+from digital_bast.bot.attendance_resolution import (
+    ResolutionStatus,
+    ResolutionType,
+    SubmitOutcome,
+)
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
+from digital_bast.bot.whatsapp import GROUP_ONLY_DM_INTENTS, parse_command, strip_mentions
+from digital_bast.domain.completion import DateRange, format_day
+from digital_bast.domain.time import JAKARTA
 from digital_bast.operations import (
+    completion_status,
     create_activation_service,
     create_attendance_evidence_service,
     create_attendance_resolution_dm_state_service,
@@ -28,10 +38,15 @@ from digital_bast.operations import (
 )
 
 if TYPE_CHECKING:
+    from digital_bast.bot.attendance_evidence import AttendanceEvidenceCandidate
+    from digital_bast.bot.attendance_resolution import AttendanceResolution
     from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
+    from digital_bast.domain.completion import EmployeeCompletion
 
 
 type DmCommand = Literal["reply", "evidence"]
+
+_ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
 
 
 class DmArguments(argparse.Namespace):
@@ -45,13 +60,13 @@ class DmArguments(argparse.Namespace):
 
 
 def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
-    if draft.resolution_type.value == "missing_clock_in":
+    if draft.resolution_type is ResolutionType.MISSING_CLOCK_IN:
         return (
             "Evidence-nya sudah tersimpan. Clock In masih kosong.\n"
             "Kirim jam masuk yang benar, contoh: `07:30`.\n"
             "Setelah itu pengajuan masuk ke PMO untuk approval."
         )
-    if draft.resolution_type.value == "missing_clock_out":
+    if draft.resolution_type is ResolutionType.MISSING_CLOCK_OUT:
         return (
             "Evidence-nya sudah tersimpan. Clock Out masih kosong.\n"
             "Kirim jam pulang yang benar, contoh: `17:00`.\n"
@@ -68,6 +83,128 @@ def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
 def _legacy_dm_reply(text: str, jid: str) -> str:
     """Run the unchanged synchronous CLI DM entrypoint outside our event loop."""
     return cli.bot_reply(text, jid=jid, channel="dm")
+
+
+def _wants_attendance_summary(text: str) -> bool:
+    normalized = strip_mentions(text)
+    lowered = normalized.strip().casefold()
+    if not any(word in lowered for word in _ATTENDANCE_WORDS):
+        return False
+    today = datetime.now(JAKARTA).date()
+    return parse_command(normalized, today).intent not in GROUP_ONLY_DM_INTENTS
+
+
+def _time_label(value: object) -> str:
+    return value.strftime("%H:%M") if hasattr(value, "strftime") else "?"
+
+
+def _resolution_description(request: AttendanceResolution) -> str:
+    if request.resolution_type is ResolutionType.MISSING_CLOCK_IN:
+        return f"Clock In → {_time_label(request.proposed_check_in)}"
+    if request.resolution_type is ResolutionType.MISSING_CLOCK_OUT:
+        return f"Clock Out → {_time_label(request.proposed_check_out)}"
+    if request.resolution_type is ResolutionType.MISSING_BOTH_WORKED:
+        return (
+            f"Clock In {_time_label(request.proposed_check_in)} · "
+            f"Clock Out {_time_label(request.proposed_check_out)}"
+        )
+    absence = request.absence_type.value.capitalize() if request.absence_type is not None else "Absen"
+    return absence
+
+
+def _latest_rejections(
+    requests: tuple[AttendanceResolution, ...], period: DateRange
+) -> dict[int, AttendanceResolution]:
+    latest: dict[int, AttendanceResolution] = {}
+    for request in requests:
+        if request.status is not ResolutionStatus.REJECTED:
+            continue
+        if not period.start <= request.work_date <= period.end:
+            continue
+        latest.setdefault(request.attendance_id, request)
+    return latest
+
+
+def _format_approval_aware_attendance(
+    mine: EmployeeCompletion,
+    period: DateRange,
+    candidates: tuple[AttendanceEvidenceCandidate, ...],
+    pending: tuple[AttendanceResolution, ...],
+    rejections: dict[int, AttendanceResolution],
+) -> str:
+    belum_lengkap = len(mine.log_1_pama.issues)
+    lengkap = max(mine.total_work_days - belum_lengkap, 0)
+    lines = [
+        f"*Attendance kamu — {period.label()}*",
+        "",
+        f"{'Total':<13}: {mine.total_work_days}",
+        f"{'Lengkap':<13}: {lengkap}",
+        f"{'Belum Lengkap':<13}: {belum_lengkap}",
+        f"{'Perlu evidence':<13}: {len(candidates)} hari",
+        f"{'Menunggu PMO':<13}: {len(pending)} hari",
+    ]
+    if pending:
+        lines.extend(("", "Menunggu approval PMO:"))
+        lines.extend(
+            f"• {format_day(request.work_date)} — {_resolution_description(request)}"
+            for request in pending
+        )
+    if candidates:
+        lines.extend(("", "Perlu evidence / diajukan ulang:"))
+        for index, candidate in enumerate(candidates, start=1):
+            rejected = rejections.get(candidate.evidence_count)
+            suffix = ""
+            if rejected is not None and rejected.rejection_reason:
+                suffix = f" — ditolak PMO: {rejected.rejection_reason}"
+            lines.append(f"{index}. {format_day(candidate.work_date)}{suffix}")
+        lines.extend(
+            (
+                "",
+                "Balas nomornya, lalu kirim foto/dokumen evidence-nya.",
+                "Tips: kirim sebagai *Dokumen* supaya gambar tidak dikompres WhatsApp.",
+            )
+        )
+    if mine.log_1_pama_missing_data_days:
+        lines.extend(("", "Data attendance belum masuk sistem (bukan masalah evidence):"))
+        lines.extend(f"• {format_day(day)}" for day in mine.log_1_pama_missing_data_days)
+        lines.append("Hubungi admin untuk cek pipeline/sinkronisasi data.")
+    if not candidates and not pending and not mine.log_1_pama_missing_data_days:
+        lines.append("")
+        lines.append("Attendance kamu bulan ini lengkap ✅")
+    return "\n".join(lines).strip()
+
+
+async def _attendance_status_reply(employee_id: str, jid: str) -> str:
+    today = datetime.now(JAKARTA).date()
+    period = DateRange(today.replace(day=1), today)
+    report = await completion_status(period)
+    mine = next((item for item in report.employees if item.employee_id == employee_id), None)
+    if mine is None:
+        return "Attendance kamu belum tersedia di sistem."
+
+    attendance = create_attendance_evidence_service()
+    candidates: tuple[AttendanceEvidenceCandidate, ...] = ()
+    if mine.log_1_pama_evidence_days:
+        candidates = await attendance.list_candidates(
+            employee_id, frozenset(mine.log_1_pama_evidence_days)
+        )
+    if candidates:
+        await attendance.mark_active(jid)
+
+    requests = await create_attendance_resolution_service().for_employee(employee_id)
+    pending = tuple(
+        request
+        for request in requests
+        if request.status is ResolutionStatus.PENDING
+        and period.start <= request.work_date <= period.end
+    )
+    return _format_approval_aware_attendance(
+        mine,
+        period,
+        candidates,
+        pending,
+        _latest_rejections(requests, period),
+    )
 
 
 async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
@@ -112,10 +249,6 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
                 "Evidence belum tersimpan. Pilih attendance-nya lagi lalu kirim "
                 "foto/dokumen evidence."
             )
-        # INVALID_REQUEST and SOURCE_NOT_ELIGIBLE intentionally fall through
-        # to the next ordered proposal. Example: one clock value first tries
-        # missing Clock In, then missing Clock Out; the immutable source row
-        # decides which proposal is actually eligible.
 
     if last_outcome is SubmitOutcome.SOURCE_NOT_ELIGIBLE:
         await state.clear(jid)
@@ -127,29 +260,24 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
 
 
 async def reply(text: str, jid: str) -> str:
-    # Always inspect the correction draft before entering legacy DM routing.
-    # Legacy task selection intentionally clears pending_attendance_id; letting
-    # even a natural-language task choice fall through here could therefore
-    # detach already-stored attendance evidence from its required PMO request.
     state = create_attendance_resolution_dm_state_service()
     draft = await state.pending(jid)
     if draft is None:
+        if _wants_attendance_summary(text):
+            activation = create_activation_service()
+            employee_id = await activation.resolve(jid)
+            if employee_id is not None:
+                return await _attendance_status_reply(employee_id, jid)
         return await run_sync(_legacy_dm_reply, text, jid)
 
     activation = create_activation_service()
     bound_employee_id = await activation.resolve(jid)
     if bound_employee_id != draft.employee_id:
-        # Identity changed/reset while a draft existed. Do not submit it under
-        # a different identity; clear the stale draft and restore legacy flow.
         await state.clear(jid)
         return await run_sync(_legacy_dm_reply, text, jid)
 
     if looks_like_resolution_input(text):
         return await _submit_resolution(text, jid, draft)
-
-    # A correction draft is deliberately a focused, durable mini-flow. Until
-    # it becomes an auditable PMO request, no other legacy DM command/selection
-    # is allowed to mutate bot_conversations and replace its attendance target.
     return _resolution_prompt(draft)
 
 
@@ -157,8 +285,6 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     state = create_attendance_resolution_dm_state_service()
     existing = await state.pending(jid)
     if existing is not None:
-        # Never let another photo fall through into Task List evidence while
-        # an attendance correction is waiting for its clock/absence answer.
         return _resolution_prompt(existing)
 
     activation = create_activation_service()
@@ -170,10 +296,6 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     if employee_id is None or pending_attendance_key is None:
         return legacy_reply
 
-    # Legacy attendance evidence intentionally remains the storage path. It
-    # clears pending_attendance_id after a successful upload; mark_evidence_ready
-    # restores that selected row only when evidence really exists and the raw
-    # client row still has a clock gap. Task evidence is therefore untouched.
     draft = await state.mark_evidence_ready(jid, employee_id, pending_attendance_key)
     if draft is None:
         return legacy_reply
