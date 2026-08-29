@@ -2,13 +2,6 @@
 
 // Mention detection, split out from server.js so it's testable without a
 // live Baileys socket (see mention.test.js).
-//
-// WhatsApp mentions a group participant by one JID form, but which form
-// (phone-number "@s.whatsapp.net" vs privacy-preserving "@lid") depends on
-// the group's addressing mode and is unrelated to the other -- a bot's LID
-// user id shares no digits with its phone number. So "are we mentioned" must
-// compare the *decoded user id* against every JID form we actually have for
-// ourselves, not do a string prefix match against only the phone-number JID.
 
 const { jidDecode } = require("@whiskeysockets/baileys");
 
@@ -29,9 +22,6 @@ function ownUserIds(sock) {
   return ids;
 }
 
-// contextInfo (which carries mentionedJid) lives on whichever message type
-// is actually present -- a photo/document sent with a tap-to-mention tag
-// carries it on imageMessage/documentMessage, not extendedTextMessage.
 function contextInfoOf(message) {
   const content = message.message || {};
   return (
@@ -52,10 +42,7 @@ function isForUs(message, text, ownIds) {
   return mentionsUs || TRIGGER.test(text);
 }
 
-// Keep in sync with src/digital_bast/bot/whatsapp.py's _INTENT_RULES /
-// _CONVERSATION_WORDS. This is a transport-side hint only. The worker/CLI is
-// the authority on business intent; wa-session uses this hint only to avoid
-// showing a wait acknowledgement for obviously instant conversation paths.
+// Transport hint only; Python remains the business-intent authority.
 const BUSINESS_WORDS =
   /\b(restart|reboot|matikan|hidupkan|nyalakan|shutdown|kill|export|absen|generate|buat bast|bikin bast|evidence|status|cek|detail|kenapa|docker|system status|status sistem|status docker|status server)\b/i;
 const CONVERSATION_WORDS =
@@ -66,20 +53,21 @@ function looksLikeConversation(text) {
   return !BUSINESS_WORDS.test(stripped) && CONVERSATION_WORDS.test(stripped);
 }
 
-// Keep in sync with src/digital_bast/cli.py's deterministic DM paths. This
-// does not decide intent; it only marks messages where a pre-emptive wait
-// notice would be bad UX. Slow non-deterministic paths are additionally
-// protected by server.js's delayed-notice timer, so they only acknowledge
-// waiting after real latency has occurred.
 const DM_FAST_PATH_WORDS =
-  /\b(attendance|absen|absensi|tasklist|task list|kurang|progress|evidence)\b/i;
-const DM_NAVIGATION = /^(menu|home|kembali|bantuan|help)$/i;
+  /\b(attendance|absen|absensi|tasklist|task list|kurang|progress|evidence|rebind|ganti nomor|cuti|izin|ijin|sakit)\b/i;
+const DM_NAVIGATION = /^(menu|home|kembali|bantuan|help|batal|cancel)$/i;
+const DM_CONFIRMATION = /^(ya|iya|yes|y|betul|benar|yoi|bener|bukan|tidak|no|salah|nggak|gak|ga)$/i;
+const DM_CLOCK = /^(?:[01]?\d|2[0-3])[:.]\d{2}(?:\s+(?:[01]?\d|2[0-3])[:.]\d{2})?$/;
 
 function looksLikeDmFastPath(text) {
   const stripped = text.replace(/@[\w.-]+/g, " ").trim();
   if (!stripped) return true;
   if (/^\d+$/.test(stripped)) return true;
+  if (/^(pmo:|rebind:)/i.test(stripped)) return true;
+  if (/^PMO-[A-Za-z0-9_-]+$/.test(stripped)) return true;
   if (DM_NAVIGATION.test(stripped)) return true;
+  if (DM_CONFIRMATION.test(stripped)) return true;
+  if (DM_CLOCK.test(stripped)) return true;
   if (looksLikeConversation(stripped)) return true;
   return DM_FAST_PATH_WORDS.test(stripped);
 }
