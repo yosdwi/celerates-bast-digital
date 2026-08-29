@@ -5,12 +5,14 @@ from typing import TYPE_CHECKING, Final, override
 
 from pydantic import ValidationError
 
+from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDmStateService
 from digital_bast.bot.evidence import EvidenceService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
+from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.completion_source import CompletionSource
@@ -38,13 +40,14 @@ def _settings() -> Settings:
         raise OperationConfigurationError(_INVALID_SETTINGS) from error
 
 
+def _application_dsn() -> str:
+    dsn = _settings().database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return dsn.get_secret_value()
+
+
 def _exports_directory() -> Path:
-    # Only bot-worker (the process wa-session hands file-reply requests to)
-    # sets BAST_EXPORTS_DIR, pointing this at the volume shared with
-    # wa-session so it can read the file back and attach it. Every other
-    # caller (web-blue/web-green's own report routes) serves the file
-    # directly over HTTP in the same request and never needs another process
-    # to see it, so the in-image default is correct and unchanged for them.
     configured = _settings().bast_exports_dir
     return configured if configured is not None else _DEFAULT_EXPORTS_DIRECTORY
 
@@ -60,12 +63,7 @@ class OperationConfigurationError(RuntimeError):
 
 
 def create_completion_source() -> CompletionSource:
-    """Completion facts from the single store: the typed tables in app Postgres.
-
-    Roster, records, attendance and per-task evidence all come from the same
-    database NocoDB edits, so a NocoDB edit is visible here immediately with no
-    sync step.
-    """
+    """Completion facts from the single typed app-Postgres store."""
     from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
         PostgresAttendanceFactReader,
         PostgresTaskEvidenceReader,
@@ -75,11 +73,7 @@ def create_completion_source() -> CompletionSource:
     )
     from digital_bast.infrastructure.repositories import PostgresDomainRepository  # noqa: PLC0415
 
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    secret = dsn.get_secret_value()
+    secret = _application_dsn()
     return CompletionSource(
         PostgresEmployeeSource(secret),
         PostgresDomainRepository(secret),
@@ -89,55 +83,37 @@ def create_completion_source() -> CompletionSource:
 
 
 def create_attendance_backend() -> PostgresWebBackend:
-    # local: digital_bast.web's package init pulls in the full FastAPI app,
-    # redis, etc. -- keep that off commands that never touch attendance export.
     from digital_bast.web.postgres_backend import PostgresWebBackend  # noqa: PLC0415
 
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return PostgresWebBackend(dsn.get_secret_value())
+    return PostgresWebBackend(_application_dsn())
 
 
 def create_activation_service() -> ActivationService:
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return ActivationService(dsn.get_secret_value())
+    return ActivationService(_application_dsn())
 
 
 def create_evidence_service() -> EvidenceService:
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return EvidenceService(dsn.get_secret_value())
+    return EvidenceService(_application_dsn())
 
 
 def create_attendance_evidence_service() -> AttendanceEvidenceService:
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return AttendanceEvidenceService(dsn.get_secret_value())
+    return AttendanceEvidenceService(_application_dsn())
 
 
 def create_attendance_resolution_service() -> AttendanceResolutionService:
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return AttendanceResolutionService(dsn.get_secret_value())
+    return AttendanceResolutionService(_application_dsn())
 
 
 def create_attendance_resolution_dm_state_service() -> AttendanceResolutionDmStateService:
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return AttendanceResolutionDmStateService(dsn.get_secret_value())
+    return AttendanceResolutionDmStateService(_application_dsn())
+
+
+def create_workflow_control_service() -> WorkflowControlService:
+    return WorkflowControlService(_application_dsn())
+
+
+def create_identity_rebind_service() -> IdentityRebindService:
+    return IdentityRebindService(_application_dsn())
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
@@ -152,11 +128,7 @@ async def load_roster() -> tuple[Employee, ...]:
         PostgresEmployeeSource,
     )
 
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    return await PostgresEmployeeSource(dsn.get_secret_value()).load()
+    return await PostgresEmployeeSource(_application_dsn()).load()
 
 
 async def issue_activation_codes(service: ActivationService | None = None) -> dict[str, str]:
@@ -208,8 +180,6 @@ async def export_attendance_report(
 
 
 async def generate_status_matrix(period: DateRange) -> Path:
-    # local: same rationale as generate_bast -- keep Playwright off the
-    # bot-reply import path for commands that never render anything.
     from digital_bast.bot.whatsapp import render_status_matrix_html  # noqa: PLC0415
     from digital_bast.infrastructure.pdf_export import render_png  # noqa: PLC0415
 
@@ -227,19 +197,13 @@ async def generate_bast(
     period: DateRange,
     report_type: str = "developer",
 ) -> tuple[Path, AssembledReport]:
-    # local: digital_bast.web's package init pulls in the full FastAPI app,
-    # redis, etc. -- keep that off commands that never touch the web app.
     from digital_bast.infrastructure.pdf_export import render_pdf  # noqa: PLC0415
     from digital_bast.web.bast_assembler import (  # noqa: PLC0415
         PostgresBastArtifactStore,
         assemble,
     )
 
-    settings = _settings()
-    dsn = settings.database_dsn
-    if dsn is None:
-        raise OperationConfigurationError(_MISSING_APP_DSN)
-    secret = dsn.get_secret_value()
+    secret = _application_dsn()
     report = await assemble(report_type, period.start.year, period.start.month, secret)
     pdf_bytes = await render_pdf(report.editor_html)
     _ = await PostgresBastArtifactStore(secret).save(report)
