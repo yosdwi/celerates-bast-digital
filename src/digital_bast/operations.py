@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final, override
 from pydantic import ValidationError
 
 from digital_bast.application.pmo_notifications import PmoNotificationService
+from digital_bast.application.talent_reminders import TalentReminderService
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
@@ -58,6 +59,17 @@ def _application_dsn() -> str:
 def _exports_directory() -> Path:
     configured = _settings().bast_exports_dir
     return configured if configured is not None else _DEFAULT_EXPORTS_DIRECTORY
+
+
+def _outbound_gateway(settings: Settings) -> BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway:
+    token = settings.sync_ingest_token
+    if settings.bot_bridge_base_url is None or token is None:
+        return UnavailableWhatsAppOutboundGateway()
+    return BotBridgeWhatsAppOutboundGateway(
+        str(settings.bot_bridge_base_url),
+        token.get_secret_value(),
+        timeout_seconds=settings.outbound_timeout_seconds,
+    )
 
 
 class OperationConfigurationError(RuntimeError):
@@ -135,22 +147,69 @@ def create_pmo_dm_state_service() -> PmoDmStateService:
 def create_pmo_notification_service(scope_key: str = "default") -> PmoNotificationService:
     settings = _settings()
     dsn = _application_dsn()
-    token = settings.sync_ingest_token
-    if settings.bot_bridge_base_url is None or token is None:
-        outbound = UnavailableWhatsAppOutboundGateway()
-    else:
-        outbound = BotBridgeWhatsAppOutboundGateway(
-            str(settings.bot_bridge_base_url),
-            token.get_secret_value(),
-            timeout_seconds=settings.outbound_timeout_seconds,
-        )
     return PmoNotificationService(
         scope_key,
         WorkflowControlService(dsn),
         AttendanceResolutionService(dsn),
         IdentityRebindService(dsn),
         PostgresPmoNotificationOutbox(dsn, scope_key),
-        outbound,
+        _outbound_gateway(settings),
+    )
+
+
+def create_talent_reminder_service(scope_key: str = "default") -> TalentReminderService:
+    """Build deterministic scheduled Talent reminders from production sources."""
+    from digital_bast.application.talentops import TalentOpsService  # noqa: PLC0415
+    from digital_bast.application.talentops_followups import (  # noqa: PLC0415
+        TalentOpsFollowUpService,
+    )
+    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
+        PostgresAttendanceFactReader,
+        PostgresTaskEvidenceReader,
+    )
+    from digital_bast.infrastructure.postgres_employees import (  # noqa: PLC0415
+        PostgresEmployeeSource,
+    )
+    from digital_bast.infrastructure.repositories import (  # noqa: PLC0415
+        PostgresDomainRepository,
+    )
+    from digital_bast.infrastructure.source_sync_state import (  # noqa: PLC0415
+        PostgresSourceSyncStateStore,
+    )
+    from digital_bast.infrastructure.talentops_followup_store import (  # noqa: PLC0415
+        PostgresTalentOpsFollowUpRepository,
+        PostgresWhatsAppIdentityResolver,
+    )
+
+    settings = _settings()
+    dsn = _application_dsn()
+    employees = PostgresEmployeeSource(dsn)
+    records = PostgresDomainRepository(dsn)
+    completion = CompletionSource(
+        employees,
+        records,
+        PostgresAttendanceFactReader(dsn),
+        PostgresTaskEvidenceReader(dsn),
+    )
+    talentops = TalentOpsService(
+        completion,
+        employees,
+        records,
+        PostgresSourceSyncStateStore(dsn),
+    )
+    followups = TalentOpsFollowUpService(
+        talentops,
+        employees,
+        PostgresWhatsAppIdentityResolver(dsn),
+        _outbound_gateway(settings),
+        PostgresTalentOpsFollowUpRepository(dsn),
+        ai=None,
+    )
+    return TalentReminderService(
+        scope_key,
+        WorkflowControlService(dsn),
+        talentops,
+        followups,
     )
 
 
