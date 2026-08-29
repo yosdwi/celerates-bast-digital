@@ -16,6 +16,21 @@ _EMPLOYEE_ID = "MTG-TF/TEST1"
 _ATTENDANCE_KEY = "ATT-1"
 
 
+class _FakeWorkflowControl:
+    async def resolve_jid(self, wa_jid: str) -> None:
+        assert wa_jid == _JID
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pmo_routing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        dm_workflow,
+        "create_workflow_control_service",
+        _FakeWorkflowControl,
+    )
+
+
 class _FakeState:
     def __init__(self, draft: AttendanceResolutionDraft | None) -> None:
         self.draft = draft
