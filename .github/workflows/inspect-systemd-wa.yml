@@ -24,7 +24,7 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
-      - name: Inspect systemd and processes read-only
+      - name: Trace WhatsApp process owner read-only
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
@@ -32,19 +32,29 @@ jobs:
           set -euo pipefail
           ssh "$DEPLOY_USER@$DEPLOY_HOST" 'sh -s' <<'REMOTE'
           set +e
-          echo '=== matching systemd units ==='
-          systemctl list-units --type=service --all --no-pager | grep -Ei 'wa|whatsapp|bast|bot|bridge|session' || true
-          echo '=== matching unit files ==='
-          systemctl list-unit-files --type=service --no-pager | grep -Ei 'wa|whatsapp|bast|bot|bridge|session' || true
-          echo '=== matching processes ==='
-          ps -eo pid,ppid,user,lstart,cmd | grep -Ei 'node|wa-session|whatsapp|baileys|bot-bridge|bot-worker' | grep -v grep || true
-          echo '=== listeners ==='
-          ss -ltnp 2>/dev/null | grep -E ':8090|:8091' || true
-          echo '=== candidate unit definitions ==='
-          for unit in $(systemctl list-unit-files --type=service --no-legend --no-pager | awk '{print $1}' | grep -Ei 'wa|whatsapp|bast|bot|bridge|session'); do
-            echo "--- $unit ---"
-            systemctl show "$unit" -p ActiveState -p SubState -p MainPID -p FragmentPath -p WorkingDirectory -p ExecStart --no-pager || true
-            systemctl cat "$unit" --no-pager 2>/dev/null || true
+          echo '=== node processes with unit/cgroup ==='
+          ps -eo unit,pid,ppid,user,lstart,cmd | grep -E 'node (docker/main\.js|server\.js)' | grep -v grep || true
+          for pid in $(ps -eo pid,cmd | awk '/node docker\/main\.js/ && !/awk/ {print $1}'); do
+            echo "=== PID $pid ==="
+            echo '-- cwd --'
+            readlink -f "/proc/$pid/cwd" || true
+            echo '-- cmdline --'
+            tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null; echo
+            echo '-- cgroup --'
+            cat "/proc/$pid/cgroup" 2>/dev/null || true
+            echo '-- parent tree --'
+            pstree -sp "$pid" 2>/dev/null || true
+            echo '-- systemctl status PID --'
+            systemctl status "$pid" --no-pager 2>&1 | head -n 35 || true
+          done
+          echo '=== running services with MainPID ==='
+          systemctl list-units --type=service --state=running --no-legend --no-pager | awk '{print $1}' | while read -r unit; do
+            mainpid=$(systemctl show "$unit" -p MainPID --value 2>/dev/null)
+            [ "$mainpid" != '0' ] || continue
+            cmd=$(tr '\0' ' ' < "/proc/$mainpid/cmdline" 2>/dev/null)
+            case "$cmd" in
+              *node*|*npm*|*pm2*) printf '%s pid=%s cmd=%s\n' "$unit" "$mainpid" "$cmd" ;;
+            esac
           done
           echo '=== erroneous docker wa container ==='
           docker ps -a --filter 'name=digital-bast-v2-wa-session-1' --format 'name={{.Names}} status={{.Status}} image={{.Image}}' 2>/dev/null || true
