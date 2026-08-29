@@ -55,12 +55,19 @@ class WhatsAppInvite:
 
 @dataclass(frozen=True, slots=True)
 class NotificationSettings:
+    """Admin-controlled WhatsApp reminder policy for one workflow scope.
+
+    Reminder days are calendar day-of-month values (1..31), not "days before
+    deadline" offsets. Empty tuples mean that audience has no scheduled
+    reminder. Immediate PMO alerts remain an independent opt-in channel.
+    """
+
     scope_key: str
     attendance_immediate: bool
     rebind_immediate: bool
-    digest_enabled: bool
-    digest_hour: int
-    deadline_reminder_days: tuple[int, ...]
+    reminder_hour: int
+    talent_reminder_days: tuple[int, ...]
+    pmo_reminder_days: tuple[int, ...]
 
 
 class InviteOutcome(StrEnum):
@@ -137,11 +144,11 @@ class _InviteRow:
 class _SettingsRow:
     __slots__ = (
         "attendance_immediate",
-        "deadline_reminder_days",
-        "digest_enabled",
-        "digest_hour",
+        "pmo_reminder_days",
         "rebind_immediate",
+        "reminder_hour",
         "scope_key",
+        "talent_reminder_days",
     )
 
     def __init__(
@@ -149,16 +156,16 @@ class _SettingsRow:
         scope_key: str,
         attendance_immediate: bool,
         rebind_immediate: bool,
-        digest_enabled: bool,
-        digest_hour: int,
-        deadline_reminder_days: Sequence[int],
+        reminder_hour: int,
+        talent_reminder_days: Sequence[int],
+        pmo_reminder_days: Sequence[int],
     ) -> None:
         self.scope_key = scope_key
         self.attendance_immediate = attendance_immediate
         self.rebind_immediate = rebind_immediate
-        self.digest_enabled = digest_enabled
-        self.digest_hour = digest_hour
-        self.deadline_reminder_days = tuple(int(value) for value in deadline_reminder_days)
+        self.reminder_hour = reminder_hour
+        self.talent_reminder_days = tuple(int(value) for value in talent_reminder_days)
+        self.pmo_reminder_days = tuple(int(value) for value in pmo_reminder_days)
 
 
 def _operator(row: _OperatorRow) -> WorkflowOperator:
@@ -178,6 +185,10 @@ def _operator(row: _OperatorRow) -> WorkflowOperator:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _normalize_reminder_days(values: tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(sorted({day for day in values if 1 <= day <= 31}))
 
 
 _OPERATOR_SELECT: Final = """
@@ -262,9 +273,9 @@ class WorkflowControlService:
         scope_key: str,
         attendance_immediate: bool,
         rebind_immediate: bool,
-        digest_enabled: bool,
-        digest_hour: int,
-        deadline_reminder_days: tuple[int, ...],
+        reminder_hour: int,
+        talent_reminder_days: tuple[int, ...],
+        pmo_reminder_days: tuple[int, ...],
         actor: str,
     ) -> NotificationSettings:
         return await run_sync(
@@ -272,9 +283,9 @@ class WorkflowControlService:
             scope_key,
             attendance_immediate,
             rebind_immediate,
-            digest_enabled,
-            digest_hour,
-            deadline_reminder_days,
+            reminder_hour,
+            talent_reminder_days,
+            pmo_reminder_days,
             actor,
         )
 
@@ -463,8 +474,12 @@ class WorkflowControlService:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT scope_key, attendance_immediate, rebind_immediate,
-                           digest_enabled, digest_hour, deadline_reminder_days
+                    SELECT scope_key,
+                           attendance_immediate,
+                           rebind_immediate,
+                           reminder_hour,
+                           talent_reminder_days,
+                           pmo_reminder_days
                     FROM workflow_notification_settings
                     WHERE scope_key = %s
                     """,
@@ -474,14 +489,14 @@ class WorkflowControlService:
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="workflow_notification_settings") from error
         if row is None:
-            return NotificationSettings(scope_key, False, False, True, 9, (7, 3, 1))
+            return NotificationSettings(scope_key, False, False, 9, (), ())
         return NotificationSettings(
             row.scope_key,
             row.attendance_immediate,
             row.rebind_immediate,
-            row.digest_enabled,
-            row.digest_hour,
-            row.deadline_reminder_days,
+            row.reminder_hour,
+            row.talent_reminder_days,
+            row.pmo_reminder_days,
         )
 
     def _save_notification_settings(  # noqa: PLR0913, PLR0917
@@ -489,26 +504,32 @@ class WorkflowControlService:
         scope_key: str,
         attendance_immediate: bool,
         rebind_immediate: bool,
-        digest_enabled: bool,
-        digest_hour: int,
-        deadline_reminder_days: tuple[int, ...],
+        reminder_hour: int,
+        talent_reminder_days: tuple[int, ...],
+        pmo_reminder_days: tuple[int, ...],
         actor: str,
     ) -> NotificationSettings:
-        days = tuple(sorted({day for day in deadline_reminder_days if 0 <= day <= 31}, reverse=True))
+        talent_days = _normalize_reminder_days(talent_reminder_days)
+        pmo_days = _normalize_reminder_days(pmo_reminder_days)
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
                     """
                     INSERT INTO workflow_notification_settings (
-                        scope_key, attendance_immediate, rebind_immediate,
-                        digest_enabled, digest_hour, deadline_reminder_days, updated_by
+                        scope_key,
+                        attendance_immediate,
+                        rebind_immediate,
+                        reminder_hour,
+                        talent_reminder_days,
+                        pmo_reminder_days,
+                        updated_by
                     ) VALUES (%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (scope_key) DO UPDATE SET
                         attendance_immediate = EXCLUDED.attendance_immediate,
                         rebind_immediate = EXCLUDED.rebind_immediate,
-                        digest_enabled = EXCLUDED.digest_enabled,
-                        digest_hour = EXCLUDED.digest_hour,
-                        deadline_reminder_days = EXCLUDED.deadline_reminder_days,
+                        reminder_hour = EXCLUDED.reminder_hour,
+                        talent_reminder_days = EXCLUDED.talent_reminder_days,
+                        pmo_reminder_days = EXCLUDED.pmo_reminder_days,
                         updated_by = EXCLUDED.updated_by,
                         updated_at = now()
                     """,
@@ -516,9 +537,9 @@ class WorkflowControlService:
                         scope_key,
                         attendance_immediate,
                         rebind_immediate,
-                        digest_enabled,
-                        digest_hour,
-                        list(days),
+                        reminder_hour,
+                        list(talent_days),
+                        list(pmo_days),
                         actor,
                     ),
                 )
@@ -528,7 +549,7 @@ class WorkflowControlService:
             scope_key,
             attendance_immediate,
             rebind_immediate,
-            digest_enabled,
-            digest_hour,
-            days,
+            reminder_hour,
+            talent_days,
+            pmo_days,
         )
