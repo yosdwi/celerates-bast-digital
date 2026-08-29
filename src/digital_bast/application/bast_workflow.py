@@ -76,17 +76,17 @@ class BastWorkflowService:
         for item in view.attention:
             if item.role is not role:
                 continue
-            for blocker in item.blockers:
-                blockers.append(
-                    BastBlocker(
-                        employee_id=item.employee_id,
-                        nrp=item.nrp,
-                        name=item.name,
-                        domain=blocker.domain,
-                        state=blocker.state.value,
-                        issues=blocker.issues,
-                    )
+            blockers.extend(
+                BastBlocker(
+                    employee_id=item.employee_id,
+                    nrp=item.nrp,
+                    name=item.name,
+                    domain=blocker.domain,
+                    state=blocker.state.value,
+                    issues=blocker.issues,
                 )
+                for blocker in item.blockers
+            )
         ready_talents = sum(item.overall_state is CheckState.COMPLETE for item in members)
         return BastReadiness(
             report_type=report_type,
@@ -97,7 +97,7 @@ class BastWorkflowService:
             blockers=tuple(blockers),
         )
 
-    async def record_generation(
+    async def record_generation(  # noqa: PLR0913 - immutable audit snapshot fields
         self,
         *,
         report_type: str,
@@ -124,7 +124,7 @@ class BastWorkflowService:
             fingerprint,
         )
 
-    def _record_generation(  # noqa: PLR0913, PLR0917
+    def _record_generation(  # noqa: PLR0913, PLR0917 - persistence boundary
         self,
         report_type: str,
         year: int,
@@ -177,7 +177,13 @@ class BastWorkflowService:
                 )
                 row = cursor.fetchone()
                 if row is None:  # pragma: no cover - RETURNING invariant
-                    raise InfrastructureError(service="postgres", operation="record_bast_generation")
+                    raise InfrastructureError(
+                        service="postgres",
+                        operation="record_bast_generation",
+                    )
                 return UUID(str(row[0]))
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="record_bast_generation") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="record_bast_generation",
+            ) from error
