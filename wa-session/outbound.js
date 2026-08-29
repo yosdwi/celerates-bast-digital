@@ -157,4 +157,67 @@ async function handleOutboundRequest(request, response, state, log) {
   return true;
 }
 
-module.exports = { handleOutboundRequest, safeEqual, sendOutboundOnce, validJid, configuredToken };
+// Manual diagnostic only -- lets an operator send a real interactive
+// message to a real JID through the live socket to check whether WhatsApp
+// actually renders native-flow buttons for this account, without needing a
+// real talent to trigger the DM workflow first. Same auth as every other
+// internal endpoint; never called by the Python side.
+async function handleTestInteractiveRequest(request, response, state, log) {
+  const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+  if (request.method !== "POST" || url.pathname !== "/internal/v1/test-interactive") return false;
+
+  const expected = configuredToken();
+  const supplied = request.headers["x-bridge-token"];
+  if (!expected || !safeEqual(supplied, expected)) {
+    writeJson(response, 403, { status: "forbidden" });
+    return true;
+  }
+  if (state.connection !== "connected" || !state.socket) {
+    writeJson(response, 503, { status: "unavailable", error: "whatsapp_not_connected" });
+    return true;
+  }
+
+  let payload;
+  try {
+    payload = await readJsonBody(request);
+  } catch (error) {
+    writeJson(response, 400, { status: "invalid", error: String(error.message || error) });
+    return true;
+  }
+  const jid = payload.jid;
+  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  const actions = Array.isArray(payload.actions) ? payload.actions : [];
+  if (!validJid(jid) || !text) {
+    writeJson(response, 422, { status: "invalid", error: "invalid_test_request" });
+    return true;
+  }
+
+  const { sendInteractiveReply } = require("./interactive");
+  const stubQuoted = {
+    key: { remoteJid: jid, fromMe: false, id: `test-${Date.now()}` },
+    message: { conversation: text },
+  };
+  try {
+    await sendInteractiveReply(
+      state.socket,
+      jid,
+      stubQuoted,
+      { text, footer: typeof payload.footer === "string" ? payload.footer : "Digital BAST", actions },
+      log,
+    );
+    writeJson(response, 200, { status: "sent" });
+  } catch (error) {
+    log(`test-interactive send failed: ${error}`);
+    writeJson(response, 500, { status: "failed", error: String(error) });
+  }
+  return true;
+}
+
+module.exports = {
+  handleOutboundRequest,
+  handleTestInteractiveRequest,
+  safeEqual,
+  sendOutboundOnce,
+  validJid,
+  configuredToken,
+};
