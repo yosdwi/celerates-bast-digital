@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -38,6 +38,8 @@ from digital_bast.operations import (
 )
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from digital_bast.bot.attendance_evidence import AttendanceEvidenceCandidate
     from digital_bast.bot.attendance_resolution import AttendanceResolution
     from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
@@ -94,8 +96,8 @@ def _wants_attendance_summary(text: str) -> bool:
     return parse_command(normalized, today).intent not in GROUP_ONLY_DM_INTENTS
 
 
-def _time_label(value: object) -> str:
-    return value.strftime("%H:%M") if hasattr(value, "strftime") else "?"
+def _time_label(value: time | None) -> str:
+    return value.strftime("%H:%M") if value is not None else "?"
 
 
 def _resolution_description(request: AttendanceResolution) -> str:
@@ -108,20 +110,22 @@ def _resolution_description(request: AttendanceResolution) -> str:
             f"Clock In {_time_label(request.proposed_check_in)} · "
             f"Clock Out {_time_label(request.proposed_check_out)}"
         )
-    absence = request.absence_type.value.capitalize() if request.absence_type is not None else "Absen"
+    absence = (
+        request.absence_type.value.capitalize() if request.absence_type is not None else "Absen"
+    )
     return absence
 
 
 def _latest_rejections(
     requests: tuple[AttendanceResolution, ...], period: DateRange
-) -> dict[int, AttendanceResolution]:
-    latest: dict[int, AttendanceResolution] = {}
+) -> dict[date, AttendanceResolution]:
+    latest: dict[date, AttendanceResolution] = {}
     for request in requests:
         if request.status is not ResolutionStatus.REJECTED:
             continue
         if not period.start <= request.work_date <= period.end:
             continue
-        latest.setdefault(request.attendance_id, request)
+        latest.setdefault(request.work_date, request)
     return latest
 
 
@@ -130,7 +134,7 @@ def _format_approval_aware_attendance(
     period: DateRange,
     candidates: tuple[AttendanceEvidenceCandidate, ...],
     pending: tuple[AttendanceResolution, ...],
-    rejections: dict[int, AttendanceResolution],
+    rejections: dict[date, AttendanceResolution],
 ) -> str:
     belum_lengkap = len(mine.log_1_pama.issues)
     lengkap = max(mine.total_work_days - belum_lengkap, 0)
@@ -152,7 +156,7 @@ def _format_approval_aware_attendance(
     if candidates:
         lines.extend(("", "Perlu evidence / diajukan ulang:"))
         for index, candidate in enumerate(candidates, start=1):
-            rejected = rejections.get(candidate.evidence_count)
+            rejected = rejections.get(candidate.work_date)
             suffix = ""
             if rejected is not None and rejected.rejection_reason:
                 suffix = f" — ditolak PMO: {rejected.rejection_reason}"
