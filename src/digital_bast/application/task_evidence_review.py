@@ -183,9 +183,16 @@ class TaskEvidenceReviewService:
             ) from error
         if row is None:
             return None
+        byte_size = row[2]
+        image = row[3]
+        if not isinstance(byte_size, int) or not isinstance(image, bytes | bytearray | memoryview):
+            raise InfrastructureError(
+                service="postgres",
+                operation="task_evidence_content_invalid_row",
+            )
         return TaskEvidenceContent(
             id=UUID(str(row[0])),
             content_type=str(row[1]),
-            byte_size=int(row[2]),
-            content=bytes(row[3]),
+            byte_size=byte_size,
+            content=bytes(image),
         )
