@@ -18,7 +18,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByText("Asia/Jakarta")).toBeInTheDocument();
     expect(screen.getByText("Data Workspace")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Workflow notifications" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "WhatsApp reminders" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "PMO access" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Provision PMO" })).toBeInTheDocument();
     expect(screen.getByText(/Admin provisions PMO access/)).toBeInTheDocument();
