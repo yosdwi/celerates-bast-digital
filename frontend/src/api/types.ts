@@ -104,6 +104,30 @@ export interface DeliverySummary {
   status_counts: TaskStatusCount[];
 }
 
+export interface TaskEvidenceItem {
+  id: string;
+  employee_id: string;
+  nrp: string;
+  full_name: string;
+  role: EmployeeRole;
+  task_id: number;
+  work_date: string;
+  task_title: string;
+  task_source: string;
+  caption: string;
+  content_type: string;
+  byte_size: number;
+  uploaded_at: string;
+  image_url: string;
+}
+
+export interface TaskEvidencePage {
+  items: TaskEvidenceItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SourceFreshness {
   source_key: string;
   label: string;
