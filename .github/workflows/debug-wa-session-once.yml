@@ -1,0 +1,42 @@
+name: Inspect WA Session Once
+
+on:
+  push:
+    branches:
+      - ops/deploy-wa-session-once-20260829
+    paths:
+      - .github/workflows/debug-wa-session-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Inspect wa-session without mutation
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'sh -s' <<'REMOTE'
+          set -u
+          name=digital-bast-v2-wa-session-1
+          echo '=== docker ps ==='
+          docker ps -a --filter "name=$name" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+          echo '=== health/state ==='
+          docker inspect --format 'status={{.State.Status}} running={{.State.Running}} restart={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} image={{.Image}}' "$name" 2>/dev/null || true
+          echo '=== recent logs ==='
+          docker logs --tail 80 "$name" 2>&1 || true
+          REMOTE
