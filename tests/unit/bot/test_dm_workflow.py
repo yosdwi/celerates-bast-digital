@@ -19,7 +19,6 @@ _ATTENDANCE_KEY = "ATT-1"
 class _FakeWorkflowControl:
     async def resolve_jid(self, wa_jid: str) -> None:
         assert wa_jid == _JID
-        return None
 
 
 @pytest.fixture(autouse=True)
