@@ -12,6 +12,7 @@ from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolution
 from digital_bast.bot.evidence import EvidenceService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
+from digital_bast.bot.pmo_state import PmoDmStateService
 from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
@@ -114,6 +115,10 @@ def create_workflow_control_service() -> WorkflowControlService:
 
 def create_identity_rebind_service() -> IdentityRebindService:
     return IdentityRebindService(_application_dsn())
+
+
+def create_pmo_dm_state_service() -> PmoDmStateService:
+    return PmoDmStateService(_application_dsn())
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
