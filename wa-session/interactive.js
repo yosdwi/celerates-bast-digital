@@ -61,6 +61,11 @@ function parseInteractiveReply(text) {
   }
 }
 
+function typedOptionsHint(payload) {
+  if (!payload.actions.length) return "";
+  return `Atau ketik: ${payload.actions.map((action) => action.label).join(", ")}`;
+}
+
 function fallbackText(payload) {
   const lines = [payload.text];
   if (payload.actions.length) {
@@ -73,30 +78,44 @@ function fallbackText(payload) {
   return lines.join("\n");
 }
 
+// WhatsApp's classic `buttonsMessage` envelope (buttonId/buttonText/type: 1)
+// is now silently dropped by WhatsApp's own servers for most linked-device
+// (non-Business-API) sessions -- Baileys' sendMessage call succeeds, nothing
+// throws, the recipient just never sees the buttons. The nativeFlowMessage
+// shape below is what WhatsApp's own current apps actually send, and is the
+// same shape `messageText()` above already knows how to parse when a reply
+// comes back -- this was previously never used on the sending side. Still
+// not guaranteed (unofficial client), so `body.text` always embeds the
+// typed-option hint too, in case it renders as plain text instead of chips.
+function nativeFlowContent(payload) {
+  const bodyText = [payload.text, "", typedOptionsHint(payload)].filter(Boolean).join("\n");
+  return {
+    interactiveMessage: {
+      body: { text: bodyText },
+      footer: { text: payload.footer },
+      nativeFlowMessage: {
+        buttons: payload.actions.map((action) => ({
+          name: "quick_reply",
+          buttonParamsJson: JSON.stringify({ display_text: action.label, id: action.id }),
+        })),
+        messageParamsJson: "",
+      },
+    },
+  };
+}
+
 async function sendInteractiveReply(sock, jid, message, payload, log = () => {}) {
-  // Baileys 6 still accepts the classic button envelope on many linked-device
-  // sessions. Keep it transport-only and opportunistic: if WhatsApp rejects it
-  // or the response needs more than three actions, send a lossless text fallback.
-  if (payload.actions.length > 0 && payload.actions.length <= 3) {
-    const buttons = payload.actions.map((action) => ({
-      buttonId: action.id,
-      buttonText: { displayText: action.label },
-      type: 1,
-    }));
+  if (payload.actions.length > 0) {
     try {
-      await sock.sendMessage(
-        jid,
-        {
-          text: payload.text,
-          footer: payload.footer,
-          buttons,
-          headerType: 1,
-        },
-        { quoted: message },
-      );
+      const { generateWAMessageFromContent } = require("@whiskeysockets/baileys");
+      const full = generateWAMessageFromContent(jid, nativeFlowContent(payload), {
+        userJid: sock.user?.id,
+        quoted: message,
+      });
+      await sock.relayMessage(jid, full.message, { messageId: full.key.id });
       return;
     } catch (error) {
-      log(`native interactive reply failed; using text fallback: ${error}`);
+      log(`native-flow interactive reply failed; using text fallback: ${error}`);
     }
   }
   await sock.sendMessage(jid, { text: fallbackText(payload) }, { quoted: message });

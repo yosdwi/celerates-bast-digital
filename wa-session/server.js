@@ -17,7 +17,12 @@ const {
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
 const { withDelayedNotice } = require("./delayed-notice");
-const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
+const {
+  handleOutboundRequest,
+  handleTestInteractiveRequest,
+  safeEqual,
+  configuredToken,
+} = require("./outbound");
 const { messageText, parseInteractiveReply, sendInteractiveReply } = require("./interactive");
 
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
@@ -431,6 +436,7 @@ function readBody(request) {
 
 const server = http.createServer(async (request, response) => {
   if (await handleOutboundRequest(request, response, state, log)) return;
+  if (await handleTestInteractiveRequest(request, response, state, log)) return;
 
   const url = new URL(request.url, `http://${request.headers.host}`);
   if (request.method === "GET" && url.pathname === "/health") {
