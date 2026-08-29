@@ -8,6 +8,7 @@ from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+from digital_bast.application.task_evidence_review import TaskEvidenceReviewService
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.rebind import IdentityRebindService
@@ -169,6 +170,7 @@ def production_dependencies() -> WebDependencies:
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
+    task_evidence_review: TaskEvidenceReviewService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
     attendance_review: AttendanceReviewService | None = None
     workflow_control: WorkflowControlService | None = None
@@ -189,6 +191,7 @@ def production_dependencies() -> WebDependencies:
         source_sync_state = PostgresSourceSyncStateStore(app_dsn)
         attendance_resolutions = AttendanceResolutionService(app_dsn)
         attendance_review = AttendanceReviewService(app_dsn)
+        task_evidence_review = TaskEvidenceReviewService(app_dsn)
         workflow_control = WorkflowControlService(app_dsn)
         identity_rebinds = IdentityRebindService(app_dsn)
         talentops = TalentOpsService(
@@ -248,6 +251,7 @@ def production_dependencies() -> WebDependencies:
         talentops=talentops,
         talentops_ai=talentops_ai,
         talentops_followups=talentops_followups,
+        task_evidence_review=task_evidence_review,
         attendance_resolutions=attendance_resolutions,
         attendance_review=attendance_review,
         workflow_control=workflow_control,
