@@ -410,7 +410,12 @@ services:
       resources:
         limits:
           cpus: "1.00"
-          memory: 768M
+          # 768M (inherited from the pre-split combined bot-bridge) OOM-kills
+          # Chromium mid-render for a real BAST PDF export (html2canvas +
+          # jsPDF via pdf_export.py -- confirmed via docker inspect
+          # .State.OOMKilled=true, 2026-08-29). 1.5G gives that a real margin
+          # without eating meaningfully into the host's ~2GB free headroom.
+          memory: 1.5G
 
 secrets:
   postgres_password:
