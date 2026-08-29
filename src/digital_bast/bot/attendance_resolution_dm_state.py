@@ -131,7 +131,8 @@ class AttendanceResolutionDmStateService:
                     ) VALUES (%s, %s, %s, 'attendance', now())
                     ON CONFLICT (wa_jid) DO UPDATE SET
                         pending_attendance_id = EXCLUDED.pending_attendance_id,
-                        pending_attendance_resolution_type = EXCLUDED.pending_attendance_resolution_type,
+                        pending_attendance_resolution_type =
+                            EXCLUDED.pending_attendance_resolution_type,
                         pending_absence_type = NULL,
                         pending_proposed_check_in = NULL,
                         pending_proposed_check_out = NULL,
