@@ -61,7 +61,9 @@ def _exports_directory() -> Path:
     return configured if configured is not None else _DEFAULT_EXPORTS_DIRECTORY
 
 
-def _outbound_gateway(settings: Settings) -> BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway:
+def _outbound_gateway(
+    settings: Settings,
+) -> BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway:
     token = settings.sync_ingest_token
     if settings.bot_bridge_base_url is None or token is None:
         return UnavailableWhatsAppOutboundGateway()
