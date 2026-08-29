@@ -1,17 +1,16 @@
 """Regression-safe WhatsApp DM wrapper.
 
-All existing DM behavior still falls through to ``digital_bast.cli`` unchanged.
-This wrapper only intercepts an attendance day after its evidence has been
-stored and keeps that one day focused until a correction proposal is submitted
-to PMO's shared approval queue.
+All existing DM behavior falls through to ``digital_bast.cli`` unchanged until
+an attendance evidence upload opens a correction draft. Once that draft exists,
+its selected attendance row is kept focused until a proposal is submitted to
+PMO's shared approval queue. This prevents legacy Task List selection from
+clearing ``pending_attendance_id`` and orphaning durable attendance evidence.
 """
 
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
-from typing import Final
 
 import anyio
 
@@ -25,9 +24,6 @@ from digital_bast.operations import (
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
 )
-
-_BARE_INDEX_RE: Final = re.compile(r"^\s*\d+\s*$")
-_ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
 
 
 def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
@@ -48,15 +44,6 @@ def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
         "Kalau kamu bekerja, kirim dua jam: `07:30 17:00`.\n"
         "Kalau tidak masuk, kirim salah satu: `cuti`, `izin`, atau `sakit`.\n"
         "Setelah itu pengajuan masuk ke PMO untuk approval."
-    )
-
-
-def _should_check_draft(text: str) -> bool:
-    lowered = text.casefold()
-    return (
-        looks_like_resolution_input(text)
-        or bool(_BARE_INDEX_RE.fullmatch(text))
-        or any(word in lowered for word in _ATTENDANCE_WORDS)
     )
 
 
@@ -91,9 +78,15 @@ async def _submit_resolution(text: str, jid: str, draft: AttendanceResolutionDra
             return "Pengajuan untuk attendance ini sudah ada dan sedang/ sudah direview PMO."
         if result.outcome in (SubmitOutcome.NOT_FOUND, SubmitOutcome.NOT_OWNED):
             await state.clear(jid)
-            return "Attendance ini sudah tidak bisa diproses dari sesi ini. Kirim `attendance` untuk cek ulang."
+            return (
+                "Attendance ini sudah tidak bisa diproses dari sesi ini. "
+                "Kirim `attendance` untuk cek ulang."
+            )
         if result.outcome is SubmitOutcome.EVIDENCE_REQUIRED:
-            return "Evidence belum tersimpan. Pilih attendance-nya lagi lalu kirim foto/dokumen evidence."
+            return (
+                "Evidence belum tersimpan. Pilih attendance-nya lagi lalu kirim "
+                "foto/dokumen evidence."
+            )
         # INVALID_REQUEST and SOURCE_NOT_ELIGIBLE intentionally fall through
         # to the next ordered proposal. Example: one clock value first tries
         # missing Clock In, then missing Clock Out; the immutable source row
@@ -109,9 +102,10 @@ async def _submit_resolution(text: str, jid: str, draft: AttendanceResolutionDra
 
 
 async def reply(text: str, jid: str) -> str:
-    if not _should_check_draft(text):
-        return cli.bot_reply(text, jid=jid, channel="dm")
-
+    # Always inspect the correction draft before entering legacy DM routing.
+    # Legacy task selection intentionally clears pending_attendance_id; letting
+    # even a natural-language task choice fall through here could therefore
+    # detach already-stored attendance evidence from its required PMO request.
     state = create_attendance_resolution_dm_state_service()
     draft = await state.pending(jid)
     if draft is None:
@@ -120,21 +114,18 @@ async def reply(text: str, jid: str) -> str:
     activation = create_activation_service()
     bound_employee_id = await activation.resolve(jid)
     if bound_employee_id != draft.employee_id:
+        # Identity changed/reset while a draft existed. Do not submit it under
+        # a different identity; clear the stale draft and restore legacy flow.
         await state.clear(jid)
         return cli.bot_reply(text, jid=jid, channel="dm")
 
     if looks_like_resolution_input(text):
         return await _submit_resolution(text, jid, draft)
 
-    # While a correction draft is open, a bare index or another `attendance`
-    # command must not silently select a different day and overwrite the
-    # current target. Other unrelated messages (greeting, tasklist, etc.)
-    # continue through the legacy DM flow unchanged.
-    if _BARE_INDEX_RE.fullmatch(text) or any(
-        word in text.casefold() for word in _ATTENDANCE_WORDS
-    ):
-        return _resolution_prompt(draft)
-    return cli.bot_reply(text, jid=jid, channel="dm")
+    # A correction draft is deliberately a focused, durable mini-flow. Until
+    # it becomes an auditable PMO request, no other legacy DM command/selection
+    # is allowed to mutate bot_conversations and replace its attendance target.
+    return _resolution_prompt(draft)
 
 
 async def evidence(jid: str, file_path: Path, caption: str) -> str:
