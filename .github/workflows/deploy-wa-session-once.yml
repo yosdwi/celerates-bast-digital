@@ -1,0 +1,49 @@
+name: Deploy WA Session Once
+
+on:
+  push:
+    branches:
+      - ops/deploy-wa-session-once-20260829
+    paths:
+      - .github/workflows/deploy-wa-session-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: digital-bast-wa-session-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.head_commit.message == 'ops: deploy wa-session transport once'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Deploy wa-session from released SHA
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          RELEASE_SHA: b77a55c6eae22e0dc98e65c1c3dda398dcf3806a
+        run: |
+          set -euo pipefail
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") RELEASE_SHA=$(printf '%q' "$RELEASE_SHA") sh -s" <<'REMOTE'
+          set -eu
+          release_dir=$(ls -dt "$DEPLOY_PATH"/releases/"$RELEASE_SHA"-* 2>/dev/null | head -n 1)
+          test -n "$release_dir"
+          test -x "$release_dir/scripts/deploy-wa-session.sh"
+          test -f "$release_dir/wa-session/Dockerfile"
+          cd "$release_dir"
+          scripts/deploy-wa-session.sh
+          REMOTE
