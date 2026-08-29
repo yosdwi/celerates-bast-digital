@@ -27,7 +27,7 @@ from digital_bast.bot.rebind import RebindRequest, RebindStatus
 _NOW = datetime(2026, 8, 29, 2, 5, tzinfo=UTC)  # 09:05 Asia/Jakarta
 
 
-def _operator(
+def _operator(  # noqa: PLR0913 - compact permission fixture factory
     *,
     email: str = "pmo@example.com",
     active: bool = True,
@@ -131,7 +131,7 @@ class Outbox:
         self.items: dict[UUID, NotificationOutboxItem] = {}
         self.keys: set[tuple[str, str]] = set()
 
-    async def enqueue(
+    async def enqueue(  # noqa: PLR0913 - mirrors production outbox port
         self,
         *,
         operator_email: str,
@@ -216,7 +216,7 @@ def _settings(
     )
 
 
-def _service(
+def _service(  # noqa: PLR0913 - scenario factory keeps test setup readable
     settings: NotificationSettings,
     *,
     operators: tuple[WorkflowOperator, ...] = (_operator(),),
