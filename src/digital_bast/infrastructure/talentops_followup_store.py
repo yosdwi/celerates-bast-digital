@@ -163,61 +163,62 @@ class PostgresTalentOpsFollowUpRepository:
                 self._connect() as connection,
                 connection.cursor(row_factory=class_row(_FollowUpRow)) as cursor,
             ):
-                try:
-                    _ = cursor.execute(
-                        """
-                        INSERT INTO talentops_followups (
-                            id,
-                            idempotency_key,
-                            employee_id,
-                            period_start,
-                            period_end,
-                            channel,
-                            message,
-                            source,
-                            status,
-                            provider_message_id,
-                            created_by,
-                            sent_at,
-                            error_code
-                        ) VALUES (%s,%s,%s,%s,%s,'whatsapp',%s,%s,%s,%s,%s,%s,%s)
-                        RETURNING id,
-                                  idempotency_key,
-                                  employee_id,
-                                  period_start,
-                                  period_end,
-                                  channel,
-                                  message,
-                                  source,
-                                  status,
-                                  provider_message_id,
-                                  created_by,
-                                  created_at,
-                                  sent_at,
-                                  error_code
-                        """,
-                        (
-                            delivery_id,
-                            write.idempotency_key,
-                            write.employee_id,
-                            write.period.start,
-                            write.period.end,
-                            write.message,
-                            write.source,
-                            write.status,
-                            write.provider_message_id,
-                            write.created_by,
-                            write.sent_at,
-                            write.error_code,
-                        ),
-                    )
-                    row = cursor.fetchone()
-                except psycopg.errors.UniqueViolation:
-                    connection.rollback()
-                    existing = self._by_idempotency(write.idempotency_key)
-                    if existing is not None:
-                        return existing
-                    raise
+                _ = cursor.execute(
+                    """
+                    INSERT INTO talentops_followups (
+                        id,
+                        idempotency_key,
+                        employee_id,
+                        period_start,
+                        period_end,
+                        channel,
+                        message,
+                        source,
+                        status,
+                        provider_message_id,
+                        created_by,
+                        sent_at,
+                        error_code
+                    ) VALUES (%s,%s,%s,%s,%s,'whatsapp',%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (idempotency_key) DO UPDATE SET
+                        message = EXCLUDED.message,
+                        source = EXCLUDED.source,
+                        status = EXCLUDED.status,
+                        provider_message_id = EXCLUDED.provider_message_id,
+                        created_by = EXCLUDED.created_by,
+                        sent_at = EXCLUDED.sent_at,
+                        error_code = EXCLUDED.error_code
+                    RETURNING id,
+                              idempotency_key,
+                              employee_id,
+                              period_start,
+                              period_end,
+                              channel,
+                              message,
+                              source,
+                              status,
+                              provider_message_id,
+                              created_by,
+                              created_at,
+                              sent_at,
+                              error_code
+                    """,
+                    (
+                        delivery_id,
+                        write.idempotency_key,
+                        write.employee_id,
+                        write.period.start,
+                        write.period.end,
+                        write.message,
+                        write.source,
+                        write.status,
+                        write.provider_message_id,
+                        write.created_by,
+                        write.sent_at,
+                        write.error_code,
+                    ),
+                )
+                row = cursor.fetchone()
         except psycopg.Error as error:
             raise InfrastructureError(
                 service="postgres", operation="record_talentops_followup"
