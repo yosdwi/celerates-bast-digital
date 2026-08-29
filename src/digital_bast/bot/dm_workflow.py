@@ -10,7 +10,9 @@ clearing ``pending_attendance_id`` and orphaning durable attendance evidence.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+from typing import Literal
 
 import anyio
 
@@ -24,6 +26,19 @@ from digital_bast.operations import (
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
 )
+
+
+type DmCommand = Literal["reply", "evidence"]
+
+
+class DmArguments(argparse.Namespace):
+    def __init__(self) -> None:
+        super().__init__()
+        self.command: DmCommand = "reply"
+        self.text: str = ""
+        self.jid: str = ""
+        self.file: str = ""
+        self.caption: str = ""
 
 
 def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
@@ -168,12 +183,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def _write(text: str) -> None:
+    _ = sys.stdout.write(f"{text}\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv, namespace=DmArguments())
     if args.command == "reply":
-        print(anyio.run(reply, str(args.text), str(args.jid)))
+        _write(anyio.run(reply, args.text, args.jid))
         return 0
-    print(anyio.run(evidence, str(args.jid), Path(str(args.file)), str(args.caption)))
+    _write(anyio.run(evidence, args.jid, Path(args.file), args.caption))
     return 0
 
 
