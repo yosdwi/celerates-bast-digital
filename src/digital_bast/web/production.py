@@ -3,8 +3,15 @@ from datetime import date
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
+from digital_bast.application.attendance_review import AttendanceReviewService
+from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
+from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+from digital_bast.application.task_evidence_review import TaskEvidenceReviewService
+from digital_bast.application.workflow_control import WorkflowControlService
+from digital_bast.bot.attendance_resolution import AttendanceResolutionService
+from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.config import get_settings
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import (
     CloudflareWorkersAiChatClient,
@@ -20,7 +27,14 @@ from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSourc
 from digital_bast.infrastructure.redis_url import parse_redis_url
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
-from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
+from digital_bast.infrastructure.talentops_followup_store import (
+    PostgresTalentOpsFollowUpRepository,
+    PostgresWhatsAppIdentityResolver,
+)
+from digital_bast.infrastructure.whatsapp_outbound import (
+    BotBridgeWhatsAppOutboundGateway,
+    UnavailableWhatsAppOutboundGateway,
+)
 from digital_bast.web.contracts import (
     AttendanceRow,
     AuthenticatedUser,
@@ -115,6 +129,9 @@ def production_dependencies() -> WebDependencies:
         settings = get_settings()
     except (OSError, ValidationError):
         return _unavailable_dependencies()
+
+    app_dsn = settings.database_dsn.get_secret_value() if settings.database_dsn is not None else None
+
     sessions: SessionStore = UnavailableSessionStore()
     if settings.redis_url is not None:
         endpoint = parse_redis_url(settings.redis_url.get_secret_value())
@@ -131,14 +148,15 @@ def production_dependencies() -> WebDependencies:
             decode_responses=True,
         )
         sessions = RedisSessionStore(redis_client)
-    # NOCODB_DATABASE_DSN is now *only* the login backend: admin credentials
-    # still live in the existing NocoDB's nc_users_v2, which V2 never writes.
-    # All business data comes from the app Postgres backend below.
+
+    # Credentials stay in NocoDB. NocoDB owners are admins; other NocoDB users
+    # can sign in only when an admin provisions them in workflow_operators.
     authenticator: OwnerAuthenticator = UnavailableAuthenticator()
     if settings.nocodb_database_dsn is not None and settings.nocodb_base_id is not None:
         authenticator = NocoDBPostgresOwnerAuthenticator(
             settings.nocodb_database_dsn.get_secret_value(),
             settings.nocodb_base_id,
+            app_dsn=app_dsn,
         )
 
     bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
@@ -151,25 +169,39 @@ def production_dependencies() -> WebDependencies:
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
+    talentops_followups: TalentOpsFollowUpService | None = None
+    task_evidence_review: TaskEvidenceReviewService | None = None
+    attendance_resolutions: AttendanceResolutionService | None = None
+    attendance_review: AttendanceReviewService | None = None
+    workflow_control: WorkflowControlService | None = None
+    identity_rebinds: IdentityRebindService | None = None
+    bast_workflow: BastWorkflowService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
-    if settings.database_dsn is not None:
-        dsn = settings.database_dsn.get_secret_value()
-        backend = PostgresWebBackend(dsn)
-        employees = PostgresEmployeeSource(dsn)
-        records = PostgresDomainRepository(dsn)
+
+    if app_dsn is not None:
+        backend = PostgresWebBackend(app_dsn)
+        employees = PostgresEmployeeSource(app_dsn)
+        records = PostgresDomainRepository(app_dsn)
         completion = CompletionSource(
             employees,
             records,
-            PostgresAttendanceFactReader(dsn),
-            PostgresTaskEvidenceReader(dsn),
+            PostgresAttendanceFactReader(app_dsn),
+            PostgresTaskEvidenceReader(app_dsn),
         )
-        source_sync_state = PostgresSourceSyncStateStore(dsn)
+        source_sync_state = PostgresSourceSyncStateStore(app_dsn)
+        attendance_resolutions = AttendanceResolutionService(app_dsn)
+        attendance_review = AttendanceReviewService(app_dsn)
+        task_evidence_review = TaskEvidenceReviewService(app_dsn)
+        workflow_control = WorkflowControlService(app_dsn)
+        identity_rebinds = IdentityRebindService(app_dsn)
         talentops = TalentOpsService(
             completion,
             employees,
             records,
             source_sync_state,
         )
+        bast_workflow = BastWorkflowService(app_dsn, talentops)
+
         if (
             settings.llm_provider == "cloudflare"
             and settings.cloudflare_account_id is not None
@@ -197,6 +229,20 @@ def production_dependencies() -> WebDependencies:
                 )
             )
 
+        # Follow-up is a production workflow, not just a Web route. Resolve the
+        # talent's durable WA identity and send through the same bot bridge used
+        # for status. When the bridge is intentionally unconfigured, keep the
+        # service available so the API returns bridge_unavailable deterministically.
+        outbound = bot_bridge_status or UnavailableWhatsAppOutboundGateway()
+        talentops_followups = TalentOpsFollowUpService(
+            talentops,
+            employees,
+            PostgresWhatsAppIdentityResolver(app_dsn),
+            outbound,
+            PostgresTalentOpsFollowUpRepository(app_dsn),
+            ai=talentops_ai,
+        )
+
     return WebDependencies(
         authenticator=authenticator,
         sessions=sessions,
@@ -204,6 +250,13 @@ def production_dependencies() -> WebDependencies:
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
         talentops_ai=talentops_ai,
+        talentops_followups=talentops_followups,
+        task_evidence_review=task_evidence_review,
+        attendance_resolutions=attendance_resolutions,
+        attendance_review=attendance_review,
+        workflow_control=workflow_control,
+        identity_rebinds=identity_rebinds,
+        bast_workflow=bast_workflow,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
     )

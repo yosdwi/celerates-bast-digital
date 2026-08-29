@@ -110,7 +110,7 @@ describe("BastReadinessPage", () => {
     expect(openTalent).toHaveBeenCalledWith("JIMT24002");
   });
 
-  it("keeps generation explicit and separate from readiness filtering", () => {
+  it("keeps preview and final generation explicit and separate from readiness filtering", () => {
     render(
       <BastReadinessPage
         session={session}
@@ -120,7 +120,8 @@ describe("BastReadinessPage", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Generate BAST" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview PDF" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Final Generate" })).toBeInTheDocument();
     expect(screen.getByLabelText("BAST report type")).toHaveValue("developer");
     fireEvent.change(screen.getByLabelText("BAST report type"), {
       target: { value: "iotoperation" },

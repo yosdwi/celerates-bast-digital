@@ -6,6 +6,7 @@ import ActionCenterPage from "../pages/ActionCenterPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import DeliveryPage from "../pages/DeliveryPage";
+import EvidencePage from "../pages/EvidencePage";
 import SettingsPage from "../pages/SettingsPage";
 import SystemSyncPage from "../pages/SystemSyncPage";
 import Talent360Page from "../pages/Talent360Page";
@@ -20,6 +21,7 @@ type Route =
   | { page: "actions" }
   | { page: "bast" }
   | { page: "delivery" }
+  | { page: "evidence" }
   | { page: "system" }
   | { page: "settings" }
   | { page: "talent"; nrp: string };
@@ -38,6 +40,7 @@ function parseRoute(pathname: string): Route {
   if (clean === "/admin/talentops/actions") return { page: "actions" };
   if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
   if (clean === "/admin/talentops/delivery") return { page: "delivery" };
+  if (clean === "/admin/talentops/evidence") return { page: "evidence" };
   if (clean === "/admin/talentops/system-sync") return { page: "system" };
   if (clean === "/admin/talentops/settings") return { page: "settings" };
   return { page: "command-center" };
@@ -264,6 +267,15 @@ export default function App() {
   } else if (route.page === "delivery") {
     page = (
       <DeliveryPage
+        session={session}
+        data={data}
+        onNavigate={navigate}
+        onOpenTalent={openTalent}
+      />
+    );
+  } else if (route.page === "evidence") {
+    page = (
+      <EvidencePage
         session={session}
         data={data}
         onNavigate={navigate}

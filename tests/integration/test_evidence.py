@@ -105,7 +105,7 @@ async def test_upload_rejects_not_owned_and_not_closed(database_dsn: str) -> Non
 
 
 @pytest.mark.asyncio
-async def test_upload_stores_once_and_dedupes_by_hash(database_dsn: str) -> None:
+async def test_upload_allows_repeated_task_evidence(database_dsn: str) -> None:
     repository = PostgresDomainRepository(database_dsn)
     employee_id = f"MTG-TF/TEST{uuid4().hex[:8]}"
     work_date = date(2026, 8, 12)
@@ -117,10 +117,12 @@ async def test_upload_stores_once_and_dedupes_by_hash(database_dsn: str) -> None
     second = await service.upload(employee_id, "domain", str(task.key), _PNG_1X1, "cctv again")
 
     assert first.outcome is UploadOutcome.STORED
-    assert second.outcome is UploadOutcome.DUPLICATE
+    assert second.outcome is UploadOutcome.STORED
 
-    remaining = outstanding(await service.list_candidates(employee_id))
-    assert remaining == ()
+    candidates = await service.list_candidates(employee_id)
+    assert len(candidates) == 1
+    assert candidates[0].evidence_count == 2
+    assert outstanding(candidates) == ()
 
 
 def test_select_by_index_is_1_based_and_bounded() -> None:

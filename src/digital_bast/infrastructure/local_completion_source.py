@@ -80,12 +80,14 @@ class _AttendanceFactRow:
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the `attendance` table.
+    """Derives AttendanceFact from the immutable client attendance table.
 
-    `evidence_note` is the human-maintained column NocoDB edits (it carries the
-    old NocoDB "Evidence" text field). `evidence_photo_count` is the WhatsApp
-    DM upload path (bot/attendance_evidence.py, attendance_evidence table) --
-    either one satisfies has_evidence.
+    Legacy evidence remains grandfathered: rows created before the approval
+    workflow have ``requires_resolution = false`` and keep satisfying today's
+    readiness contract. New WhatsApp attendance evidence explicitly writes
+    ``requires_resolution = true`` and only counts after a PMO-approved
+    ``attendance_resolution_requests`` row references that exact evidence.
+    Raw Clock In/Out values are never rewritten by this projection.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -110,7 +112,15 @@ class PostgresAttendanceFactReader:
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
                            a.evidence_note,
-                           COUNT(ae.id) AS evidence_photo_count
+                           COUNT(ae.id) FILTER (
+                               WHERE ae.requires_resolution = FALSE
+                                  OR EXISTS (
+                                      SELECT 1
+                                      FROM attendance_resolution_requests r
+                                      WHERE r.evidence_id = ae.id
+                                        AND r.status = 'approved'
+                                  )
+                           ) AS evidence_photo_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s

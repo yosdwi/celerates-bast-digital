@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, Protocol, cast, final
+from typing import TYPE_CHECKING, Literal, Protocol, final
 
 if TYPE_CHECKING:
     from digital_bast.application.talentops import RosterSource, TalentDetailView, TalentOpsService
@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 FollowUpSource = Literal["deterministic", "ai", "edited"]
 FollowUpStatus = Literal["sent", "not_bound", "bridge_unavailable", "failed", "no_blockers"]
-_VALID_STATUSES = frozenset({"sent", "not_bound", "bridge_unavailable", "failed", "no_blockers"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,10 +98,6 @@ class FollowUpRepository(Protocol):
     async def record(self, write: FollowUpWrite) -> FollowUpRecord: ...
 
 
-def _known_status(value: str) -> FollowUpStatus:
-    return cast("FollowUpStatus", value if value in _VALID_STATUSES else "failed")
-
-
 def _deterministic_draft(view: TalentDetailView) -> str:
     if not view.blockers:
         return (
@@ -173,9 +168,12 @@ class TalentOpsFollowUpService:
 
     async def send(self, command: FollowUpSendCommand) -> FollowUpSendView | None:
         previous = await self._repository.by_idempotency(command.idempotency_key)
-        if previous is not None:
+        # A successful delivery is immutable/idempotent. Failed bridge attempts
+        # may retry with the same key on a later worker cycle; the repository
+        # upserts that delivery record instead of creating a second logical send.
+        if previous is not None and previous.status == "sent":
             return FollowUpSendView(
-                status=_known_status(previous.status),
+                status="sent",
                 delivery_id=previous.id,
                 provider_message_id=previous.provider_message_id,
                 sent_at=previous.sent_at,

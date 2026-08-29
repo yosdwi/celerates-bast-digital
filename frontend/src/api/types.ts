@@ -104,6 +104,30 @@ export interface DeliverySummary {
   status_counts: TaskStatusCount[];
 }
 
+export interface TaskEvidenceItem {
+  id: string;
+  employee_id: string;
+  nrp: string;
+  full_name: string;
+  role: EmployeeRole;
+  task_id: number;
+  work_date: string;
+  task_title: string;
+  task_source: string;
+  caption: string;
+  content_type: string;
+  byte_size: number;
+  uploaded_at: string;
+  image_url: string;
+}
+
+export interface TaskEvidencePage {
+  items: TaskEvidenceItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SourceFreshness {
   source_key: string;
   label: string;
@@ -179,6 +203,96 @@ export interface TalentDetailResponse {
   tasks: TalentTask[];
   availability: TalentDataAvailability;
   signals?: OperationalSignal[];
+}
+
+export interface AttendanceResolution {
+  id: string;
+  attendance_id: number;
+  employee_id: string;
+  nrp: string;
+  full_name: string;
+  work_date: string;
+  resolution_type: "missing_clock_in" | "missing_clock_out" | "missing_both_worked" | "absence";
+  absence_type: "cuti" | "izin" | "sakit" | null;
+  proposed_check_in: string | null;
+  proposed_check_out: string | null;
+  status: "pending" | "approved" | "rejected";
+  evidence_id: string;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+}
+
+export interface IdentityRebindRequest {
+  id: string;
+  employee_id: string;
+  nrp: string;
+  full_name: string;
+  old_wa_jid: string;
+  new_wa_jid: string;
+  scope_key: string;
+  status: "pending" | "approved" | "rejected";
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+}
+
+export interface WorkflowOperator {
+  email: string;
+  display_name: string;
+  role: "admin" | "pmo";
+  scope_key: string;
+  active: boolean;
+  can_approve_attendance: boolean;
+  can_approve_rebind: boolean;
+  can_generate_bast: boolean;
+  whatsapp_notify: boolean;
+  whatsapp_jid: string | null;
+}
+
+export interface WorkflowOperatorInput {
+  display_name: string;
+  scope_key: string;
+  active: boolean;
+  can_approve_attendance: boolean;
+  can_approve_rebind: boolean;
+  can_generate_bast: boolean;
+  whatsapp_notify: boolean;
+}
+
+export interface WhatsAppInvite {
+  operator_email: string;
+  token: string;
+  expires_at: string;
+}
+
+export interface NotificationSettings {
+  scope_key: string;
+  attendance_immediate: boolean;
+  rebind_immediate: boolean;
+  reminder_hour: number;
+  talent_reminder_days: number[];
+  pmo_reminder_days: number[];
+}
+
+export interface BastBlocker {
+  employee_id: string;
+  nrp: string;
+  name: string;
+  domain: string;
+  state: string;
+  issues: string[];
+}
+
+export interface BastReadiness {
+  report_type: "developer" | "iotoperation";
+  role: EmployeeRole;
+  total_talents: number;
+  ready_talents: number;
+  ready: boolean;
+  blockers: BastBlocker[];
 }
 
 export interface AiEvidence {

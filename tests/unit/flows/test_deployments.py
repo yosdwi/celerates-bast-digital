@@ -18,6 +18,16 @@ def test_operational_import_never_exceeds_fifteen_minute_interval() -> None:
     assert operational.cron == "*/15 * * * *"
 
 
+def test_pmo_notifications_run_every_fifteen_minutes() -> None:
+    notifications = next(
+        item for item in deployment_schedules() if item.name == "pmo-notifications"
+    )
+
+    assert notifications.cron == "*/15 * * * *"
+    assert notifications.timezone == "Asia/Jakarta"
+    assert notifications.concurrency_limit == 1
+
+
 def test_step10_runs_at_exactly_one_am_jakarta() -> None:
     step10 = next(item for item in deployment_schedules() if item.name == "iot-pic-update")
 
@@ -30,6 +40,7 @@ def test_deployment_registry_excludes_obsolete_and_redundant_steps() -> None:
 
     assert names == {
         "operational-import",
+        "pmo-notifications",
         "nightly-reconciliation",
         "reference-data",
         "monthly-timesheets",

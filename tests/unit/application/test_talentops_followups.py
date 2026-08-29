@@ -79,13 +79,13 @@ class Identity:
 
 
 class Outbound:
-    def __init__(self, receipt: WhatsAppSendReceipt) -> None:
-        self.receipt = receipt
+    def __init__(self, receipts: list[WhatsAppSendReceipt] | None = None) -> None:
+        self.receipts = receipts or [WhatsAppSendReceipt("sent", provider_message_id="wa-1")]
         self.calls: list[tuple[str, str, str]] = []
 
     async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt:
         self.calls.append((jid, text, request_id))
-        return self.receipt
+        return self.receipts.pop(0)
 
 
 class Repo:
@@ -100,8 +100,9 @@ class Repo:
         return values[-1] if values else None
 
     async def record(self, write: FollowUpWrite) -> FollowUpRecord:
+        existing = self.records.get(write.idempotency_key)
         record = FollowUpRecord(
-            id=f"delivery-{len(self.records) + 1}",
+            id=existing.id if existing is not None else f"delivery-{len(self.records) + 1}",
             idempotency_key=write.idempotency_key,
             employee_id=write.employee_id,
             period_start=write.period.start.isoformat(),
@@ -112,7 +113,11 @@ class Repo:
             status=write.status,
             provider_message_id=write.provider_message_id,
             created_by=write.created_by,
-            created_at=datetime(2026, 8, 25, tzinfo=UTC),
+            created_at=(
+                existing.created_at
+                if existing is not None
+                else datetime(2026, 8, 25, tzinfo=UTC)
+            ),
             sent_at=write.sent_at,
             error_code=write.error_code,
         )
@@ -131,8 +136,9 @@ def service(
     jid: str | None = "628123@s.whatsapp.net",
     blocked: bool = True,
     ai: Ai | None = None,
+    receipts: list[WhatsAppSendReceipt] | None = None,
 ) -> tuple[TalentOpsFollowUpService, Outbound, Repo]:
-    outbound = Outbound(WhatsAppSendReceipt("sent", provider_message_id="wa-1"))
+    outbound = Outbound(receipts)
     repo = Repo()
     result = TalentOpsFollowUpService(
         TalentOps(detail(blocked)),  # type: ignore[arg-type]
@@ -202,6 +208,32 @@ async def test_send_is_idempotent_and_records_provider_receipt() -> None:
     assert second is not None
     assert second.duplicate is True
     assert len(outbound.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_delivery_retries_same_idempotency_key_until_sent() -> None:
+    followups, outbound, repo = service(
+        receipts=[
+            WhatsAppSendReceipt("bridge_unavailable", error_code="bridge_unavailable"),
+            WhatsAppSendReceipt("sent", provider_message_id="wa-2"),
+        ]
+    )
+    command = send_command("retry-key")
+
+    first = await followups.send(command)
+    second = await followups.send(command)
+    third = await followups.send(command)
+
+    assert first is not None
+    assert first.status == "bridge_unavailable"
+    assert second is not None
+    assert second.status == "sent"
+    assert second.duplicate is False
+    assert third is not None
+    assert third.duplicate is True
+    assert len(outbound.calls) == 2
+    assert repo.records["retry-key"].provider_message_id == "wa-2"
+    assert repo.records["retry-key"].status == "sent"
 
 
 @pytest.mark.asyncio

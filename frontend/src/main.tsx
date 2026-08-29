@@ -10,6 +10,8 @@ import "./styles/action-pipeline.css";
 import "./styles/investigation.css";
 import "./styles/talent360-correlation.css";
 import "./styles/period-control.css";
+import "./styles/workflow.css";
+import "./styles/task-evidence.css";
 
 const root = document.getElementById("root");
 if (!root) {

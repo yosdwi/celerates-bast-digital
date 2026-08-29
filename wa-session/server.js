@@ -1,14 +1,7 @@
 "use strict";
 
-// WhatsApp session holder for the Digital BAST bot.
-// It owns ONLY transport concerns: pair the number, keep the socket alive,
-// receive messages, and hand each one to bot-worker over HTTP for the actual
-// business reply. Deliberately has no `digital-bast` CLI/business logic of
-// its own and is not built FROM the app image, so it never rebuilds just
-// because the app changed -- see docs/bast-bot.md and the split's plan for
-// why: recreating this container drops the live WhatsApp connection, and
-// WhatsApp's own anti-abuse system revokes the session after a few rapid
-// reconnects, which is exactly what coupling this to every app deploy caused.
+// WhatsApp session holder for the Digital BAST bot. It owns transport only:
+// pairing/socket lifecycle, message receive/send, and delegation to bot-worker.
 
 const http = require("node:http");
 const path = require("node:path");
@@ -23,7 +16,9 @@ const {
 } = require("@whiskeysockets/baileys");
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
+const { withDelayedNotice } = require("./delayed-notice");
 const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
+const { messageText, parseInteractiveReply, sendInteractiveReply } = require("./interactive");
 
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
 const DATA_DIR = process.env.BOT_DATA_DIR || path.join(__dirname, "data");
@@ -32,6 +27,7 @@ const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const BOT_WORKER_BASE_URL = process.env.BOT_WORKER_BASE_URL || "http://bot-worker:8091";
+const WAIT_NOTICE_DELAY_MS = Number(process.env.BOT_WAIT_NOTICE_DELAY_MS || 2500);
 const EVIDENCE_UPLOAD_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup 🙏 " +
   "Tinggal kirim foto/dokumennya langsung ke DM aku.";
@@ -46,12 +42,6 @@ const state = {
   socket: null,
 };
 
-// Alternative to QR: WhatsApp's own "Link with phone number instead" screen,
-// which needs a code we request FROM Baileys (not scan a QR) -- lets a
-// phone-only user re-pair without a second screen/device to point a camera
-// at. Only meaningful before a session exists (Baileys errors if requested
-// against an already-registered session), and requires the bot's own number
-// in international format, digits only (e.g. "62881080735871").
 const PAIRING_NUMBER = (process.env.BOT_PAIRING_NUMBER || "").replace(/[^0-9]/g, "");
 
 function log(line) {
@@ -89,20 +79,6 @@ function allowedGroups() {
   return new Set([...fromEnv, ...readConfig().allowedGroups]);
 }
 
-function messageText(message) {
-  const content = message.message || {};
-  return (
-    content.conversation ||
-    content.extendedTextMessage?.text ||
-    content.imageMessage?.caption ||
-    content.videoMessage?.caption ||
-    content.documentMessage?.caption ||
-    ""
-  );
-}
-
-// bot-worker holds no WhatsApp state, so recreating it (every deploy, like
-// today's combined bridge used to) never touches this process's live socket.
 async function callBotWorker(payload) {
   try {
     const response = await fetch(`${BOT_WORKER_BASE_URL}/internal/v1/reply`, {
@@ -177,6 +153,28 @@ async function sendFileReply(sock, jid, message, filePayload) {
   }
 }
 
+async function sendDmWorkerReply(sock, jid, message, result, errorContext) {
+  if (!result.ok) {
+    await sock.sendMessage(
+      jid,
+      { text: friendlyErrorReply(errorContext, result.text) },
+      { quoted: message },
+    );
+    return;
+  }
+  const interactive = parseInteractiveReply(result.text);
+  if (interactive) {
+    await sendInteractiveReply(sock, jid, message, interactive, log);
+    return;
+  }
+  const filePayload = parseFileReply(result.text);
+  if (filePayload) {
+    await sendFileReply(sock, jid, message, filePayload);
+    return;
+  }
+  await sock.sendMessage(jid, { text: result.text || "(kosong)" }, { quoted: message });
+}
+
 async function refreshGroups(sock) {
   try {
     const groups = await sock.groupFetchAllParticipating();
@@ -203,9 +201,6 @@ async function start() {
   state.socket = sock;
 
   if (PAIRING_NUMBER && !auth.creds.registered) {
-    // makeWASocket() returns before the underlying websocket actually opens
-    // -- requesting a pairing code immediately races the handshake and
-    // fails with "Connection Closed". A short delay lets it connect first.
     setTimeout(async () => {
       try {
         state.pairingCode = await sock.requestPairingCode(PAIRING_NUMBER);
@@ -285,15 +280,15 @@ async function handleGroupMessage(sock, message, jid) {
     return;
   }
   log(`command from ${jid}: ${text.slice(0, 120)}`);
-  if (!looksLikeConversation(text)) {
-    await sock.sendMessage(
-      jid,
-      { text: waitingReply(message.pushName) },
-      { quoted: message },
-    );
-  }
   const startedAt = Date.now();
-  const result = await callBotWorker({ kind: "text", text });
+  const operation = () => callBotWorker({ kind: "text", text });
+  const result = looksLikeConversation(text)
+    ? await operation()
+    : await withDelayedNotice(
+        operation,
+        () => sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message }),
+        WAIT_NOTICE_DELAY_MS,
+      );
   const elapsed = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
   const filePayload = result.ok ? parseFileReply(result.text) : null;
   if (filePayload) {
@@ -317,14 +312,15 @@ async function handleDirectMessage(sock, message, jid) {
   const text = messageText(message);
   if (!text) return;
   log(`dm from ${jid}: ${text.slice(0, 120)}`);
-  if (!looksLikeDmFastPath(text)) {
-    await sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message });
-  }
-  const result = await callBotWorker({ kind: "text", text, jid, channel: "dm" });
-  const reply = result.ok
-    ? result.text
-    : friendlyErrorReply("menjalankan perintah", result.text);
-  await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
+  const operation = () => callBotWorker({ kind: "text", text, jid, channel: "dm" });
+  const result = looksLikeDmFastPath(text)
+    ? await operation()
+    : await withDelayedNotice(
+        operation,
+        () => sock.sendMessage(jid, { text: waitingReply(message.pushName) }, { quoted: message }),
+        WAIT_NOTICE_DELAY_MS,
+      );
+  await sendDmWorkerReply(sock, jid, message, result, "menjalankan perintah");
 }
 
 function evidenceFileExtension(mimetype) {
@@ -351,10 +347,7 @@ async function handleEvidenceUpload(sock, message, jid, media) {
     fs.writeFileSync(filePath, buffer);
     log(`evidence upload from ${jid} (${buffer.length} bytes)`);
     const result = await callBotWorker({ kind: "evidence", jid, filePath, caption });
-    const reply = result.ok
-      ? result.text
-      : friendlyErrorReply("menyimpan evidence", result.text);
-    await sock.sendMessage(jid, { text: reply || "(kosong)" }, { quoted: message });
+    await sendDmWorkerReply(sock, jid, message, result, "menyimpan evidence");
   } catch (error) {
     await sock.sendMessage(
       jid,
@@ -445,9 +438,6 @@ const server = http.createServer(async (request, response) => {
     response.end(JSON.stringify({ connection: state.connection, me: state.me }));
     return;
   }
-  // Narrow, read-only mirror of the setup page's QR/status for TalentOps
-  // (System & sync) to proxy in -- never exposes /allow or /try, which have
-  // no auth of their own and must stay loopback-only.
   if (request.method === "GET" && url.pathname === "/internal/v1/status") {
     const expected = configuredToken();
     const supplied = request.headers["x-bridge-token"];
@@ -500,3 +490,14 @@ start().catch((error) => {
   state.connection = "failed";
   state.socket = null;
 });
+
+module.exports = {
+  callBotWorker,
+  handleDirectMessage,
+  handleEvidenceUpload,
+  handleGroupMessage,
+  parseFileReply,
+  sendDmWorkerReply,
+  server,
+  state,
+};
