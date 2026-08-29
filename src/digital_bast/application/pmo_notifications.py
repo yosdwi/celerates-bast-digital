@@ -54,6 +54,16 @@ class NotificationRunSummary:
     dead: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class NotificationEnqueueCommand:
+    operator_email: str
+    scope_key: str
+    kind: NotificationKind
+    dedupe_key: str
+    message: str
+    available_at: datetime
+
+
 class WorkflowControlSource(Protocol):
     async def list_operators(self) -> tuple[WorkflowOperator, ...]: ...
 
@@ -71,16 +81,7 @@ class RebindQueueSource(Protocol):
 
 
 class NotificationOutbox(Protocol):
-    async def enqueue(  # noqa: PLR0913 - explicit durable outbox fields
-        self,
-        *,
-        operator_email: str,
-        scope_key: str,
-        kind: NotificationKind,
-        dedupe_key: str,
-        message: str,
-        available_at: datetime,
-    ) -> bool: ...
+    async def enqueue(self, command: NotificationEnqueueCommand) -> bool: ...
 
     async def due(self, now: datetime, limit: int = 100) -> tuple[NotificationOutboxItem, ...]: ...
 
@@ -128,13 +129,13 @@ def _rebind_message(request: RebindRequest) -> str:
     )
 
 
-def _digest_message(attendance_count: int, rebind_count: int) -> str:
+def _pmo_reminder_message(attendance_count: int, rebind_count: int) -> str:
     return (
-        "*Digital BAST — PMO Digest*\n"
+        "*Pengingat Digital BAST*\n"
         f"Attendance pending: {attendance_count}\n"
         f"Ganti nomor pending: {rebind_count}\n\n"
         "Balas `attendance` atau `rebind` untuk buka queue. "
-        "Detail lengkap tersedia di TalentOps."
+        "Status lengkap tersedia di TalentOps."
     )
 
 
@@ -169,12 +170,16 @@ class PmoNotificationService:
             for operator in await self._control.list_operators()
             if _eligible_operator(operator, self._scope_key)
         )
+        local = current.astimezone(JAKARTA)
+        scheduled_today = (
+            local.day in settings.pmo_reminder_days and local.hour >= settings.reminder_hour
+        )
 
         needs_attendance = any(operator.can_approve_attendance for operator in operators) and (
-            settings.attendance_immediate or settings.digest_enabled
+            settings.attendance_immediate or scheduled_today
         )
         needs_rebind = any(operator.can_approve_rebind for operator in operators) and (
-            settings.rebind_immediate or settings.digest_enabled
+            settings.rebind_immediate or scheduled_today
         )
         attendance = await self._attendance.pending() if needs_attendance else ()
         rebinds = await self._rebinds.pending(self._scope_key) if needs_rebind else ()
@@ -192,34 +197,41 @@ class PmoNotificationService:
         rebinds: tuple[RebindRequest, ...],
     ) -> int:
         created = 0
+        local = now.astimezone(JAKARTA)
+        scheduled_today = (
+            local.day in settings.pmo_reminder_days and local.hour >= settings.reminder_hour
+        )
         for operator in operators:
             if settings.attendance_immediate and operator.can_approve_attendance:
                 for request in attendance:
                     created += int(
                         await self._outbox.enqueue(
-                            operator_email=operator.email,
-                            scope_key=self._scope_key,
-                            kind="attendance",
-                            dedupe_key=f"attendance:{request.id}",
-                            message=_attendance_message(request),
-                            available_at=now,
+                            NotificationEnqueueCommand(
+                                operator_email=operator.email,
+                                scope_key=self._scope_key,
+                                kind="attendance",
+                                dedupe_key=f"attendance:{request.id}",
+                                message=_attendance_message(request),
+                                available_at=now,
+                            )
                         )
                     )
             if settings.rebind_immediate and operator.can_approve_rebind:
                 for request in rebinds:
                     created += int(
                         await self._outbox.enqueue(
-                            operator_email=operator.email,
-                            scope_key=self._scope_key,
-                            kind="rebind",
-                            dedupe_key=f"rebind:{request.id}",
-                            message=_rebind_message(request),
-                            available_at=now,
+                            NotificationEnqueueCommand(
+                                operator_email=operator.email,
+                                scope_key=self._scope_key,
+                                kind="rebind",
+                                dedupe_key=f"rebind:{request.id}",
+                                message=_rebind_message(request),
+                                available_at=now,
+                            )
                         )
                     )
 
-            local = now.astimezone(JAKARTA)
-            if not settings.digest_enabled or local.hour < settings.digest_hour:
+            if not scheduled_today:
                 continue
             attendance_count = len(attendance) if operator.can_approve_attendance else 0
             rebind_count = len(rebinds) if operator.can_approve_rebind else 0
@@ -227,12 +239,14 @@ class PmoNotificationService:
                 continue
             created += int(
                 await self._outbox.enqueue(
-                    operator_email=operator.email,
-                    scope_key=self._scope_key,
-                    kind="digest",
-                    dedupe_key=f"digest:{local.date().isoformat()}",
-                    message=_digest_message(attendance_count, rebind_count),
-                    available_at=now,
+                    NotificationEnqueueCommand(
+                        operator_email=operator.email,
+                        scope_key=self._scope_key,
+                        kind="digest",
+                        dedupe_key=f"pmo-reminder:{local.date().isoformat()}",
+                        message=_pmo_reminder_message(attendance_count, rebind_count),
+                        available_at=now,
+                    )
                 )
             )
         return created
@@ -243,11 +257,16 @@ class PmoNotificationService:
         dead = 0
         for item in await self._outbox.due(now):
             operator = await self._control.operator(item.operator_email)
-            if (
-                operator is None
-                or operator.whatsapp_jid is None
-                or not self._can_receive(item, operator)
-            ):
+            if not self._can_receive(item, operator):
+                await self._outbox.mark_failed(
+                    item.id,
+                    error_code="target_unavailable",
+                    next_attempt_at=now,
+                    terminal=True,
+                )
+                dead += 1
+                continue
+            if operator is None or operator.whatsapp_jid is None:
                 await self._outbox.mark_failed(
                     item.id,
                     error_code="target_unavailable",
