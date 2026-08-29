@@ -295,17 +295,17 @@ class NotificationSettingsResponse(_FrozenModel):
     scope_key: str
     attendance_immediate: bool
     rebind_immediate: bool
-    digest_enabled: bool
-    digest_hour: int
-    deadline_reminder_days: tuple[int, ...]
+    reminder_hour: int
+    talent_reminder_days: tuple[int, ...]
+    pmo_reminder_days: tuple[int, ...]
 
 
 class NotificationSettingsInput(_FrozenModel):
     attendance_immediate: bool = False
     rebind_immediate: bool = False
-    digest_enabled: bool = True
-    digest_hour: int = Field(default=9, ge=0, le=23)
-    deadline_reminder_days: tuple[int, ...] = (7, 3, 1)
+    reminder_hour: int = Field(default=9, ge=0, le=23)
+    talent_reminder_days: tuple[int, ...] = ()
+    pmo_reminder_days: tuple[int, ...] = ()
 
 
 class BastBlockerResponse(_FrozenModel):
