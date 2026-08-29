@@ -12,20 +12,22 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import anyio
 
 from digital_bast import cli
 from digital_bast.bot.attendance_resolution import SubmitOutcome
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
-from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.operations import (
     create_activation_service,
     create_attendance_evidence_service,
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
 )
+
+if TYPE_CHECKING:
+    from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 
 
 type DmCommand = Literal["reply", "evidence"]
@@ -62,7 +64,9 @@ def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
     )
 
 
-async def _submit_resolution(text: str, jid: str, draft: AttendanceResolutionDraft) -> str:
+async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
+    text: str, jid: str, draft: AttendanceResolutionDraft
+) -> str:
     parsed = proposals(text)
     if not parsed:
         return _resolution_prompt(draft)
