@@ -8,16 +8,19 @@ PMO needs to scan it before BAST generation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
-from typing import final
+from typing import TYPE_CHECKING, final
 from uuid import UUID
 
 import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import dict_row
 
-from digital_bast.domain.completion import DateRange
 from digital_bast.infrastructure.errors import InfrastructureError
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+
+    from digital_bast.domain.completion import DateRange
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +135,10 @@ class TaskEvidenceReviewService:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="list_task_evidence_review") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="list_task_evidence_review",
+            ) from error
 
         return TaskEvidencePage(
             items=tuple(
@@ -171,7 +177,10 @@ class TaskEvidenceReviewService:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="task_evidence_content") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="task_evidence_content",
+            ) from error
         if row is None:
             return None
         return TaskEvidenceContent(
