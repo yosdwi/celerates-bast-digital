@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final, override
 from pydantic import ValidationError
 
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
+from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.evidence import EvidenceService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
@@ -120,6 +121,14 @@ def create_attendance_evidence_service() -> AttendanceEvidenceService:
     if dsn is None:
         raise OperationConfigurationError(_MISSING_APP_DSN)
     return AttendanceEvidenceService(dsn.get_secret_value())
+
+
+def create_attendance_resolution_service() -> AttendanceResolutionService:
+    settings = _settings()
+    dsn = settings.database_dsn
+    if dsn is None:
+        raise OperationConfigurationError(_MISSING_APP_DSN)
+    return AttendanceResolutionService(dsn.get_secret_value())
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
