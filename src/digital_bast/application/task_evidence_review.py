@@ -185,7 +185,18 @@ class TaskEvidenceReviewService:
             return None
         byte_size = row[2]
         image = row[3]
-        if not isinstance(byte_size, int) or not isinstance(image, bytes | bytearray | memoryview):
+        if not isinstance(byte_size, int):
+            raise InfrastructureError(
+                service="postgres",
+                operation="task_evidence_content_invalid_row",
+            )
+        if isinstance(image, memoryview):
+            content = image.tobytes()
+        elif isinstance(image, bytes):
+            content = image
+        elif isinstance(image, bytearray):
+            content = bytes(image)
+        else:
             raise InfrastructureError(
                 service="postgres",
                 operation="task_evidence_content_invalid_row",
@@ -194,5 +205,5 @@ class TaskEvidenceReviewService:
             id=UUID(str(row[0])),
             content_type=str(row[1]),
             byte_size=byte_size,
-            content=bytes(image),
+            content=content,
         )
