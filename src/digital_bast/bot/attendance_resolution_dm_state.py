@@ -1,8 +1,12 @@
 """Conversation state for attendance-resolution DM workflow.
 
 The selected attendance row remains in ``bot_conversations.pending_attendance_id``
-after evidence upload while PMO correction details are collected. The source
-attendance row itself is never changed here.
+after evidence upload while PMO correction details are collected. Unlike the
+legacy 15-minute task/attendance *selection* state, a correction draft is kept
+durable until it is submitted or explicitly cleared: the evidence itself is
+durable, so silently expiring the draft could orphan stored evidence without
+creating the auditable PMO request. The source attendance row itself is never
+changed here.
 """
 
 from __future__ import annotations
@@ -157,7 +161,6 @@ class AttendanceResolutionDmStateService:
                     JOIN attendance a ON a.id = c.pending_attendance_id
                     WHERE c.wa_jid = %s
                       AND c.pending_attendance_resolution_type IS NOT NULL
-                      AND c.updated_at > now() - interval '15 minutes'
                     """,
                     (wa_jid,),
                 )
