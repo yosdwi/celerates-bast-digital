@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from digital_bast.application.attendance_review import AttendanceReviewService
     from digital_bast.application.bast_workflow import BastWorkflowService
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_ai import TalentOpsAiService
@@ -31,6 +32,7 @@ class WebDependencies:
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
+    attendance_review: AttendanceReviewService | None = None
     workflow_control: WorkflowControlService | None = None
     identity_rebinds: IdentityRebindService | None = None
     bast_workflow: BastWorkflowService | None = None
