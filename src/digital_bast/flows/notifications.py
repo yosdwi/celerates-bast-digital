@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from prefect import flow
 
-from digital_bast.application.pmo_notifications import NotificationRunSummary
 from digital_bast.operations import create_pmo_notification_service
+
+if TYPE_CHECKING:
+    from digital_bast.application.pmo_notifications import NotificationRunSummary
 
 
 @flow(name="pmo-notifications", validate_parameters=False, persist_result=False)
