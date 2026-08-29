@@ -15,7 +15,7 @@ from digital_bast.application.talentops import (
 )
 from digital_bast.application.talentops_followups import FollowUpSendCommand, FollowUpSendView
 from digital_bast.application.workflow_control import NotificationSettings
-from digital_bast.domain.completion import CheckState
+from digital_bast.domain.completion import CheckState, DateRange
 from digital_bast.domain.models import EmployeeRole
 
 _NOW = datetime(2026, 8, 29, 2, 5, tzinfo=UTC)  # 09:05 Jakarta
@@ -64,10 +64,10 @@ class TalentOps:
         self.attention = attention
         self.calls = 0
 
-    async def command_center(self, period: object) -> CommandCenterView:
+    async def command_center(self, period: DateRange) -> CommandCenterView:
         self.calls += 1
-        assert getattr(period, "start").isoformat() == "2026-08-01"
-        assert getattr(period, "end").isoformat() == "2026-08-31"
+        assert period.start.isoformat() == "2026-08-01"
+        assert period.end.isoformat() == "2026-08-31"
         return CommandCenterView(
             period=PeriodView(2026, 8, "2026-08-01", "2026-08-31", "1-31 Agustus 2026"),
             summary=CommandCenterSummary(1, 0, len(self.attention), 0, 0),
