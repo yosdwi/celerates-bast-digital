@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_ai import TalentOpsAiService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+    from digital_bast.application.task_evidence_review import TaskEvidenceReviewService
     from digital_bast.application.workflow_control import WorkflowControlService
     from digital_bast.bot.attendance_resolution import AttendanceResolutionService
     from digital_bast.bot.rebind import IdentityRebindService
@@ -31,6 +32,7 @@ class WebDependencies:
     talentops: TalentOpsService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
+    task_evidence_review: TaskEvidenceReviewService | None = None
     attendance_resolutions: AttendanceResolutionService | None = None
     attendance_review: AttendanceReviewService | None = None
     workflow_control: WorkflowControlService | None = None
