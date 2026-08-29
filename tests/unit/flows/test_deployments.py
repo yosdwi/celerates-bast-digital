@@ -19,7 +19,9 @@ def test_operational_import_never_exceeds_fifteen_minute_interval() -> None:
 
 
 def test_pmo_notifications_run_every_fifteen_minutes() -> None:
-    notifications = next(item for item in deployment_schedules() if item.name == "pmo-notifications")
+    notifications = next(
+        item for item in deployment_schedules() if item.name == "pmo-notifications"
+    )
 
     assert notifications.cron == "*/15 * * * *"
     assert notifications.timezone == "Asia/Jakarta"
