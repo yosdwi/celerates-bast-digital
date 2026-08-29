@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 
 from digital_bast.application.pmo_notifications import (
-    NotificationKind,
+    NotificationEnqueueCommand,
     NotificationOutboxItem,
     PmoNotificationService,
 )
@@ -131,31 +131,22 @@ class Outbox:
         self.items: dict[UUID, NotificationOutboxItem] = {}
         self.keys: set[tuple[str, str]] = set()
 
-    async def enqueue(  # noqa: PLR0913 - mirrors production outbox port
-        self,
-        *,
-        operator_email: str,
-        scope_key: str,
-        kind: NotificationKind,
-        dedupe_key: str,
-        message: str,
-        available_at: datetime,
-    ) -> bool:
-        key = (operator_email, dedupe_key)
+    async def enqueue(self, command: NotificationEnqueueCommand) -> bool:
+        key = (command.operator_email, command.dedupe_key)
         if key in self.keys:
             return False
         self.keys.add(key)
         item_id = UUID(int=len(self.items) + 1)
         self.items[item_id] = NotificationOutboxItem(
             id=item_id,
-            operator_email=operator_email,
-            scope_key=scope_key,
-            kind=kind,
-            dedupe_key=dedupe_key,
-            message=message,
+            operator_email=command.operator_email,
+            scope_key=command.scope_key,
+            kind=command.kind,
+            dedupe_key=command.dedupe_key,
+            message=command.message,
             status="pending",
             attempts=0,
-            next_attempt_at=available_at,
+            next_attempt_at=command.available_at,
         )
         return True
 
@@ -203,16 +194,17 @@ def _settings(
     *,
     attendance_immediate: bool = False,
     rebind_immediate: bool = False,
-    digest_enabled: bool = True,
-    digest_hour: int = 9,
+    reminder_hour: int = 9,
+    talent_days: tuple[int, ...] = (),
+    pmo_days: tuple[int, ...] = (29,),
 ) -> NotificationSettings:
     return NotificationSettings(
         scope_key="default",
         attendance_immediate=attendance_immediate,
         rebind_immediate=rebind_immediate,
-        digest_enabled=digest_enabled,
-        digest_hour=digest_hour,
-        deadline_reminder_days=(7, 3, 1),
+        reminder_hour=reminder_hour,
+        talent_reminder_days=talent_days,
+        pmo_reminder_days=pmo_days,
     )
 
 
@@ -239,7 +231,7 @@ def _service(  # noqa: PLR0913 - scenario factory keeps test setup readable
 
 
 @pytest.mark.asyncio
-async def test_daily_digest_sends_once_after_configured_jakarta_hour() -> None:
+async def test_configured_pmo_reminder_sends_once_on_calendar_date() -> None:
     service, _, outbound = _service(_settings())
 
     first = await service.run(_NOW)
@@ -255,13 +247,17 @@ async def test_daily_digest_sends_once_after_configured_jakarta_hour() -> None:
 
 
 @pytest.mark.asyncio
-async def test_digest_does_not_send_before_configured_hour_or_without_actionable_work() -> None:
-    before, _, before_outbound = _service(_settings())
+async def test_pmo_reminder_skips_other_dates_before_hour_and_empty_queue() -> None:
+    wrong_date, _, wrong_date_outbound = _service(_settings(pmo_days=(28,)))
+    before, _, before_outbound = _service(_settings(reminder_hour=10))
     empty, _, empty_outbound = _service(_settings(), attendance=(), rebinds=())
 
-    before_result = await before.run(datetime(2026, 8, 29, 1, 55, tzinfo=UTC))
+    wrong_date_result = await wrong_date.run(_NOW)
+    before_result = await before.run(_NOW)
     empty_result = await empty.run(_NOW)
 
+    assert wrong_date_result.enqueued == 0
+    assert wrong_date_outbound.calls == []
     assert before_result.enqueued == 0
     assert before_outbound.calls == []
     assert empty_result.enqueued == 0
@@ -272,7 +268,7 @@ async def test_digest_does_not_send_before_configured_hour_or_without_actionable
 async def test_immediate_notices_follow_current_pmo_permissions() -> None:
     attendance_only = _operator(attendance=True, rebind=False)
     service, _, outbound = _service(
-        _settings(attendance_immediate=True, rebind_immediate=True, digest_enabled=False),
+        _settings(attendance_immediate=True, rebind_immediate=True, pmo_days=()),
         operators=(attendance_only,),
     )
 
@@ -295,7 +291,7 @@ async def test_bridge_failure_retries_on_later_worker_cycle_without_duplicate_en
         ]
     )
     service, _, _ = _service(
-        _settings(attendance_immediate=True, digest_enabled=False),
+        _settings(attendance_immediate=True, pmo_days=()),
         rebinds=(),
         outbox=outbox,
         outbound=outbound,
