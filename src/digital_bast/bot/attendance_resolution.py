@@ -468,8 +468,8 @@ class AttendanceResolutionService:
                     attendance_id=0,
                     employee_id="",
                     work_date=date.min,
-                    check_in=cast(time | None, row[2]),
-                    check_out=cast(time | None, row[3]),
+                    check_in=cast("time | None", row[2]),
+                    check_out=cast("time | None", row[3]),
                 )
                 if approve and not _eligible(source, ResolutionType(str(row[1]))):
                     return DecisionResult(DecisionOutcome.SOURCE_CHANGED)
