@@ -17,6 +17,7 @@ from digital_bast.bot.attendance_resolution import (
     ResolutionType,
 )
 from digital_bast.bot.interactive import interactive
+from digital_bast.bot.pmo_bast import reply as bast_reply
 from digital_bast.bot.rebind import RebindDecisionOutcome
 from digital_bast.domain.completion import format_day
 from digital_bast.operations import (
@@ -57,21 +58,25 @@ def _menu(operator: WorkflowOperator) -> str:
         actions.append(("pmo:attendance", "Attendance"))
     if operator.can_approve_rebind:
         actions.append(("pmo:rebind", "Ganti Nomor"))
-    actions.append(("pmo:menu", "Refresh"))
+    actions.append(("pmo:bast", "BAST"))
     return interactive(
-        f"*PMO Digital BAST*\n{operator.display_name}\n\nPilih queue yang mau direview.",
+        f"*PMO Digital BAST*\n{operator.display_name}\n\nPilih workflow yang mau dibuka.",
         *actions,
         footer="Approval hanya berlaku di DM ini / TalentOps Web",
     )
 
 
-def _find_by_prefix(items: tuple[AttendanceResolution, ...], prefix: str) -> AttendanceResolution | None:
+def _find_by_prefix(
+    items: tuple[AttendanceResolution, ...], prefix: str
+) -> AttendanceResolution | None:
     needle = prefix.strip().casefold()
     matches = tuple(item for item in items if str(item.id).casefold().startswith(needle))
     return matches[0] if len(matches) == 1 else None
 
 
-def _find_rebind_by_prefix(items: tuple[RebindRequest, ...], prefix: str) -> RebindRequest | None:
+def _find_rebind_by_prefix(
+    items: tuple[RebindRequest, ...], prefix: str
+) -> RebindRequest | None:
     needle = prefix.strip().casefold()
     matches = tuple(item for item in items if str(item.id).casefold().startswith(needle))
     return matches[0] if len(matches) == 1 else None
@@ -101,14 +106,18 @@ async def _attendance_detail(operator: WorkflowOperator, prefix: str) -> str:
         return "Akun PMO ini tidak punya permission approval attendance."
     request = _find_by_prefix(await create_attendance_resolution_service().pending(), prefix)
     if request is None:
-        return "Request attendance tidak ditemukan / kode ambigu. Buka queue lagi dengan `attendance`."
+        return (
+            "Request attendance tidak ditemukan / kode ambigu. "
+            "Buka queue lagi dengan `attendance`."
+        )
     text = (
         f"*Review Attendance*\n"
         f"{request.full_name} ({request.nrp})\n"
         f"Tanggal: {format_day(request.work_date)}\n"
         f"Pengajuan: {_attendance_change(request)}\n"
         f"Request: `{str(request.id)[:8]}`\n\n"
-        "Raw Clock In/Out client tidak akan diubah. Approval hanya mengesahkan resolution/projection."
+        "Raw Clock In/Out client tidak akan diubah. "
+        "Approval hanya mengesahkan resolution/projection."
     )
     return interactive(
         text,
@@ -135,11 +144,16 @@ async def _approve_attendance(operator: WorkflowOperator, request_id: UUID) -> s
     if result.outcome is DecisionOutcome.ALREADY_RESOLVED:
         return "Request ini sudah diproses PMO lain. Kirim `attendance` untuk refresh queue."
     if result.outcome is DecisionOutcome.SOURCE_CHANGED:
-        return "Data attendance client berubah. Request tidak di-approve; refresh queue dan review ulang."
+        return (
+            "Data attendance client berubah. Request tidak di-approve; "
+            "refresh queue dan review ulang."
+        )
     return "Request attendance tidak ditemukan atau tidak dapat diproses."
 
 
-async def _reject_attendance_start(operator: WorkflowOperator, request_id: UUID, jid: str) -> str:
+async def _reject_attendance_start(
+    operator: WorkflowOperator, request_id: UUID, jid: str
+) -> str:
     if not operator.can_approve_attendance:
         return "Akun PMO ini tidak punya permission approval attendance."
     request = _find_by_prefix(await create_attendance_resolution_service().pending(), str(request_id))
@@ -240,7 +254,9 @@ async def _reject_rebind_start(operator: WorkflowOperator, request_id: UUID, jid
     )
 
 
-async def _finish_pending_rejection(operator: WorkflowOperator, jid: str, text: str) -> str | None:
+async def _finish_pending_rejection(
+    operator: WorkflowOperator, jid: str, text: str
+) -> str | None:
     state = create_pmo_dm_state_service()
     pending = await state.get(jid)
     if pending is None:
@@ -265,7 +281,8 @@ async def _finish_pending_rejection(operator: WorkflowOperator, jid: str, text: 
         await state.clear(jid)
         if result.outcome is DecisionOutcome.UPDATED:
             return interactive(
-                "❌ Attendance resolution rejected. Talent dapat melihat alasan dan mengajukan ulang.",
+                "❌ Attendance resolution rejected. "
+                "Talent dapat melihat alasan dan mengajukan ulang.",
                 ("pmo:attendance", "Queue Attendance"),
                 ("pmo:menu", "Menu PMO"),
             )
@@ -312,6 +329,8 @@ async def reply(operator: WorkflowOperator, jid: str, text: str) -> str:  # noqa
         return await _attendance_queue(operator)
     if lowered in {"rebind", "ganti nomor", "approval nomor", "pmo:rebind"}:
         return await _rebind_queue(operator)
+    if "bast" in lowered or lowered.startswith("pmo:bast"):
+        return await bast_reply(operator, normalized)
 
     parts = normalized.split(":")
     if len(parts) == 4 and parts[0] == "pmo" and parts[1] == "attendance":
