@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final, override
 
 from pydantic import ValidationError
 
+from digital_bast.application.pmo_notifications import PmoNotificationService
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
@@ -18,6 +19,11 @@ from digital_bast.bot.rebind_onboarding import RebindOnboardingService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.completion_source import CompletionSource
+from digital_bast.infrastructure.pmo_notification_outbox import PostgresPmoNotificationOutbox
+from digital_bast.infrastructure.whatsapp_outbound import (
+    BotBridgeWhatsAppOutboundGateway,
+    UnavailableWhatsAppOutboundGateway,
+)
 
 if TYPE_CHECKING:
     from digital_bast.domain.completion import DateRange
@@ -124,6 +130,28 @@ def create_rebind_onboarding_service() -> RebindOnboardingService:
 
 def create_pmo_dm_state_service() -> PmoDmStateService:
     return PmoDmStateService(_application_dsn())
+
+
+def create_pmo_notification_service(scope_key: str = "default") -> PmoNotificationService:
+    settings = _settings()
+    dsn = _application_dsn()
+    token = settings.sync_ingest_token
+    if settings.bot_bridge_base_url is None or token is None:
+        outbound = UnavailableWhatsAppOutboundGateway()
+    else:
+        outbound = BotBridgeWhatsAppOutboundGateway(
+            str(settings.bot_bridge_base_url),
+            token.get_secret_value(),
+            timeout_seconds=settings.outbound_timeout_seconds,
+        )
+    return PmoNotificationService(
+        scope_key,
+        WorkflowControlService(dsn),
+        AttendanceResolutionService(dsn),
+        IdentityRebindService(dsn),
+        PostgresPmoNotificationOutbox(dsn, scope_key),
+        outbound,
+    )
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
