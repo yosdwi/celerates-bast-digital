@@ -78,6 +78,7 @@ class NotificationOutbox(Protocol):
         kind: NotificationKind,
         dedupe_key: str,
         message: str,
+        available_at: datetime,
     ) -> bool: ...
 
     async def due(self, now: datetime, limit: int = 100) -> tuple[NotificationOutboxItem, ...]: ...
@@ -177,20 +178,9 @@ class PmoNotificationService:
         attendance = await self._attendance.pending() if needs_attendance else ()
         rebinds = await self._rebinds.pending(self._scope_key) if needs_rebind else ()
 
-        enqueued = await self._enqueue(
-            current,
-            settings,
-            operators,
-            attendance,
-            rebinds,
-        )
+        enqueued = await self._enqueue(current, settings, operators, attendance, rebinds)
         sent, retried, dead = await self._dispatch(current)
-        return NotificationRunSummary(
-            enqueued=enqueued,
-            sent=sent,
-            retried=retried,
-            dead=dead,
-        )
+        return NotificationRunSummary(enqueued=enqueued, sent=sent, retried=retried, dead=dead)
 
     async def _enqueue(
         self,
@@ -211,6 +201,7 @@ class PmoNotificationService:
                             kind="attendance",
                             dedupe_key=f"attendance:{request.id}",
                             message=_attendance_message(request),
+                            available_at=now,
                         )
                     )
             if settings.rebind_immediate and operator.can_approve_rebind:
@@ -222,6 +213,7 @@ class PmoNotificationService:
                             kind="rebind",
                             dedupe_key=f"rebind:{request.id}",
                             message=_rebind_message(request),
+                            available_at=now,
                         )
                     )
 
@@ -239,6 +231,7 @@ class PmoNotificationService:
                     kind="digest",
                     dedupe_key=f"digest:{local.date().isoformat()}",
                     message=_digest_message(attendance_count, rebind_count),
+                    available_at=now,
                 )
             )
         return created
