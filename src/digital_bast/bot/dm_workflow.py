@@ -1,11 +1,10 @@
-"""Regression-safe WhatsApp DM wrapper.
+"""Production WhatsApp DM workflow wrapper.
 
-All existing DM behavior falls through to ``digital_bast.cli`` unchanged until
-an attendance evidence upload opens a correction draft. Once that draft exists,
-its selected attendance row is kept focused until a proposal is submitted to
-PMO's shared approval queue. The wrapper also owns the approval-aware attendance
-summary so a submitted correction is shown as "menunggu PMO", never as another
-upload candidate or as falsely complete.
+The wrapper keeps legacy Talent task/evidence behavior intact while owning the
+new durable business workflows around it: PMO authorization/linking, attendance
+resolution approval, and Talent phone-number rebind. WhatsApp remains an
+interaction layer only; every button/free-text action is re-authorized and
+validated against durable backend state before a mutation happens.
 """
 
 from __future__ import annotations
@@ -20,12 +19,16 @@ import anyio
 from anyio.to_thread import run_sync
 
 from digital_bast import cli
+from digital_bast.application.workflow_control import InviteOutcome
 from digital_bast.bot.attendance_resolution import (
     ResolutionStatus,
     ResolutionType,
     SubmitOutcome,
 )
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
+from digital_bast.bot.interactive import interactive
+from digital_bast.bot.pmo_workflow import reply as pmo_reply
+from digital_bast.bot.rebind import RebindRequestOutcome
 from digital_bast.bot.whatsapp import GROUP_ONLY_DM_INTENTS, parse_command, strip_mentions
 from digital_bast.domain.completion import DateRange, format_day
 from digital_bast.domain.time import JAKARTA
@@ -35,6 +38,9 @@ from digital_bast.operations import (
     create_attendance_evidence_service,
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
+    create_identity_rebind_service,
+    create_rebind_onboarding_service,
+    create_workflow_control_service,
 )
 
 if TYPE_CHECKING:
@@ -49,6 +55,12 @@ if TYPE_CHECKING:
 type DmCommand = Literal["reply", "evidence"]
 
 _ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
+_MENU_WORDS: Final = frozenset({"menu", "halo", "hai", "hi", "start", "help", "bantuan"})
+_YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
+_REBIND_SUBMIT_WORDS: Final = frozenset(
+    {"ganti nomor", "ajukan ganti nomor", "rebind", "rebind:submit"}
+)
+_REBIND_CANCEL_WORDS: Final = frozenset({"batal", "cancel", "rebind:cancel"})
 
 
 class DmArguments(argparse.Namespace):
@@ -61,24 +73,42 @@ class DmArguments(argparse.Namespace):
         self.caption: str = ""
 
 
-def _resolution_prompt(draft: AttendanceResolutionDraft) -> str:
+def _resolution_prompt(draft: AttendanceResolutionDraft, prefix: str = "") -> str:
+    intro = f"{prefix}\n\n" if prefix.strip() else ""
     if draft.resolution_type is ResolutionType.MISSING_CLOCK_IN:
         return (
-            "Evidence-nya sudah tersimpan. Clock In masih kosong.\n"
+            f"{intro}Evidence-nya sudah tersimpan. Clock In masih kosong.\n"
             "Kirim jam masuk yang benar, contoh: `07:30`.\n"
             "Setelah itu pengajuan masuk ke PMO untuk approval."
         )
     if draft.resolution_type is ResolutionType.MISSING_CLOCK_OUT:
         return (
-            "Evidence-nya sudah tersimpan. Clock Out masih kosong.\n"
+            f"{intro}Evidence-nya sudah tersimpan. Clock Out masih kosong.\n"
             "Kirim jam pulang yang benar, contoh: `17:00`.\n"
             "Setelah itu pengajuan masuk ke PMO untuk approval."
         )
-    return (
-        "Evidence-nya sudah tersimpan. Clock In dan Clock Out masih kosong.\n"
+    body = (
+        f"{intro}Evidence-nya sudah tersimpan. Clock In dan Clock Out masih kosong.\n"
         "Kalau kamu bekerja, kirim dua jam: `07:30 17:00`.\n"
-        "Kalau tidak masuk, kirim salah satu: `cuti`, `izin`, atau `sakit`.\n"
+        "Kalau tidak masuk, pilih Cuti, Izin, atau Sakit.\n"
         "Setelah itu pengajuan masuk ke PMO untuk approval."
+    )
+    return interactive(
+        body,
+        ("cuti", "Cuti"),
+        ("izin", "Izin"),
+        ("sakit", "Sakit"),
+        footer="Raw attendance client tetap tidak diubah",
+    )
+
+
+def _talent_menu(name: str | None = None) -> str:
+    greeting = f"Halo {name}." if name else "Halo."
+    return interactive(
+        f"{greeting}\nPilih yang mau kamu cek. Kamu juga tetap bisa ketik dengan bahasa biasa.",
+        ("attendance", "Attendance"),
+        ("tasklist", "Task List"),
+        ("evidence", "Evidence Task"),
     )
 
 
@@ -173,8 +203,7 @@ def _format_approval_aware_attendance(
         lines.extend(f"• {format_day(day)}" for day in mine.log_1_pama_missing_data_days)
         lines.append("Hubungi admin untuk cek pipeline/sinkronisasi data.")
     if not candidates and not pending and not mine.log_1_pama_missing_data_days:
-        lines.append("")
-        lines.append("Attendance kamu bulan ini lengkap ✅")
+        lines.extend(("", "Attendance kamu bulan ini lengkap ✅"))
     return "\n".join(lines).strip()
 
 
@@ -202,12 +231,18 @@ async def _attendance_status_reply(employee_id: str, jid: str) -> str:
         if request.status is ResolutionStatus.PENDING
         and period.start <= request.work_date <= period.end
     )
-    return _format_approval_aware_attendance(
+    text = _format_approval_aware_attendance(
         mine,
         period,
         candidates,
         pending,
         _latest_rejections(requests, period),
+    )
+    return interactive(
+        text,
+        ("tasklist", "Task List"),
+        ("attendance", "Refresh"),
+        ("menu", "Menu"),
     )
 
 
@@ -234,10 +269,12 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
         last_outcome = result.outcome
         if result.outcome is SubmitOutcome.CREATED:
             await state.clear(jid)
-            return (
+            return interactive(
                 "✅ Pengajuan koreksi attendance sudah dikirim ke PMO.\n"
                 "Status: *Menunggu approval*.\n"
-                "Data attendance client asli tidak diubah."
+                "Data attendance client asli tidak diubah.",
+                ("attendance", "Cek Attendance"),
+                ("menu", "Menu"),
             )
         if result.outcome is SubmitOutcome.ALREADY_OPEN:
             await state.clear(jid)
@@ -263,15 +300,122 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
     return _resolution_prompt(draft)
 
 
+def _mask_jid(jid: str) -> str:
+    number = jid.split("@", 1)[0]
+    if len(number) <= 6:
+        return number
+    return f"{number[:3]}***{number[-3:]}"
+
+
+async def _rebind_prompt(jid: str, employee_id: str) -> str:
+    old_jid = await create_rebind_onboarding_service().existing_jid(employee_id)
+    old_label = _mask_jid(old_jid) if old_jid else "nomor lama"
+    return interactive(
+        "NRP ini sudah terhubung ke WhatsApp lain.\n"
+        f"Binding aktif: {old_label}\n\n"
+        "Kalau ini memang nomor barumu, ajukan ganti nomor. Nomor lama tetap aktif "
+        "sampai PMO approve.",
+        ("rebind:submit", "Ajukan Ganti Nomor"),
+        ("rebind:cancel", "Batal"),
+    )
+
+
+async def _handle_rebind_stage(text: str, jid: str) -> str | None:
+    activation = create_activation_service()
+    if await activation.resolve(jid) is not None:
+        return None
+    rebind = create_identity_rebind_service()
+    staged = await rebind.staged(jid)
+    lowered = text.strip().casefold()
+
+    if staged is not None:
+        if lowered in _REBIND_CANCEL_WORDS:
+            await rebind.clear_stage(jid)
+            return "Oke, pengajuan ganti nomor dibatalkan. Kirim NRP lagi kalau mau mulai ulang."
+        if lowered in _REBIND_SUBMIT_WORDS:
+            result = await rebind.request(staged, jid)
+            if result.outcome in (
+                RebindRequestOutcome.CREATED,
+                RebindRequestOutcome.ALREADY_PENDING,
+            ):
+                await rebind.clear_stage(jid)
+                return interactive(
+                    "✅ Pengajuan ganti nomor sudah masuk ke PMO.\n"
+                    "Nomor lama tetap aktif sampai request di-approve.",
+                    ("menu", "Selesai"),
+                )
+            if result.outcome is RebindRequestOutcome.NEW_NUMBER_ALREADY_BOUND:
+                return "Nomor ini sudah terhubung ke identity lain dan tidak bisa dipakai untuk rebind."
+            if result.outcome is RebindRequestOutcome.SAME_NUMBER:
+                await rebind.clear_stage(jid)
+                return "Nomor ini ternyata sama dengan binding aktif; tidak perlu ganti nomor."
+            await rebind.clear_stage(jid)
+            return "Binding lama sudah tidak ditemukan. Kirim NRP lagi untuk onboarding normal."
+        return await _rebind_prompt(jid, staged)
+
+    pending_employee_id = await activation.pending_claim(jid)
+    if pending_employee_id is None or lowered not in _YES_WORDS:
+        return None
+    old_jid = await create_rebind_onboarding_service().existing_jid(pending_employee_id)
+    if old_jid is None or old_jid == jid:
+        return None
+    # Intercept before cli._dm_onboarding calls bind(): no automatic takeover.
+    await activation.clear_claim(jid)
+    await rebind.stage(jid, pending_employee_id)
+    return await _rebind_prompt(jid, pending_employee_id)
+
+
+async def _route_operator(text: str, jid: str) -> str | None:
+    workflow = create_workflow_control_service()
+    operator = await workflow.resolve_jid(jid)
+    if operator is not None:
+        if not operator.active:
+            return "Akses PMO WhatsApp untuk akun ini sudah dinonaktifkan. Hubungi admin."
+        return await pmo_reply(operator, jid, text)
+
+    token = text.strip()
+    if not token.startswith("PMO-"):
+        return None
+    # A JID already bound as Talent can never turn itself into PMO by consuming
+    # an invite; admin must first resolve that identity conflict deliberately.
+    if await create_activation_service().resolve(jid) is not None:
+        return "Nomor ini sudah terhubung sebagai Talent. PMO linking tidak dapat dilakukan di nomor ini."
+    result = await workflow.consume_whatsapp_invite(jid, token)
+    if result.outcome is InviteOutcome.LINKED and result.operator is not None:
+        return await pmo_reply(result.operator, jid, "menu")
+    if result.outcome is InviteOutcome.EXPIRED:
+        return "Link aktivasi PMO sudah kedaluwarsa. Minta Admin membuat invite baru dari TalentOps."
+    if result.outcome is InviteOutcome.USED:
+        return "Link aktivasi PMO ini sudah pernah dipakai."
+    if result.outcome is InviteOutcome.INACTIVE:
+        return "Akun PMO untuk invite ini sudah tidak aktif."
+    if result.outcome in (
+        InviteOutcome.JID_ALREADY_LINKED,
+        InviteOutcome.OPERATOR_ALREADY_LINKED,
+    ):
+        return "PMO WhatsApp sudah terhubung. Admin dapat unlink/reissue dari TalentOps jika perlu."
+    return "Link aktivasi PMO tidak valid."
+
+
 async def reply(text: str, jid: str) -> str:
+    operator_reply = await _route_operator(text, jid)
+    if operator_reply is not None:
+        return operator_reply
+
+    rebind_reply = await _handle_rebind_stage(text, jid)
+    if rebind_reply is not None:
+        return rebind_reply
+
     state = create_attendance_resolution_dm_state_service()
     draft = await state.pending(jid)
     if draft is None:
-        if _wants_attendance_summary(text):
-            activation = create_activation_service()
-            employee_id = await activation.resolve(jid)
-            if employee_id is not None:
-                return await _attendance_status_reply(employee_id, jid)
+        activation = create_activation_service()
+        employee_id = await activation.resolve(jid)
+        lowered = text.strip().casefold()
+        if employee_id is not None and lowered in _MENU_WORDS:
+            return _talent_menu()
+        if employee_id is not None and _wants_attendance_summary(text):
+            return await _attendance_status_reply(employee_id, jid)
         return await run_sync(_legacy_dm_reply, text, jid)
 
     activation = create_activation_service()
@@ -286,6 +430,11 @@ async def reply(text: str, jid: str) -> str:
 
 
 async def evidence(jid: str, file_path: Path, caption: str) -> str:
+    workflow = create_workflow_control_service()
+    operator = await workflow.resolve_jid(jid)
+    if operator is not None:
+        return "PMO DM tidak menerima upload evidence. Review evidence dilakukan dari queue / TalentOps Web."
+
     state = create_attendance_resolution_dm_state_service()
     existing = await state.pending(jid)
     if existing is not None:
@@ -303,7 +452,7 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     draft = await state.mark_evidence_ready(jid, employee_id, pending_attendance_key)
     if draft is None:
         return legacy_reply
-    return f"{legacy_reply}\n\n{_resolution_prompt(draft)}"
+    return _resolution_prompt(draft, legacy_reply)
 
 
 def build_parser() -> argparse.ArgumentParser:
