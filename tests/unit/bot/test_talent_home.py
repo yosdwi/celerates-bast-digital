@@ -115,6 +115,25 @@ async def test_home_is_three_action_native_button_shape(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_home_prepends_an_optional_greeting_above_the_usual_halo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # cli._bound_reply_with_nudge uses this right after a successful NRP
+    # bind, so a freshly-connected talent lands on the same button-first
+    # home screen "halo"/"menu" already shows, not a different, older
+    # summary format the onboarding flow used to dead-end into.
+    async def completion(_period: DateRange) -> object:
+        return SimpleNamespace(employees=(_employee(),))
+
+    monkeypatch.setattr(talent_home, "completion_status", completion)
+
+    payload = _payload(await talent_home.home(_EMPLOYEE_ID, greeting="✅ Terhubung sebagai Yoses."))
+    text = str(payload["text"])
+    assert text.startswith("✅ Terhubung sebagai Yoses.\n\nHalo")
+    assert [item["id"] for item in payload["actions"]] == ["status", "attendance", "tasklist"]
+
+
+@pytest.mark.asyncio
 async def test_complete_home_says_bast_is_complete(monkeypatch: pytest.MonkeyPatch) -> None:
     async def completion(_period: DateRange) -> object:
         return SimpleNamespace(employees=(_employee(complete=True),))
