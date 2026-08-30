@@ -68,12 +68,11 @@ function parseInteractiveReply(text) {
 function fallbackText(payload) {
   const lines = [payload.text];
   if (payload.actions.length) {
-    lines.push("", "Pilihan:");
+    lines.push("");
     if (payload.digitShortcuts !== false) {
       payload.actions.forEach((action, index) => {
         lines.push(`${index + 1}. ${action.label}`);
       });
-      lines.push("", "Balas dengan angka pilihan di atas.");
     } else {
       for (const action of payload.actions) {
         lines.push(`• ${action.label}: ${action.id}`);
