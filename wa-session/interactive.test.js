@@ -84,12 +84,16 @@ test("parseInteractiveReply defaults digitShortcuts to true, honors an explicit 
   assert.equal(disabled.digitShortcuts, false);
 });
 
-test("fallbackText numbers every action so replying is a digit, not a tap", () => {
+test("fallbackText numbers every action, kept minimal like a real button list", () => {
   const text = fallbackText(PAYLOAD);
   assert.match(text, /1\. Status Saya/);
   assert.match(text, /2\. Attendance/);
   assert.match(text, /3\. Task & Evidence/);
-  assert.match(text, /Balas dengan angka/);
+  // Framing lines ("Pilihan:", "Balas dengan angka...") read as clutter once
+  // every single bot reply repeats them -- dropped per explicit feedback
+  // that the numbered list alone should read like a button, not a form.
+  assert.doesNotMatch(text, /Pilihan:/);
+  assert.doesNotMatch(text, /Balas dengan angka/);
   // The raw action id (e.g. a PMO approve/reject id with an embedded uuid)
   // must never be shown to the user -- resolveDigitReply is how it gets used.
   assert.doesNotMatch(text, /: status/);
@@ -160,7 +164,6 @@ test("sendInteractiveReply always sends the text fallback (native-flow is disabl
   assert.equal(relayCalls.length, 0);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].jid, "628123@s.whatsapp.net");
-  assert.match(sent[0].content.text, /Pilihan:/);
   assert.match(sent[0].content.text, /1\. Status Saya/);
   assert.deepEqual(sent[0].options, { quoted: INCOMING_MESSAGE });
 });
