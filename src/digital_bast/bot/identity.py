@@ -35,12 +35,47 @@ _MAX_ATTEMPTS: Final = 5
 _LOCKOUT: Final = timedelta(minutes=15)
 
 
+def _is_one_edit_away(a: str, b: str) -> bool:
+    """A single missed/extra/mistyped character -- the common phone-keyboard
+    slip -- away from equal. Not a general edit-distance metric: only ever
+    called to compare against a *different* string (see resolve_employee_by_nrp),
+    so equal inputs are intentionally not treated as "one edit away".
+    """
+    if len(a) == len(b):
+        diffs = sum(1 for x, y in zip(a, b, strict=True) if x != y)
+        return diffs == 1
+    if abs(len(a) - len(b)) != 1:
+        return False
+    shorter, longer = (a, b) if len(a) < len(b) else (b, a)
+    i = skipped = 0
+    for char in longer:
+        if i < len(shorter) and shorter[i] == char:
+            i += 1
+            continue
+        if skipped:
+            return False
+        skipped = 1
+    return i == len(shorter)
+
+
 def resolve_employee_by_nrp(nrp: str, employees: tuple[Employee, ...]) -> Employee | None:
     needle = canonical_text(nrp)
     if not needle:
         return None
     matches = [employee for employee in employees if canonical_text(employee.external_id) == needle]
-    return matches[0] if len(matches) == 1 else None
+    if matches:
+        return matches[0] if len(matches) == 1 else None
+    # No exact match -- tolerate one typo'd character, but only when exactly
+    # one employee is close enough to guess at. The YA/BUKAN confirmation
+    # afterward is a second check on a single good guess, not a license to
+    # pick among several near-matches; multiple close candidates is exactly
+    # the ambiguous case exact matching already refuses to resolve.
+    close = [
+        employee
+        for employee in employees
+        if _is_one_edit_away(canonical_text(employee.external_id), needle)
+    ]
+    return close[0] if len(close) == 1 else None
 
 
 class ActivationOutcome(StrEnum):
