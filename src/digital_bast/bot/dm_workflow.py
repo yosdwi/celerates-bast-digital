@@ -232,11 +232,16 @@ async def _attendance_status_reply(employee_id: str, jid: str) -> str:
         pending,
         _latest_rejections(requests, period),
     )
+    # When there are candidates, `text` above already asks for a bare-number
+    # reply to pick one for evidence (see mark_active call and
+    # evidence.active_kind(jid) == "attendance" in cli.py) -- wa-session's
+    # digit-selects-a-button shortcut must not shadow that.
     return interactive(
         text,
         ("tasklist", "Task & Evidence"),
         ("attendance", "Refresh"),
         ("menu", "Menu"),
+        digit_shortcuts=not candidates,
     )
 
 

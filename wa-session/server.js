@@ -175,7 +175,7 @@ async function sendDmWorkerReply(sock, jid, message, result, errorContext) {
   }
   const interactive = parseInteractiveReply(result.text);
   if (interactive) {
-    rememberMenu(jid, interactive.actions);
+    if (interactive.digitShortcuts) rememberMenu(jid, interactive.actions);
     await sendInteractiveReply(sock, jid, message, interactive, log);
     return;
   }

@@ -55,6 +55,10 @@ function parseInteractiveReply(text) {
       text: parsed.text,
       footer: typeof parsed.footer === "string" ? parsed.footer : "Digital BAST",
       actions,
+      // False only when `text` already asks for a bare-number reply for
+      // something else (e.g. dm_workflow._attendance_status_reply's own
+      // evidence-candidate list) -- see interactive.py on the Python side.
+      digitShortcuts: parsed.digitShortcuts !== false,
     };
   } catch {
     return null;
@@ -65,10 +69,16 @@ function fallbackText(payload) {
   const lines = [payload.text];
   if (payload.actions.length) {
     lines.push("", "Pilihan:");
-    payload.actions.forEach((action, index) => {
-      lines.push(`${index + 1}. ${action.label}`);
-    });
-    lines.push("", "Balas dengan angka pilihan di atas.");
+    if (payload.digitShortcuts !== false) {
+      payload.actions.forEach((action, index) => {
+        lines.push(`${index + 1}. ${action.label}`);
+      });
+      lines.push("", "Balas dengan angka pilihan di atas.");
+    } else {
+      for (const action of payload.actions) {
+        lines.push(`• ${action.label}: ${action.id}`);
+      }
+    }
   }
   if (payload.footer) lines.push("", `_${payload.footer}_`);
   return lines.join("\n");
