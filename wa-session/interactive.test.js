@@ -20,6 +20,7 @@ const PAYLOAD = {
     { id: "attendance", label: "Attendance" },
     { id: "tasklist", label: "Task & Evidence" },
   ],
+  digitShortcuts: true,
 };
 
 // A real incoming message always carries a populated `.message` -- Baileys'
@@ -71,6 +72,18 @@ test("parseInteractiveReply rejects anything that isn't kind:interactive", () =>
   assert.equal(parseInteractiveReply(JSON.stringify({ kind: "interactive" })), null);
 });
 
+test("parseInteractiveReply defaults digitShortcuts to true, honors an explicit false", () => {
+  const defaulted = parseInteractiveReply(
+    JSON.stringify({ kind: "interactive", text: "Halo", actions: [] }),
+  );
+  assert.equal(defaulted.digitShortcuts, true);
+
+  const disabled = parseInteractiveReply(
+    JSON.stringify({ kind: "interactive", text: "Halo", actions: [], digitShortcuts: false }),
+  );
+  assert.equal(disabled.digitShortcuts, false);
+});
+
 test("fallbackText numbers every action so replying is a digit, not a tap", () => {
   const text = fallbackText(PAYLOAD);
   assert.match(text, /1\. Status Saya/);
@@ -80,6 +93,17 @@ test("fallbackText numbers every action so replying is a digit, not a tap", () =
   // The raw action id (e.g. a PMO approve/reject id with an embedded uuid)
   // must never be shown to the user -- resolveDigitReply is how it gets used.
   assert.doesNotMatch(text, /: status/);
+});
+
+test("fallbackText falls back to the old label:id form when digitShortcuts is disabled", () => {
+  // e.g. dm_workflow._attendance_status_reply's own evidence-candidate list
+  // already uses bare numbers for something else -- digits here would be
+  // ambiguous, so keep this one screen's pre-existing typed-keyword form.
+  const text = fallbackText({ ...PAYLOAD, digitShortcuts: false });
+  assert.doesNotMatch(text, /^1\. /m);
+  assert.match(text, /Status Saya: status/);
+  assert.match(text, /Attendance: attendance/);
+  assert.match(text, /Task & Evidence: tasklist/);
 });
 
 test("rememberMenu + resolveDigitReply turns a typed number back into the real action id", () => {
