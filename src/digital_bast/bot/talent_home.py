@@ -75,13 +75,22 @@ def _resolution_description(request: AttendanceResolution) -> str:
     return "Attendance"
 
 
-async def home(employee_id: str) -> str:
+async def home(employee_id: str, *, greeting: str | None = None) -> str:
+    """`greeting`, when given, is prepended above the usual "Halo {name} 👋" --
+    used by cli._dm_onboarding right after a successful NRP bind to show a
+    "connected" confirmation and this same home menu in one message, instead
+    of the onboarding flow dead-ending into a differently-formatted summary
+    that was never updated when this button-first home screen was added.
+    """
     period = _period_now()
     report = await completion_status(period)
     mine = _mine(report, employee_id)
     if mine is None:
+        text = "Halo. Data BAST kamu belum tersedia untuk periode ini."
+        if greeting:
+            text = f"{greeting}\n\n{text}"
         return interactive(
-            "Halo. Data BAST kamu belum tersedia untuk periode ini.",
+            text,
             ("status", "Status Saya"),
             ("attendance", "Attendance"),
             ("tasklist", "Task & Evidence"),
@@ -106,6 +115,8 @@ async def home(employee_id: str) -> str:
         other_blockers = len(mine.timesheet.issues) + len(mine.task_list.issues)
         if other_blockers:
             text += f"\nLainnya    : {other_blockers} blocker — cek Status Saya"
+    if greeting:
+        text = f"{greeting}\n\n{text}"
 
     return interactive(
         text,

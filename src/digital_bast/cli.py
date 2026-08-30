@@ -21,6 +21,7 @@ from digital_bast.bot.evidence import (
     sniff_content_type,
 )
 from digital_bast.bot.identity import ActivationOutcome, resolve_employee_by_nrp
+from digital_bast.bot.talent_home import home as talent_home
 from digital_bast.bot.whatsapp import (
     EVIDENCE_UPLOAD_IN_GROUP_REPLY,
     GROUP_ONLY_COMMAND_IN_DM_REPLY,
@@ -558,17 +559,14 @@ def _bound_reply(name: str) -> str:
 
 
 async def _bound_reply_with_nudge(name: str, employee_id: str) -> str:
-    """Greet with an immediate, personalized next step instead of leaving a
-    freshly-connected user staring at a bare confirmation with no idea what
-    to type -- the summary already tells them exactly what's outstanding and
-    how to act on it (see _format_personal_summary), so showing it now
-    removes a whole guessing-what-to-type round trip.
+    """Greet with the same button-first home screen dm_workflow.reply()
+    already shows a bound talent who types "halo"/"menu" (see
+    bot.talent_home.home) instead of leaving a freshly-connected user on a
+    bare confirmation with no idea what to type, or -- as it did before this
+    -- on a differently-formatted, pre-button-era summary this onboarding
+    flow was never updated to drop in favor of.
     """
-    today = datetime.now(JAKARTA).date()
-    period = DateRange(today.replace(day=1), today)
-    evidence = create_evidence_service()
-    summary = await _format_personal_summary(employee_id, period, evidence)
-    return f"{_bound_reply(name)}\n\n{summary}"
+    return await talent_home(employee_id, greeting=_bound_reply(name))
 
 
 async def _dm_onboarding(text: str, jid: str) -> str:  # noqa: PLR0911 -- one short-circuit per case
