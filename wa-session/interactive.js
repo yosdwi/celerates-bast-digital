@@ -61,21 +61,52 @@ function parseInteractiveReply(text) {
   }
 }
 
-function typedOptionsHint(payload) {
-  if (!payload.actions.length) return "";
-  return `Atau ketik: ${payload.actions.map((action) => action.label).join(", ")}`;
-}
-
 function fallbackText(payload) {
   const lines = [payload.text];
   if (payload.actions.length) {
     lines.push("", "Pilihan:");
-    for (const action of payload.actions) {
-      lines.push(`• ${action.label}: ${action.id}`);
-    }
+    payload.actions.forEach((action, index) => {
+      lines.push(`${index + 1}. ${action.label}`);
+    });
+    lines.push("", "Balas dengan angka pilihan di atas.");
   }
   if (payload.footer) lines.push("", `_${payload.footer}_`);
   return lines.join("\n");
+}
+
+// Tapping a button became typing its number instead (see sendInteractiveReply
+// below -- native-flow buttons don't reliably deliver on this account, see
+// the disabled code further down). rememberMenu records the exact options
+// just shown to a JID so the next bare-digit reply can resolve back to the
+// real action id -- this matters most for PMO's per-request approve/reject
+// ids (e.g. "pmo:attendance:<uuid>:approve"), which nobody could reasonably
+// type by hand otherwise. forgetMenu is called on every non-interactive
+// reply so a stale menu never shadows the Python CLI's own, unrelated
+// bare-number flow (picking an outstanding evidence/attendance item from a
+// plain numbered list) -- only a digit typed immediately after an
+// interactive menu was shown is treated as a menu selection.
+const PENDING_MENU_TTL_MS = 15 * 60 * 1000;
+const MAX_PENDING_MENUS = 512;
+const pendingMenus = new Map();
+
+function rememberMenu(jid, actions) {
+  pendingMenus.set(jid, { actions, expiresAt: Date.now() + PENDING_MENU_TTL_MS });
+  if (pendingMenus.size <= MAX_PENDING_MENUS) return;
+  const oldest = pendingMenus.keys().next().value;
+  if (oldest !== undefined) pendingMenus.delete(oldest);
+}
+
+function forgetMenu(jid) {
+  pendingMenus.delete(jid);
+}
+
+function resolveDigitReply(jid, text) {
+  const trimmed = text.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return text;
+  const entry = pendingMenus.get(jid);
+  if (!entry || Date.now() > entry.expiresAt) return text;
+  const action = entry.actions[Number(trimmed) - 1];
+  return action ? action.id : text;
 }
 
 // WhatsApp's classic `buttonsMessage` envelope (buttonId/buttonText/type: 1)
@@ -97,7 +128,10 @@ function fallbackText(payload) {
 // Real WhatsApp clients always send messageVersion: 1 for quick_reply
 // buttons, so we do too.
 function nativeFlowContent(payload) {
-  const bodyText = [payload.text, "", typedOptionsHint(payload)].filter(Boolean).join("\n");
+  const hint = payload.actions.length
+    ? `Atau ketik: ${payload.actions.map((action) => action.label).join(", ")}`
+    : "";
+  const bodyText = [payload.text, "", hint].filter(Boolean).join("\n");
   return {
     interactiveMessage: {
       body: { text: bodyText },
@@ -114,26 +148,28 @@ function nativeFlowContent(payload) {
   };
 }
 
+// Disabled 2026-08-29: three live sends (two JIDs, with and without
+// messageVersion set) all returned success from relayMessage() with zero
+// exception and zero WhatsApp-side error/receipt, yet nothing ever reached
+// the recipient -- not the buttons, not even plain text. Because relayMessage
+// never throws in this failure mode, the try/catch fallback below never ran,
+// so every real talent interaction that hit this path (any bot reply with
+// buttons, e.g. the main menu) was silently dropped in production -- strictly
+// worse than the original bug (legacy buttonsMessage silently stripped by
+// WhatsApp but the surrounding text still delivered). Until there's a
+// confirmed-working way to send native-flow interactive messages from this
+// account, always use the text fallback; nativeFlowContent is kept for the
+// next investigation rather than deleted.
 async function sendInteractiveReply(sock, jid, message, payload, log = () => {}) {
-  if (payload.actions.length > 0) {
-    try {
-      const { generateWAMessageFromContent } = require("@whiskeysockets/baileys");
-      const full = generateWAMessageFromContent(jid, nativeFlowContent(payload), {
-        userJid: sock.user?.id,
-        quoted: message,
-      });
-      await sock.relayMessage(jid, full.message, { messageId: full.key.id });
-      return;
-    } catch (error) {
-      log(`native-flow interactive reply failed; using text fallback: ${error}`);
-    }
-  }
   await sock.sendMessage(jid, { text: fallbackText(payload) }, { quoted: message });
 }
 
 module.exports = {
   fallbackText,
+  forgetMenu,
   messageText,
   parseInteractiveReply,
+  rememberMenu,
+  resolveDigitReply,
   sendInteractiveReply,
 };

@@ -6,6 +6,9 @@ const {
   messageText,
   parseInteractiveReply,
   fallbackText,
+  forgetMenu,
+  rememberMenu,
+  resolveDigitReply,
   sendInteractiveReply,
 } = require("./interactive");
 
@@ -68,63 +71,72 @@ test("parseInteractiveReply rejects anything that isn't kind:interactive", () =>
   assert.equal(parseInteractiveReply(JSON.stringify({ kind: "interactive" })), null);
 });
 
-test("fallbackText lists every action so it stays usable without tappable buttons", () => {
+test("fallbackText numbers every action so replying is a digit, not a tap", () => {
   const text = fallbackText(PAYLOAD);
-  assert.match(text, /Status Saya: status/);
-  assert.match(text, /Attendance: attendance/);
-  assert.match(text, /Task & Evidence: tasklist/);
+  assert.match(text, /1\. Status Saya/);
+  assert.match(text, /2\. Attendance/);
+  assert.match(text, /3\. Task & Evidence/);
+  assert.match(text, /Balas dengan angka/);
+  // The raw action id (e.g. a PMO approve/reject id with an embedded uuid)
+  // must never be shown to the user -- resolveDigitReply is how it gets used.
+  assert.doesNotMatch(text, /: status/);
 });
 
-test("sendInteractiveReply relays a native-flow message and never falls back on success", async () => {
-  const relayed = [];
+test("rememberMenu + resolveDigitReply turns a typed number back into the real action id", () => {
+  const jid = "6281111111111@s.whatsapp.net";
+  rememberMenu(jid, PAYLOAD.actions);
+  assert.equal(resolveDigitReply(jid, "1"), "status");
+  assert.equal(resolveDigitReply(jid, "2"), "attendance");
+  assert.equal(resolveDigitReply(jid, " 3 "), "tasklist");
+});
+
+test("resolveDigitReply leaves text alone when there's no menu, it's out of range, or not a digit", () => {
+  const withMenu = "6282222222222@s.whatsapp.net";
+  const withoutMenu = "6283333333333@s.whatsapp.net";
+  rememberMenu(withMenu, PAYLOAD.actions);
+
+  assert.equal(resolveDigitReply(withoutMenu, "1"), "1");
+  assert.equal(resolveDigitReply(withMenu, "99"), "99");
+  assert.equal(resolveDigitReply(withMenu, "status"), "status");
+  assert.equal(resolveDigitReply(withMenu, "1 dong"), "1 dong");
+});
+
+test("forgetMenu stops a stale menu from swallowing an unrelated bare-number reply", () => {
+  // Mirrors production: e.g. the CLI's own numbered evidence-candidate list
+  // is plain text, not an interactive() payload, so the digit it expects
+  // back must reach it untouched instead of being resolved against an
+  // older menu that's no longer on screen.
+  const jid = "6284444444444@s.whatsapp.net";
+  rememberMenu(jid, PAYLOAD.actions);
+  forgetMenu(jid);
+  assert.equal(resolveDigitReply(jid, "1"), "1");
+});
+
+// Native-flow sending is disabled (see the comment above sendInteractiveReply
+// in interactive.js): three live tests all showed relayMessage() resolving
+// with no error while the message never reached the recipient at all, which
+// meant real talent replies with buttons were being silently dropped in
+// production. sendInteractiveReply now always uses the plain-text fallback,
+// which every one of those same live tests confirmed actually delivers.
+test("sendInteractiveReply always sends the text fallback (native-flow is disabled)", async () => {
+  const sent = [];
+  const relayCalls = [];
   const sock = {
     user: { id: "62881080735871:2@s.whatsapp.net" },
     relayMessage: async (jid, message, options) => {
-      relayed.push({ jid, message, options });
+      relayCalls.push({ jid, message, options });
     },
-    sendMessage: async () => {
-      throw new Error("fallback should not be used when relayMessage succeeds");
+    sendMessage: async (jid, content, options) => {
+      sent.push({ jid, content, options });
     },
   };
 
   await sendInteractiveReply(sock, "628123@s.whatsapp.net", INCOMING_MESSAGE, PAYLOAD);
 
-  assert.equal(relayed.length, 1);
-  const { jid, message } = relayed[0];
-  assert.equal(jid, "628123@s.whatsapp.net");
-  const nativeFlow = message.interactiveMessage.nativeFlowMessage;
-  assert.equal(nativeFlow.buttons.length, 3);
-  assert.deepEqual(JSON.parse(nativeFlow.buttons[0].buttonParamsJson), {
-    display_text: "Status Saya",
-    id: "status",
-  });
-  assert.equal(nativeFlow.messageVersion, 1);
-  // Insurance against WhatsApp silently not rendering the buttons at all.
-  assert.match(message.interactiveMessage.body.text, /Atau ketik: Status Saya, Attendance/);
-});
-
-test("sendInteractiveReply falls back to plain text if the native-flow send throws", async () => {
-  const sent = [];
-  const sock = {
-    user: { id: "62881080735871:2@s.whatsapp.net" },
-    relayMessage: async () => {
-      throw new Error("WhatsApp rejected it");
-    },
-    sendMessage: async (jid, content) => {
-      sent.push({ jid, content });
-    },
-  };
-  const logs = [];
-
-  await sendInteractiveReply(
-    sock,
-    "628123@s.whatsapp.net",
-    INCOMING_MESSAGE,
-    PAYLOAD,
-    (line) => logs.push(line),
-  );
-
+  assert.equal(relayCalls.length, 0);
   assert.equal(sent.length, 1);
+  assert.equal(sent[0].jid, "628123@s.whatsapp.net");
   assert.match(sent[0].content.text, /Pilihan:/);
-  assert.equal(logs.some((line) => line.includes("text fallback")), true);
+  assert.match(sent[0].content.text, /1\. Status Saya/);
+  assert.deepEqual(sent[0].options, { quoted: INCOMING_MESSAGE });
 });
