@@ -6,6 +6,9 @@ const {
   messageText,
   parseInteractiveReply,
   fallbackText,
+  forgetMenu,
+  rememberMenu,
+  resolveDigitReply,
   sendInteractiveReply,
 } = require("./interactive");
 
@@ -68,11 +71,45 @@ test("parseInteractiveReply rejects anything that isn't kind:interactive", () =>
   assert.equal(parseInteractiveReply(JSON.stringify({ kind: "interactive" })), null);
 });
 
-test("fallbackText lists every action so it stays usable without tappable buttons", () => {
+test("fallbackText numbers every action so replying is a digit, not a tap", () => {
   const text = fallbackText(PAYLOAD);
-  assert.match(text, /Status Saya: status/);
-  assert.match(text, /Attendance: attendance/);
-  assert.match(text, /Task & Evidence: tasklist/);
+  assert.match(text, /1\. Status Saya/);
+  assert.match(text, /2\. Attendance/);
+  assert.match(text, /3\. Task & Evidence/);
+  assert.match(text, /Balas dengan angka/);
+  // The raw action id (e.g. a PMO approve/reject id with an embedded uuid)
+  // must never be shown to the user -- resolveDigitReply is how it gets used.
+  assert.doesNotMatch(text, /: status/);
+});
+
+test("rememberMenu + resolveDigitReply turns a typed number back into the real action id", () => {
+  const jid = "6281111111111@s.whatsapp.net";
+  rememberMenu(jid, PAYLOAD.actions);
+  assert.equal(resolveDigitReply(jid, "1"), "status");
+  assert.equal(resolveDigitReply(jid, "2"), "attendance");
+  assert.equal(resolveDigitReply(jid, " 3 "), "tasklist");
+});
+
+test("resolveDigitReply leaves text alone when there's no menu, it's out of range, or not a digit", () => {
+  const withMenu = "6282222222222@s.whatsapp.net";
+  const withoutMenu = "6283333333333@s.whatsapp.net";
+  rememberMenu(withMenu, PAYLOAD.actions);
+
+  assert.equal(resolveDigitReply(withoutMenu, "1"), "1");
+  assert.equal(resolveDigitReply(withMenu, "99"), "99");
+  assert.equal(resolveDigitReply(withMenu, "status"), "status");
+  assert.equal(resolveDigitReply(withMenu, "1 dong"), "1 dong");
+});
+
+test("forgetMenu stops a stale menu from swallowing an unrelated bare-number reply", () => {
+  // Mirrors production: e.g. the CLI's own numbered evidence-candidate list
+  // is plain text, not an interactive() payload, so the digit it expects
+  // back must reach it untouched instead of being resolved against an
+  // older menu that's no longer on screen.
+  const jid = "6284444444444@s.whatsapp.net";
+  rememberMenu(jid, PAYLOAD.actions);
+  forgetMenu(jid);
+  assert.equal(resolveDigitReply(jid, "1"), "1");
 });
 
 // Native-flow sending is disabled (see the comment above sendInteractiveReply
@@ -100,6 +137,6 @@ test("sendInteractiveReply always sends the text fallback (native-flow is disabl
   assert.equal(sent.length, 1);
   assert.equal(sent[0].jid, "628123@s.whatsapp.net");
   assert.match(sent[0].content.text, /Pilihan:/);
-  assert.match(sent[0].content.text, /Status Saya: status/);
+  assert.match(sent[0].content.text, /1\. Status Saya/);
   assert.deepEqual(sent[0].options, { quoted: INCOMING_MESSAGE });
 });

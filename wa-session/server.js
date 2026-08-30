@@ -17,13 +17,15 @@ const {
 const { ownUserIds, isForUs, looksLikeConversation, looksLikeDmFastPath } = require("./mention");
 const { waitingReply } = require("./greeting");
 const { withDelayedNotice } = require("./delayed-notice");
+const { handleOutboundRequest, safeEqual, configuredToken } = require("./outbound");
 const {
-  handleOutboundRequest,
-  handleTestInteractiveRequest,
-  safeEqual,
-  configuredToken,
-} = require("./outbound");
-const { messageText, parseInteractiveReply, sendInteractiveReply } = require("./interactive");
+  forgetMenu,
+  messageText,
+  parseInteractiveReply,
+  rememberMenu,
+  resolveDigitReply,
+  sendInteractiveReply,
+} = require("./interactive");
 
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
 const DATA_DIR = process.env.BOT_DATA_DIR || path.join(__dirname, "data");
@@ -159,6 +161,10 @@ async function sendFileReply(sock, jid, message, filePayload) {
 }
 
 async function sendDmWorkerReply(sock, jid, message, result, errorContext) {
+  // Any reply supersedes whatever menu was shown before it -- only a digit
+  // typed right after a fresh interactive menu should resolve as a
+  // selection (see resolveDigitReply in handleDirectMessage).
+  forgetMenu(jid);
   if (!result.ok) {
     await sock.sendMessage(
       jid,
@@ -169,6 +175,7 @@ async function sendDmWorkerReply(sock, jid, message, result, errorContext) {
   }
   const interactive = parseInteractiveReply(result.text);
   if (interactive) {
+    rememberMenu(jid, interactive.actions);
     await sendInteractiveReply(sock, jid, message, interactive, log);
     return;
   }
@@ -317,8 +324,9 @@ async function handleDirectMessage(sock, message, jid) {
   const text = messageText(message);
   if (!text) return;
   log(`dm from ${jid}: ${text.slice(0, 120)}`);
-  const operation = () => callBotWorker({ kind: "text", text, jid, channel: "dm" });
-  const result = looksLikeDmFastPath(text)
+  const resolvedText = resolveDigitReply(jid, text);
+  const operation = () => callBotWorker({ kind: "text", text: resolvedText, jid, channel: "dm" });
+  const result = looksLikeDmFastPath(resolvedText)
     ? await operation()
     : await withDelayedNotice(
         operation,
@@ -436,7 +444,6 @@ function readBody(request) {
 
 const server = http.createServer(async (request, response) => {
   if (await handleOutboundRequest(request, response, state, log)) return;
-  if (await handleTestInteractiveRequest(request, response, state, log)) return;
 
   const url = new URL(request.url, `http://${request.headers.host}`);
   if (request.method === "GET" && url.pathname === "/health") {
