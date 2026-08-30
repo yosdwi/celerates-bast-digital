@@ -59,7 +59,9 @@ if TYPE_CHECKING:
 type DmCommand = Literal["reply", "evidence"]
 
 _ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
-_MENU_WORDS: Final = frozenset({"menu", "halo", "hai", "hi", "start", "help", "bantuan"})
+# Shared with cli._dm_onboarding's greeting handling for not-yet-bound
+# senders -- one canonical set, not two copies drifting apart.
+_MENU_WORDS: Final = cli.GREETING_WORDS
 _YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
 _REBIND_SUBMIT_WORDS: Final = frozenset(
     {"ganti nomor", "ajukan ganti nomor", "rebind", "rebind:submit"}

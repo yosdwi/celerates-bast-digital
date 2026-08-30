@@ -497,6 +497,12 @@ def _other_employee_reply(name: str) -> str:
 # internal Employee ID -- that stays purely an internal key from here on.
 _NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
 _NRP_ATTEMPT_MAX_ECHO: Final = 40
+# dm_workflow.py imports this to route an already-bound talent's greeting to
+# the home menu -- one canonical set instead of two copies. An unbound
+# sender typing "halo" deserves the same friendly _NRP_HELP a blank message
+# gets, not "NRP 'halo' belum aku kenali", which reads as an error for a
+# greeting.
+GREETING_WORDS: Final = frozenset({"menu", "halo", "hai", "hi", "start", "help", "bantuan"})
 _CONFIRM_CANCELLED: Final = "Oke, dibatalkan. Kirim NRP kamu lagi ya."
 _CONFIRM_RETRY: Final = "Balas YA atau BUKAN ya."
 _ALREADY_BOUND_ELSEWHERE: Final = (
@@ -565,7 +571,7 @@ async def _bound_reply_with_nudge(name: str, employee_id: str) -> str:
     return f"{_bound_reply(name)}\n\n{summary}"
 
 
-async def _dm_onboarding(text: str, jid: str) -> str:
+async def _dm_onboarding(text: str, jid: str) -> str:  # noqa: PLR0911 -- one short-circuit per case
     activation = create_activation_service()
     pending_employee_id = await activation.pending_claim(jid)
     lowered = text.strip().casefold()
@@ -584,11 +590,12 @@ async def _dm_onboarding(text: str, jid: str) -> str:
             await activation.clear_claim(jid)
             return _CONFIRM_CANCELLED
         return _CONFIRM_RETRY
+    if not lowered or lowered in GREETING_WORDS:
+        return _NRP_HELP
     roster = await load_roster()
     employee = resolve_employee_by_nrp(text, roster)
     if employee is None:
-        stripped = text.strip()
-        return _NRP_HELP if not stripped else _nrp_not_found_reply(stripped)
+        return _nrp_not_found_reply(text.strip())
     await activation.claim(jid, str(employee.id))
     return _confirm_prompt(employee.name, employee.external_id)
 
