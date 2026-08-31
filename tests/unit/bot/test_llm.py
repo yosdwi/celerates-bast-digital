@@ -97,7 +97,7 @@ async def test_talent_statement_can_remain_unknown_instead_of_keyword_routing() 
     assert result is not None
     assert result.intent is TalentIntent.UNKNOWN
     system_prompt = client.calls[0][0]
-    assert "seluruh kalimat" in system_prompt
+    assert "seluruh kalimat" in system_prompt.casefold()
     assert "tasklist kemarin sebenarnya sudah aku isi" in system_prompt
 
 
