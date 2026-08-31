@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.web.attendance_router import attendance_router
 from digital_bast.web.auth_router import auth_router
 from digital_bast.web.dependencies import WebDependencies
@@ -95,6 +96,12 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
+    async def _infrastructure_unavailable(_request: Request, _error: Exception) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "A required backend service is temporarily unavailable. Please retry."},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     async def _liveness() -> JSONResponse:
         return JSONResponse({"status": "healthy", "service": "digital-bast-admin"})
 
@@ -115,6 +122,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.add_exception_handler(SessionUnavailableError, _session_unavailable)
     app.add_exception_handler(AuthenticationUnavailableError, _auth_unavailable)
     app.add_exception_handler(WebBackendUnavailableError, _backend_unavailable)
+    app.add_exception_handler(InfrastructureError, _infrastructure_unavailable)
     app.add_api_route("/health/live", _liveness, methods=["GET"])
     app.add_api_route("/health", _liveness, methods=["GET"])
     app.add_api_route("/health/ready", _readiness, methods=["GET"])

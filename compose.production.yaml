@@ -1,0 +1,19 @@
+# Production-only resource overrides applied by scripts/deploy.sh.
+#
+# The TalentOps Web BAST endpoint renders the same html2canvas + jsPDF document
+# through Playwright/Chromium as bot-worker. A real production render already
+# proved that 768M is insufficient for this pipeline (Chromium was OOM-killed),
+# so the active blue/green web slot needs the same 1.5G ceiling as bot-worker.
+# Limits are ceilings, not reservations; only the active slot consumes render
+# memory during a request.
+services:
+  web-blue:
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+  web-green:
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
