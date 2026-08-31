@@ -35,6 +35,11 @@ grep -q 'compose build bot-worker' scripts/deploy.sh
 grep -q 'bot-worker failed health gate; previous image restored' scripts/deploy.sh
 grep -q 'rollback_worker' scripts/deploy.sh
 grep -q 'wa-session/outbound.js' wa-session/Dockerfile
+grep -q '^USER 10001:10001$' whatsmeow-session/Dockerfile
+# The invariant that matters most in this file: whatsmeow must never read the
+# old Baileys session (incompatible formats; pointing whatsmeow at it would
+# not "migrate" anything, just corrupt or ignore real auth data).
+grep -q 'ENV BOT_AUTH_DIR=/data/auth-whatsmeow' whatsmeow-session/Dockerfile
 grep -q 'flock -n' scripts/deploy-wa-session.sh
 # wa-session must never be touched by the automated blue/green flow -- that
 # coupling is exactly what caused WhatsApp to revoke the session in the

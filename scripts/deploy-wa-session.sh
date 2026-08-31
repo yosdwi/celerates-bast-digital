@@ -49,7 +49,7 @@ compose() {
     docker compose --profile "$current" "$@"
 }
 
-session_image=${WA_SESSION_IMAGE:-digital-bast-wa-session:local}
+session_image=${WA_SESSION_IMAGE:-digital-bast-whatsmeow-session:local}
 previous_session_image=""
 if [ "$DRY_RUN" = "0" ]; then
     session_container=$(compose ps -q wa-session 2>/dev/null || true)
