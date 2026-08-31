@@ -22,6 +22,8 @@ from digital_bast.operations import (
 )
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from digital_bast.bot.attendance_resolution import AttendanceResolution
     from digital_bast.domain.completion import CompletionReport, EmployeeCompletion
 
@@ -74,11 +76,11 @@ def _resolution_description(request: AttendanceResolution) -> str:
 
 def _latest_request_by_day(
     items: tuple[AttendanceResolution, ...], period: DateRange
-) -> dict[object, AttendanceResolution]:
+) -> dict[date, AttendanceResolution]:
     # AttendanceResolutionService.for_employee() is newest-first. Keep only
     # the latest decision for each day so an old rejection does not keep a day
     # actionable after a newer request has been submitted/approved.
-    latest: dict[object, AttendanceResolution] = {}
+    latest: dict[date, AttendanceResolution] = {}
     for item in items:
         if not period.start <= item.work_date <= period.end:
             continue
@@ -144,7 +146,8 @@ async def home(
             lines.append("✅ Bagian kamu sudah selesai. Tinggal menunggu review PMO.")
         elif unavailable:
             lines.append(
-                "✅ Tidak ada tindakan dari kamu. Data yang belum tersedia perlu ditindaklanjuti sistem/Admin."
+                "✅ Tidak ada tindakan dari kamu. Data yang belum tersedia "
+                "perlu ditindaklanjuti sistem/Admin."
             )
         else:
             lines.append("✅ Tidak ada tindakan yang perlu kamu lakukan.")
@@ -205,7 +208,10 @@ async def requests(employee_id: str, period: DateRange | None = None) -> str:
     )
     if not items:
         return interactive(
-            f"*Pengajuan — {_period_label(active_period)}*\n\nBelum ada pengajuan attendance pada periode ini.",
+            (
+                f"*Pengajuan — {_period_label(active_period)}*\n\n"
+                "Belum ada pengajuan attendance pada periode ini."
+            ),
             ("bast-saya", "BAST Saya"),
             ("attendance", "Attendance"),
             ("tasklist", "Task & Evidence"),
