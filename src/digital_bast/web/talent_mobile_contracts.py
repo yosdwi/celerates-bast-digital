@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from datetime import date  # noqa: TC003 - Pydantic resolves this type at runtime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
-
-if TYPE_CHECKING:
-    from datetime import date
 
 
 class TalentMobilePeriod(BaseModel):
