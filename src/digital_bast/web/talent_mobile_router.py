@@ -24,10 +24,6 @@ from digital_bast.operations import (
     create_evidence_service,
     create_rebind_onboarding_service,
 )
-if TYPE_CHECKING:
-    from digital_bast.domain.completion import DateRange
-
-
 from digital_bast.web.talent_mobile_contracts import (
     TalentMobileAttendanceItem,
     TalentMobileAttendanceRequest,
@@ -38,6 +34,9 @@ from digital_bast.web.talent_mobile_contracts import (
     TalentMobileTask,
     TalentMobileTaskSummary,
 )
+
+if TYPE_CHECKING:
+    from digital_bast.domain.completion import DateRange
 
 _API_PREFIX = "/api/talent/v1"
 _AUTH_SCHEME = "bearer"
