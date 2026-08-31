@@ -96,20 +96,28 @@ def _patch_common(
     interpreter: _Interpreter | None = None,
 ) -> _ContextStore:
     active_store = store or _ContextStore()
+    draft_state = _DraftState()
+    activation = _Activation()
+    resolution_service = _ResolutionService()
+    evidence_service = _EvidenceService()
     monkeypatch.setattr(dm_entry, "_period_now", lambda: _CURRENT)
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
-        lambda: _DraftState(),
+        lambda: draft_state,
     )
-    monkeypatch.setattr(dm_entry, "create_activation_service", lambda: _Activation())
+    monkeypatch.setattr(dm_entry, "create_activation_service", lambda: activation)
     monkeypatch.setattr(
         dm_entry,
         "create_talent_conversation_context_service",
         lambda: active_store,
     )
-    monkeypatch.setattr(dm_entry, "create_attendance_resolution_service", lambda: _ResolutionService())
-    monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: _EvidenceService())
+    monkeypatch.setattr(
+        dm_entry,
+        "create_attendance_resolution_service",
+        lambda: resolution_service,
+    )
+    monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: evidence_service)
     monkeypatch.setattr(dm_entry, "create_llm_interpreter", lambda: interpreter)
 
     async def completion(_period: DateRange) -> object:
@@ -157,6 +165,34 @@ async def test_exact_attendance_is_fast_path_without_llm(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_exact_button_keeps_recent_historical_period(monkeypatch: pytest.MonkeyPatch) -> None:
+    context = TalentConversationContext(TalentIntent.STATUS, _AUGUST)
+    store = _ContextStore(context)
+    _patch_common(monkeypatch, store=store, interpreter=None)
+    seen_periods: list[DateRange] = []
+
+    def mobile_url(
+        _employee_id: str,
+        _jid: str,
+        period: DateRange,
+        _tab: str,
+        *,
+        public_url: str | None = None,
+    ) -> str:
+        assert public_url == "https://conform.example"
+        seen_periods.append(period)
+        return "https://conform.example/august"
+
+    monkeypatch.setattr(dm_entry, "configured_talent_mobile_url", mobile_url)
+
+    response = await dm_entry.reply("attendance", _JID)
+
+    assert "1-31 Agustus 2026" in response
+    assert seen_periods == [_AUGUST]
+    assert store.saved[-1] == TalentConversationContext(TalentIntent.ATTENDANCE, _AUGUST)
+
+
+@pytest.mark.asyncio
 async def test_natural_language_historical_period_flows_end_to_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -192,15 +228,18 @@ async def test_ambiguous_statement_does_not_fall_back_to_legacy_keyword_parser(
 ) -> None:
     interpreter = _Interpreter(TalentInterpretation(TalentIntent.UNKNOWN))
     _patch_common(monkeypatch, interpreter=interpreter)
+    legacy_calls: list[tuple[str, str]] = []
 
-    async def legacy_should_not_run(_text: str, _jid: str) -> str:
-        raise AssertionError("legacy substring parser must not receive ambiguous bound-Talent text")
+    async def legacy_should_not_run(text: str, jid: str) -> str:
+        legacy_calls.append((text, jid))
+        return "LEGACY"
 
     monkeypatch.setattr(dm_entry, "workflow_reply", legacy_should_not_run)
 
     response = await dm_entry.reply("tasklist kemarin sebenarnya sudah aku isi", _JID)
     payload = json.loads(response)
 
+    assert legacy_calls == []
     assert payload["kind"] == "interactive"
     assert "belum yakin" in payload["text"]
     assert [item["id"] for item in payload["actions"]] == [
@@ -236,10 +275,11 @@ async def test_followup_context_is_passed_to_natural_language_interpreter(
 async def test_bare_digit_stays_with_legacy_evidence_selection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    draft_state = _DraftState()
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
-        lambda: _DraftState(),
+        lambda: draft_state,
     )
 
     async def legacy(text: str, jid: str) -> str:
@@ -256,10 +296,11 @@ async def test_bare_digit_stays_with_legacy_evidence_selection(
 async def test_active_attendance_draft_wins_before_navigation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    draft_state = _DraftState(object())
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
-        lambda: _DraftState(object()),
+        lambda: draft_state,
     )
 
     async def legacy(text: str, jid: str) -> str:
