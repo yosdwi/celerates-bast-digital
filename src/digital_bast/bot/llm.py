@@ -25,6 +25,11 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from digital_bast.bot.talent_context import (
+    TalentConversationContext,
+    TalentIntent,
+    TalentInterpretation,
+)
 from digital_bast.bot.whatsapp import PERSONA_CAPABILITIES, PERSONA_NAME, BotCommand, Intent
 from digital_bast.domain.completion import DateRange
 
@@ -32,6 +37,7 @@ if TYPE_CHECKING:
     from digital_bast.application.talentops_ai import TalentOpsChatClient
 
 _MAX_SPAN_DAYS: Final = 366
+_MAX_TALENT_PERIOD_DAYS: Final = 31
 _PERIOD_INTENTS: Final = frozenset(
     {
         Intent.COMPLETION_STATUS,
@@ -138,14 +144,10 @@ class BotCommandDraft(BaseModel):
         return value
 
 
-# DM's own deterministic keyword fast-paths (cli.py's _SUMMARY_WORDS /
-# _ATTENDANCE_SUMMARY_WORDS) already cover the common, literal phrasings at
-# zero latency -- this only runs as a last-resort fallback, after those and
-# after _dm_llm_pick's task-title match both come up empty, for messages
-# like "yang belum closed apa" or "clock in aku yang belum lengkap" that
-# never contain the literal trigger words. Its own short schema/prompt for
-# the same reason _PERSONA_SYSTEM_PROMPT is separate: a shared schema would
-# slow down every other call for a field only this path needs.
+# Legacy DM classification is retained for cli.py's direct-evidence workflow.
+# The new bound-Talent entrypoint uses _TALENT_DM_SYSTEM_PROMPT below instead:
+# it carries period + conversational context and deliberately does not route
+# on the mere presence of a keyword.
 _DM_INTENT_SYSTEM_PROMPT: Final = (
     "Kamu mengklasifikasi satu pesan WhatsApp dari chat pribadi (DM) seorang talent ke "
     "sistem Digital BAST. Balas HANYA satu objek JSON, tanpa teks lain, sesuai skema:\n"
@@ -162,9 +164,55 @@ _DM_INTENT_SYSTEM_PROMPT: Final = (
     '"absensi aku gimana" -> {"intent":"attendance"}.'
 )
 
+_TALENT_DM_SYSTEM_PROMPT: Final = (
+    "Kamu adalah intent interpreter untuk chat pribadi seorang Talent di Digital BAST. "
+    "Kamu HANYA menentukan tujuan navigasi dan periode; JANGAN menentukan readiness, "
+    "approval, validitas evidence, atau nilai bisnis. Balas HANYA satu JSON valid:\n"
+    '{"intent":"home|attendance|tasks|status|requests|group_only|conversation|unknown",'
+    '"start_date":"YYYY-MM-DD atau null","end_date":"YYYY-MM-DD atau null"}\n'
+    "Pahami MAKSUD SELURUH KALIMAT. Jangan memilih intent hanya karena satu keyword muncul. "
+    "Kalimat yang hanya menyatakan fakta tanpa meminta data/aksi boleh unknown. Contoh: "
+    '"tasklist kemarin sebenarnya sudah aku isi" -> unknown. '
+    '"tasklist kemarin sudah aku isi, kok masih kurang?" -> tasks. '
+    '"attendance bulan agustus 2026" -> attendance dengan 2026-08-01 s/d 2026-08-31. '
+    '"yang masih kurang apa?" -> status. "pengajuan aku gimana?" -> requests.\n'
+    "home untuk meminta menu/BAST Saya secara umum. attendance untuk attendance pribadi. "
+    "tasks untuk Task & Evidence pribadi. status untuk menanyakan apa yang masih kurang/"
+    "harus dikerjakan. requests untuk status pengajuan PMO. group_only untuk generate BAST, "
+    "export attendance tim, atau status infrastruktur yang memang bukan capability Talent DM. "
+    "conversation hanya untuk smalltalk/sapaan yang tidak meminta data. unknown jika ambigu.\n"
+    "Jika user menyebut bulan/range, isi tanggal lengkap. Untuk satu nama bulan gunakan seluruh "
+    "bulan tersebut; untuk bulan berjalan tanpa rentang eksplisit gunakan tanggal 1 sampai hari "
+    "ini. Previous context boleh dipakai HANYA untuk follow-up yang jelas seperti 'yang pending "
+    "mana?' atau saat user berganti domain tapi masih jelas membicarakan periode yang sama. "
+    "Jika pesan menyebut periode baru, periode baru selalu menang."
+)
+
 
 class _DmIntentDraft(BaseModel):
     intent: Literal["tasklist", "attendance", "unknown"]
+
+
+class _TalentDmDraft(BaseModel):
+    intent: Literal[
+        "home",
+        "attendance",
+        "tasks",
+        "status",
+        "requests",
+        "group_only",
+        "conversation",
+        "unknown",
+    ]
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _blank_string_is_none(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().casefold() in {"null", "none", ""}:
+            return None
+        return value
 
 
 class _ChoiceDraft(BaseModel):
@@ -194,6 +242,35 @@ def _validate_command(draft: BotCommandDraft) -> BotCommand | None:
     )
 
 
+def _current_talent_period(today: date) -> DateRange:
+    return DateRange(today.replace(day=1), today)
+
+
+def _validate_talent_interpretation(
+    draft: _TalentDmDraft,
+    today: date,
+    context: TalentConversationContext | None,
+) -> TalentInterpretation | None:
+    intent = TalentIntent(draft.intent)
+    if intent in {TalentIntent.GROUP_ONLY, TalentIntent.CONVERSATION, TalentIntent.UNKNOWN}:
+        return TalentInterpretation(intent)
+
+    if draft.start_date is None and draft.end_date is None:
+        period = context.period if context is not None else _current_talent_period(today)
+        return TalentInterpretation(intent, period)
+    if draft.start_date is None or draft.end_date is None:
+        return None
+    if draft.end_date < draft.start_date:
+        return None
+    if (
+        draft.start_date.year != draft.end_date.year
+        or draft.start_date.month != draft.end_date.month
+        or (draft.end_date - draft.start_date).days + 1 > _MAX_TALENT_PERIOD_DAYS
+    ):
+        return None
+    return TalentInterpretation(intent, DateRange(draft.start_date, draft.end_date))
+
+
 class LlmInterpreter:
     def __init__(self, client: TalentOpsChatClient) -> None:
         self._client: TalentOpsChatClient = client
@@ -209,6 +286,32 @@ class LlmInterpreter:
         except ValidationError:
             return None
         return _validate_command(draft)
+
+    async def interpret_talent(
+        self,
+        text: str,
+        today: date,
+        context: TalentConversationContext | None = None,
+    ) -> TalentInterpretation | None:
+        context_text = "none"
+        if context is not None:
+            context_text = (
+                f"{context.intent.value} {context.period.start.isoformat()}.."
+                f"{context.period.end.isoformat()}"
+            )
+        user_prompt = (
+            f"Hari ini: {today.isoformat()}\n"
+            f"Previous context: {context_text}\n"
+            f"Pesan: {text}"
+        )
+        content = await self._client.complete(_TALENT_DM_SYSTEM_PROMPT, user_prompt)
+        if content is None:
+            return None
+        try:
+            draft = _TalentDmDraft.model_validate_json(content)
+        except ValidationError:
+            return None
+        return _validate_talent_interpretation(draft, today, context)
 
     async def choose_index(self, candidates: tuple[str, ...], message: str) -> int | None:
         listing = "\n".join(f"{index}. {title}" for index, title in enumerate(candidates, start=1))
