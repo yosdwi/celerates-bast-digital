@@ -6,30 +6,29 @@ import hmac
 import json
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Final, Literal
 from urllib.parse import quote, urlsplit
 
 from digital_bast.config import get_settings
+from digital_bast.domain.completion import DateRange
 
 if TYPE_CHECKING:
-    from digital_bast.domain.completion import DateRange
+    pass
 
-_TOKEN_VERSION: Final = 1
+_TOKEN_VERSION: Final = 2
 _DEFAULT_TTL_SECONDS: Final = 30 * 60
 _MAX_TOKEN_LENGTH: Final = 4096
-_MIN_YEAR: Final = 2020
-_MAX_YEAR: Final = 2100
-_MONTHS_PER_YEAR: Final = 12
+_MAX_PERIOD_DAYS: Final = 31
 _ALLOWED_TABS: Final = frozenset({"attendance", "tasks"})
+_BINDING_CONTEXT: Final = b"digital-bast:talent-mobile:binding:v1:"
 
 
 @dataclass(frozen=True, slots=True)
 class TalentMobileClaims:
     employee_id: str
-    jid: str
-    year: int
-    month: int
+    binding_tag: str
+    period: DateRange
     expires_at: datetime
 
 
@@ -40,6 +39,26 @@ def _b64encode(value: bytes) -> str:
 def _b64decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
+
+
+def talent_mobile_binding_tag(secret: str, jid: str) -> str:
+    """Non-reversible binding fingerprint used inside short-lived links.
+
+    The WhatsApp JID commonly contains the talent's phone number. Keep it out
+    of the URL/token payload entirely; the web API resolves the current JID
+    from the durable binding and compares this keyed fingerprint instead.
+    """
+    digest = hmac.new(
+        secret.encode(),
+        _BINDING_CONTEXT + jid.encode(),
+        hashlib.sha256,
+    ).digest()
+    return _b64encode(digest[:18])
+
+
+def talent_mobile_binding_matches(secret: str, jid: str, supplied_tag: str) -> bool:
+    expected = talent_mobile_binding_tag(secret, jid)
+    return hmac.compare_digest(expected, supplied_tag)
 
 
 def issue_talent_mobile_token(  # noqa: PLR0913
@@ -59,9 +78,9 @@ def issue_talent_mobile_token(  # noqa: PLR0913
         {
             "v": _TOKEN_VERSION,
             "sub": employee_id,
-            "jid": jid,
-            "y": period.start.year,
-            "m": period.start.month,
+            "bind": talent_mobile_binding_tag(secret, jid),
+            "s": period.start.isoformat(),
+            "e": period.end.isoformat(),
             "exp": int(expires_at.timestamp()),
         },
         sort_keys=True,
@@ -70,6 +89,20 @@ def issue_talent_mobile_token(  # noqa: PLR0913
     encoded = _b64encode(payload)
     signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest()
     return f"{encoded}.{_b64encode(signature)}"
+
+
+def _parse_period(start: object, end: object) -> DateRange | None:
+    if not isinstance(start, str) or not isinstance(end, str):
+        return None
+    try:
+        period = DateRange(date.fromisoformat(start), date.fromisoformat(end))
+    except (ValueError, TypeError):
+        return None
+    if period.start.year != period.end.year or period.start.month != period.end.month:
+        return None
+    if (period.end - period.start).days + 1 > _MAX_PERIOD_DAYS:
+        return None
+    return period
 
 
 def verify_talent_mobile_token(  # noqa: C901, PLR0911
@@ -89,19 +122,16 @@ def verify_talent_mobile_token(  # noqa: C901, PLR0911
         if not isinstance(raw, dict) or raw.get("v") != _TOKEN_VERSION:
             return None
         employee_id = raw.get("sub")
-        jid = raw.get("jid")
-        year = raw.get("y")
-        month = raw.get("m")
+        binding_tag = raw.get("bind")
         exp = raw.get("exp")
         if not isinstance(employee_id, str) or not employee_id:
             return None
-        if not isinstance(jid, str) or not jid:
-            return None
-        if not isinstance(year, int) or not _MIN_YEAR <= year <= _MAX_YEAR:
-            return None
-        if not isinstance(month, int) or not 1 <= month <= _MONTHS_PER_YEAR:
+        if not isinstance(binding_tag, str) or not binding_tag:
             return None
         if not isinstance(exp, int):
+            return None
+        period = _parse_period(raw.get("s"), raw.get("e"))
+        if period is None:
             return None
         expires_at = datetime.fromtimestamp(exp, tz=UTC)
     except (ValueError, TypeError, KeyError, json.JSONDecodeError):
@@ -111,7 +141,7 @@ def verify_talent_mobile_token(  # noqa: C901, PLR0911
         current = current.replace(tzinfo=UTC)
     if expires_at <= current:
         return None
-    return TalentMobileClaims(employee_id, jid, year, month, expires_at)
+    return TalentMobileClaims(employee_id, binding_tag, period, expires_at)
 
 
 def configured_talent_mobile_url(
