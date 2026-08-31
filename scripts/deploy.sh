@@ -19,6 +19,11 @@ done
 cd "$PROJECT_DIR"
 require_command docker
 require_command flock
+require_file compose.production.yaml
+# Production deploys must use the resource overrides too. In particular,
+# TalentOps Web launches Chromium for BAST PDF generation and needs the same
+# 1.5G ceiling already proven necessary for bot-worker's identical renderer.
+export COMPOSE_FILE="compose.yaml:compose.production.yaml"
 
 lock_file=${DEPLOY_LOCK_FILE:-/tmp/digital-bast-deploy.lock}
 exec 9>"$lock_file"
