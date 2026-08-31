@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    from datetime import date
 
 
 class TalentMobilePeriod(BaseModel):
