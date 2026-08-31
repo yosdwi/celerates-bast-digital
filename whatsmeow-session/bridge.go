@@ -221,7 +221,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 }
 
 func (b *bridge) handleGroup(evt *events.Message, jid string) {
-	text := messageText(evt.Message)
+	text := messageTextCompat(evt.Message)
 	forUs := b.isForUs(evt, text)
 	isMedia := evt.Message.GetImageMessage() != nil || evt.Message.GetDocumentMessage() != nil
 	if isMedia && forUs {
@@ -263,7 +263,7 @@ func (b *bridge) handleDM(evt *events.Message, jid string) {
 		b.handleEvidence(evt, jid)
 		return
 	}
-	text := messageText(evt.Message)
+	text := messageTextCompat(evt.Message)
 	if text == "" {
 		return
 	}
