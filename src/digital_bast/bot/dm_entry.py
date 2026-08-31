@@ -16,13 +16,13 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from typing import Final
 
 import anyio
 
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
-from digital_bast.bot.attendance_resolution import ResolutionStatus
+from digital_bast.bot.attendance_resolution import AttendanceResolution, ResolutionStatus
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.talent_context import (
@@ -78,19 +78,21 @@ async def _saved_public_url() -> str | None:
 
 
 def _latest_request_statuses(
-    requests: tuple[object, ...], period: DateRange
+    requests: tuple[AttendanceResolution, ...], period: DateRange
 ) -> tuple[int, int]:
-    # Keep this helper structural so the DM entrypoint doesn't duplicate a
-    # business model; AttendanceResolutionService already returns newest-first.
-    latest: dict[object, object] = {}
-    for raw in requests:
-        work_date = getattr(raw, "work_date", None)
-        if work_date is None or not period.start <= work_date <= period.end:
+    # AttendanceResolutionService returns newest-first. Keep the newest
+    # decision per day so an old rejection cannot stay actionable after a
+    # newer request was submitted or approved.
+    latest: dict[date, AttendanceResolution] = {}
+    for item in requests:
+        if not period.start <= item.work_date <= period.end:
             continue
-        latest.setdefault(work_date, raw)
-    pending = sum(getattr(item, "status", None) is ResolutionStatus.PENDING for item in latest.values())
+        latest.setdefault(item.work_date, item)
+    pending = sum(
+        item.status is ResolutionStatus.PENDING for item in latest.values()
+    )
     rejected = sum(
-        getattr(item, "status", None) is ResolutionStatus.REJECTED for item in latest.values()
+        item.status is ResolutionStatus.REJECTED for item in latest.values()
     )
     return pending, rejected
 
@@ -112,9 +114,9 @@ async def _task_mobile_reply(
     lines = [
         f"*Task & Evidence — {period.label()}*",
         "",
-        f"Closed Task    : {len(candidates)}",
-        f"Evidence lengkap: {complete}",
-        f"Perlu dilengkapi: {missing}",
+        f"Closed Task      : {len(candidates)}",
+        f"Evidence lengkap : {complete}",
+        f"Perlu dilengkapi : {missing}",
     ]
     if url is None:
         lines.extend(("", "Talent Mobile sedang tidak tersedia. Coba lagi atau hubungi admin."))
@@ -200,7 +202,7 @@ async def _remember(
     )
 
 
-async def _dispatch_talent(
+async def _dispatch_talent(  # noqa: PLR0911 - explicit intent dispatch
     employee_id: str,
     jid: str,
     interpretation: TalentInterpretation,
@@ -237,7 +239,14 @@ async def _free_text_interpretation(
     return await interpreter.interpret_talent(text, datetime.now(JAKARTA).date(), context)
 
 
-async def reply(text: str, jid: str) -> str:
+async def _period_for_exact_action(jid: str) -> DateRange:
+    # A controlled button never needs AI, but it should keep the period of the
+    # screen it came from. With no recent context, fall back to month-to-date.
+    context = await create_talent_conversation_context_service().load(jid)
+    return context.period if context is not None else _period_now()
+
+
+async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
     # A correction draft is a transactional workflow: once evidence has been
     # attached and the system is waiting for proposed clock/absence values,
     # navigation/NL interpretation must not steal the next message.
@@ -265,7 +274,7 @@ async def reply(text: str, jid: str) -> str:
 
     exact = _exact_intent(normalized)
     if exact is not None:
-        interpretation = TalentInterpretation(exact, _period_now())
+        interpretation = TalentInterpretation(exact, await _period_for_exact_action(jid))
         result = await _dispatch_talent(employee_id, jid, interpretation)
         await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
         return result
