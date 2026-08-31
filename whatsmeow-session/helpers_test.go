@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,6 +45,22 @@ func TestFilePayload(t *testing.T) {
 	if file == nil || file.Path != "/tmp/report.pdf" || file.Filename != "report.pdf" {
 		t.Fatalf("unexpected file payload: %#v", file)
 	}
+}
+
+func TestCleanupExportRemovesGeneratedFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.pdf")
+	if err := os.WriteFile(path, []byte("report"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b := &bridge{state: newRuntimeState(dir)}
+	b.cleanupExport(path)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("export still exists after cleanup: %v", err)
+	}
+	// Cleanup is deliberately idempotent so a retried cleanup never turns a
+	// successful WhatsApp send into an application failure.
+	b.cleanupExport(path)
 }
 
 func TestFastPathClassification(t *testing.T) {
