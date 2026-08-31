@@ -21,6 +21,7 @@ from digital_bast.domain.completion import DateRange
 from digital_bast.infrastructure.errors import InfrastructureError
 
 _CONTEXT_TTL_SECONDS = 30 * 60
+_INVALID_CONTEXT_INTENT = "intent is not persistable Talent context"
 
 
 class TalentIntent(StrEnum):
@@ -52,7 +53,7 @@ class TalentConversationContext:
 
     def __post_init__(self) -> None:
         if self.intent not in _CONTEXT_INTENTS:
-            raise ValueError("intent is not persistable Talent context")
+            raise ValueError(_INVALID_CONTEXT_INTENT)
 
 
 @dataclass(frozen=True, slots=True)
