@@ -108,10 +108,12 @@ async def test_talent_interpretation_rejects_cross_month_mobile_period() -> None
     )
     interpreter = LlmInterpreter(client)
 
-    assert (
-        await interpreter.interpret_talent("attendance 20 agustus sampai 1 september", date(2026, 9, 1))
-        is None
+    result = await interpreter.interpret_talent(
+        "attendance 20 agustus sampai 1 september",
+        date(2026, 9, 1),
     )
+
+    assert result is None
 
 
 @pytest.mark.asyncio
