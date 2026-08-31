@@ -288,7 +288,15 @@ func (a *app) connectForPairing(ctx context.Context) error {
 				a.state.logf("pairing QR refreshed (valid ~%s)", item.Timeout.Round(time.Second))
 				if pairingNumber != "" && !pairingRequested {
 					pairingRequested = true
-					code, err := a.client.PairPhone(context.Background(), pairingNumber, true, whatsmeow.PairClientChrome, "Google Chrome (Linux)")
+					// PairPhone's own doc comment: clientDisplayName "must be formatted
+					// as `Browser (OS)`, and only common browsers/OSes are allowed (the
+					// server will validate it and return 400 if it's wrong)" -- "Google
+					// Chrome" is the branded product name, not a recognized browser
+					// token; confirmed live (repeatable 400: bad-request on every
+					// attempt). Plain "Chrome" matches WhatsApp's own convention (and
+					// wa-session's pre-existing Baileys browser identity in this same
+					// project already used bare "Chrome", never "Google Chrome").
+					code, err := a.client.PairPhone(context.Background(), pairingNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 					if err != nil {
 						a.state.logf("pairing code request failed: %v", err)
 					} else {
