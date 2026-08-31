@@ -284,26 +284,34 @@ services:
           cpus: "0.50"
           memory: 128M
 
-  # Port 8083, NOT 8082: a pre-existing cloudflared ingress rule on this host
-  # maps adminpanel.celeratesapps.com -> localhost:8082. Binding 8082 here
+  # Was port 8083 (avoiding 8082, which a pre-existing cloudflared ingress
+  # rule maps adminpanel.celeratesapps.com to -- binding that here would have
   # silently published this database editor to the public internet, where
-  # NocoDB's first-boot flow lets any visitor claim the admin account.
+  # NocoDB's first-boot flow lets any visitor claim the admin account).
+  #
+  # Now on 8081: the pre-existing nocodb_bast application container (the one
+  # that previously held that port, and the app's admin login backend --
+  # web/nocodb_postgres_auth.py -- authenticates against its Postgres
+  # database, NOT its own container) has been retired as unused. Confirmed
+  # via `docker port` that 8081, not 8082, was its actual bound port before
+  # removal, so this move does not touch the 8082 exposure risk described
+  # above. Its database (a separate host, unrelated to this compose project)
+  # and its own data volume are both untouched -- only the NocoDB
+  # application container was removed.
   #
   # NocoDB-v2: a second, independent instance whose data source is this
   # stack's own Postgres, so the grids people edit ARE the rows the pipeline
-  # writes -- no sync, no second copy. The pre-existing nocodb_bast instance
-  # is untouched and stays on the old schema as history plus the admin login
-  # backend.
+  # writes -- no sync, no second copy.
   nocodb-v2:
     image: nocodb/nocodb:0.301.2
     restart: unless-stopped
     logging: *default-logging
     environment:
       NC_DB: "pg://postgres:5432?u=${NOCODB_V2_DB_USER:-digital_bast_app}&p=${NOCODB_V2_DB_PASSWORD:?NOCODB_V2_DB_PASSWORD is required}&d=nocodb_v2_meta"
-      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8083}
+      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8081}
       NC_DISABLE_TELE: "true"
     ports:
-      - "127.0.0.1:${NOCODB_V2_PORT:-8083}:8080"
+      - "127.0.0.1:${NOCODB_V2_PORT:-8081}:8080"
     networks:
       - edge
       - backend
