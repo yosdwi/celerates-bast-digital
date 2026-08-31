@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import time
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 _API_PREFIX = "/api/talent/v1"
 _AUTH_SCHEME = "bearer"
+type AttendanceGap = Literal["missing_clock_in", "missing_clock_out", "missing_both"]
 
 
 def _period(claims: TalentMobileClaims) -> DateRange:
@@ -91,7 +92,7 @@ def _clock_label(value: time | None) -> str | None:
     return None if value is None else value.strftime("%H:%M")
 
 
-def _gap(check_in: time | None, check_out: time | None) -> str:
+def _gap(check_in: time | None, check_out: time | None) -> AttendanceGap:
     if check_in is None and check_out is None:
         return "missing_both"
     return "missing_clock_in" if check_in is None else "missing_clock_out"
@@ -136,7 +137,7 @@ def _parse_time(value: str | None, label: str) -> time | None:
 
 
 def _resolution_shape(
-    gap: str,
+    gap: AttendanceGap,
     action: str,
     check_in_text: str | None,
     check_out_text: str | None,
