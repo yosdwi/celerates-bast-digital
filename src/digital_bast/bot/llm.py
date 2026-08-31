@@ -1,34 +1,36 @@
-"""Optional Ollama-backed interpreter for the WhatsApp bot (docs/bast-e2e-plan.md §3.5).
+"""LLM-backed interpreter for the WhatsApp bot (docs/bast-e2e-plan.md §3.5).
 
-`BOT_LLM_URL` unset -> this module is never called; `parse_command()` alone drives the
-bot. When set, `LlmInterpreter.interpret()` is the *primary* interpreter and
-`parse_command()` only runs as its fallback on any failure -- timeout, non-JSON,
-schema violation, or an out-of-range period. That ordering is deliberate: a regex
-match can silently be *wrong* (e.g. parsing the day "20" out of the year "2026"),
-and only a fallback that runs after the LLM can catch that class of error; a
-fallback that only triggers on regex UNKNOWN never sees it.
+`create_llm_interpreter()` returning None -> this module is never called;
+`parse_command()` alone drives the bot. When available, `LlmInterpreter.interpret()`
+is the *primary* interpreter and `parse_command()` only runs as its fallback on any
+failure -- timeout, non-JSON, schema violation, or an out-of-range period. That
+ordering is deliberate: a regex match can silently be *wrong* (e.g. parsing the day
+"20" out of the year "2026"), and only a fallback that runs after the LLM can catch
+that class of error; a fallback that only triggers on regex UNKNOWN never sees it.
 
 The model never computes a business value and never sees database contents --
 only the user's message and today's date, or (for `choose_index`) a bounded
 numbered list the caller already restricted to the sender's own candidates.
+
+Talks to whatever TalentOpsChatClient operations.create_llm_interpreter() injects
+(Cloudflare Workers AI in production) rather than calling Ollama directly -- the
+same client abstraction application.talentops_ai already uses, so there's one
+provider decision (LLM_PROVIDER), not two.
 """
 
 from __future__ import annotations
 
 from datetime import date  # noqa: TC003 -- pydantic needs this resolvable at runtime
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
-import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from digital_bast.bot.whatsapp import PERSONA_CAPABILITIES, PERSONA_NAME, BotCommand, Intent
 from digital_bast.domain.completion import DateRange
 
-_TIMEOUT_SECONDS: Final = 18.0
-# Free-text persona generation runs noticeably longer than the short JSON
-# classification above on this hardware (observed ~15-20s vs ~10-12s) --
-# output length drives latency here, not prompt length.
-_PERSONA_TIMEOUT_SECONDS: Final = 25.0
+if TYPE_CHECKING:
+    from digital_bast.application.talentops_ai import TalentOpsChatClient
+
 _MAX_SPAN_DAYS: Final = 366
 _PERIOD_INTENTS: Final = frozenset(
     {
@@ -169,14 +171,6 @@ class _ChoiceDraft(BaseModel):
     choice: int | None = Field(default=None)
 
 
-class _ChatMessage(BaseModel):
-    content: str = ""
-
-
-class _ChatResponse(BaseModel):
-    message: _ChatMessage = Field(default_factory=_ChatMessage)
-
-
 def _validate_command(draft: BotCommandDraft) -> BotCommand | None:
     intent = Intent(draft.intent)
     if intent not in _PERIOD_INTENTS:
@@ -201,34 +195,11 @@ def _validate_command(draft: BotCommandDraft) -> BotCommand | None:
 
 
 class LlmInterpreter:
-    def __init__(self, base_url: str, model: str) -> None:
-        self._base_url: str = base_url
-        self._model: str = model
-
-    async def _chat_json(self, system_prompt: str, user_message: str) -> str | None:
-        payload = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            "format": "json",
-            "stream": False,
-            "options": {"temperature": 0},
-        }
-        try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url, timeout=_TIMEOUT_SECONDS
-            ) as client:
-                response = await client.post("/api/chat", json=payload)
-                _ = response.raise_for_status()
-                parsed = _ChatResponse.model_validate(response.json())
-        except (httpx.HTTPError, ValidationError):
-            return None
-        return parsed.message.content or None
+    def __init__(self, client: TalentOpsChatClient) -> None:
+        self._client: TalentOpsChatClient = client
 
     async def interpret(self, text: str, today: date) -> BotCommand | None:
-        content = await self._chat_json(
+        content = await self._client.complete(
             _COMMAND_SYSTEM_PROMPT, f"Hari ini: {today.isoformat()}. Pesan: {text}"
         )
         if content is None:
@@ -242,7 +213,7 @@ class LlmInterpreter:
     async def choose_index(self, candidates: tuple[str, ...], message: str) -> int | None:
         listing = "\n".join(f"{index}. {title}" for index, title in enumerate(candidates, start=1))
         user_message = f"Daftar:\n{listing}\nPesan: {message}"
-        content = await self._chat_json(_CHOICE_SYSTEM_PROMPT, user_message)
+        content = await self._client.complete(_CHOICE_SYSTEM_PROMPT, user_message)
         if content is None:
             return None
         try:
@@ -254,7 +225,7 @@ class LlmInterpreter:
         return draft.choice
 
     async def classify_dm_intent(self, text: str) -> Literal["tasklist", "attendance"] | None:
-        content = await self._chat_json(_DM_INTENT_SYSTEM_PROMPT, text)
+        content = await self._client.complete(_DM_INTENT_SYSTEM_PROMPT, text)
         if content is None:
             return None
         try:
@@ -266,28 +237,7 @@ class LlmInterpreter:
     async def persona_reply(self, message: str) -> str | None:
         """Free-text conversational reply (greetings/intro/capability
         questions), grounded only in whatsapp.PERSONA_CAPABILITIES -- never
-        business data. Separate call/prompt/timeout from interpret() so
-        business-intent classification latency is unaffected (see
-        _PERSONA_SYSTEM_PROMPT). None on any failure; caller falls back to
+        business data. None on any failure; caller falls back to
         whatsapp.PERSONA_FALLBACK_REPLY.
         """
-        payload = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": _PERSONA_SYSTEM_PROMPT},
-                {"role": "user", "content": message},
-            ],
-            "stream": False,
-            "options": {"temperature": 0.3},
-        }
-        try:
-            async with httpx.AsyncClient(
-                base_url=self._base_url, timeout=_PERSONA_TIMEOUT_SECONDS
-            ) as client:
-                response = await client.post("/api/chat", json=payload)
-                _ = response.raise_for_status()
-                parsed = _ChatResponse.model_validate(response.json())
-        except (httpx.HTTPError, ValidationError):
-            return None
-        content = parsed.message.content
-        return content.strip() if content and content.strip() else None
+        return await self._client.complete(_PERSONA_SYSTEM_PROMPT, message)
