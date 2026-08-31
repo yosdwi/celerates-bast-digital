@@ -1,0 +1,43 @@
+name: Patch Whatsmeow Export Cleanup Once
+
+on:
+  push:
+    branches:
+      - feat/whatsmeow-transport
+    paths:
+      - ".github/workflows/patch-whatsmeow-export-cleanup-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/whatsmeow-transport
+      - name: Patch successful file-send cleanup
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('whatsmeow-session/bridge.go')
+          s = p.read_text()
+          old_group = '''\t\t\tif err := b.sendFile(context.Background(), jid, file); err != nil {\n\t\t\t\tb.state.logf("send group file failed: %v", err)\n\t\t\t}\n\t\t\treturn\n'''
+          new_group = '''\t\t\tif err := b.sendFile(context.Background(), jid, file); err != nil {\n\t\t\t\tb.state.logf("send group file failed: %v", err)\n\t\t\t} else {\n\t\t\t\tb.cleanupExport(file.Path)\n\t\t\t}\n\t\t\treturn\n'''
+          old_dm = '''\tif file := parseFileReply(result.Text); file != nil {\n\t\tif err := b.sendFile(context.Background(), jid, file); err != nil {\n\t\t\t_ = b.sendText(context.Background(), jid, b.friendlyError("mengirim berkas", err.Error()))\n\t\t}\n\t\treturn\n\t}\n'''
+          new_dm = '''\tif file := parseFileReply(result.Text); file != nil {\n\t\tif err := b.sendFile(context.Background(), jid, file); err != nil {\n\t\t\t_ = b.sendText(context.Background(), jid, b.friendlyError("mengirim berkas", err.Error()))\n\t\t} else {\n\t\t\tb.cleanupExport(file.Path)\n\t\t}\n\t\treturn\n\t}\n'''
+          if s.count(old_group) != 1:
+              raise SystemExit(f'group send block match count={s.count(old_group)}')
+          if s.count(old_dm) != 1:
+              raise SystemExit(f'dm send block match count={s.count(old_dm)}')
+          s = s.replace(old_group, new_group).replace(old_dm, new_dm)
+          p.write_text(s)
+          PY
+          gofmt -w whatsmeow-session/bridge.go whatsmeow-session/cleanup.go
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add whatsmeow-session/bridge.go whatsmeow-session/cleanup.go
+          git commit -m 'fix: clean generated exports after successful send'
+          git push origin HEAD:feat/whatsmeow-transport
