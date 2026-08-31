@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated, Literal
+from urllib.parse import urlsplit
 from uuid import UUID  # noqa: TC003 - FastAPI runtime metadata
 
 from anyio.to_thread import run_sync
@@ -40,6 +41,8 @@ from digital_bast.web.talentops_contracts import (
     OperationalSignalResponse,
     SessionUserResponse,
     TalentDetailResponse,
+    TalentMobileSettingsInput,
+    TalentMobileSettingsResponse,
     TalentOpsSessionResponse,
     WhatsAppInviteResponse,
     WhatsAppStatusResponse,
@@ -172,6 +175,39 @@ def _require_admin(record: SessionRecord) -> None:
         )
 
 
+def _normalize_talent_mobile_public_url(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    raw = value.strip().rstrip("/")
+    try:
+        parsed = urlsplit(raw)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Talent Mobile Public URL is invalid",
+        ) from error
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Use an origin only, for example https://talentops.example.com",
+        )
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme != "https" and not loopback:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Talent Mobile Public URL must use HTTPS",
+        )
+    return raw
+
+
 async def _authorized_operator(
     deps: WebDependencies,
     record: SessionRecord,
@@ -261,9 +297,7 @@ def talentops_router(  # noqa: C901, PLR0915
     router = APIRouter(prefix=_API_PREFIX, tags=["talentops"])
 
     async def session(request: Request) -> TalentOpsSessionResponse:
-        _, record = await require_session(
-            request, deps.sessions, deps.cookie, deps.now, api=True
-        )
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
         return TalentOpsSessionResponse(
             user=SessionUserResponse(name=record.user.name, role=record.user.role),
             csrf_token=record.csrf_token,
@@ -520,6 +554,31 @@ def talentops_router(  # noqa: C901, PLR0915
         )
         return NotificationSettingsResponse.model_validate(saved)
 
+    async def talent_mobile_settings(
+        request: Request,
+        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
+    ) -> TalentMobileSettingsResponse:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _require_admin(record)
+        settings = await _workflow(deps).talent_mobile_settings(scope_key)
+        return TalentMobileSettingsResponse.model_validate(settings)
+
+    async def save_talent_mobile_settings(
+        request: Request,
+        payload: TalentMobileSettingsInput,
+        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
+        csrf_token: HeaderCsrf = None,
+    ) -> TalentMobileSettingsResponse:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        verify_csrf(record, csrf_token)
+        _require_admin(record)
+        saved = await _workflow(deps).save_talent_mobile_settings(
+            scope_key=scope_key,
+            public_url=_normalize_talent_mobile_public_url(payload.public_url),
+            actor=record.user.email,
+        )
+        return TalentMobileSettingsResponse.model_validate(saved)
+
     async def bast_readiness(
         request: Request,
         year: Annotated[int, Query(ge=2020, le=2100)],
@@ -682,7 +741,9 @@ def talentops_router(  # noqa: C901, PLR0915
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
         return FollowUpSendResponse.model_validate(result)
 
-    router.add_api_route("/session", session, methods=["GET"], response_model=TalentOpsSessionResponse)
+    router.add_api_route(
+        "/session", session, methods=["GET"], response_model=TalentOpsSessionResponse
+    )
     router.add_api_route(
         "/system/whatsapp", whatsapp_status, methods=["GET"], response_model=WhatsAppStatusResponse
     )
@@ -735,7 +796,10 @@ def talentops_router(  # noqa: C901, PLR0915
         response_model=IdentityRebindDecisionResponse,
     )
     router.add_api_route(
-        "/operators", list_operators, methods=["GET"], response_model=tuple[WorkflowOperatorResponse, ...]
+        "/operators",
+        list_operators,
+        methods=["GET"],
+        response_model=tuple[WorkflowOperatorResponse, ...],
     )
     router.add_api_route(
         "/operators/{email}",
@@ -766,6 +830,18 @@ def talentops_router(  # noqa: C901, PLR0915
         save_notification_settings,
         methods=["PUT"],
         response_model=NotificationSettingsResponse,
+    )
+    router.add_api_route(
+        "/talent-mobile-settings",
+        talent_mobile_settings,
+        methods=["GET"],
+        response_model=TalentMobileSettingsResponse,
+    )
+    router.add_api_route(
+        "/talent-mobile-settings",
+        save_talent_mobile_settings,
+        methods=["PUT"],
+        response_model=TalentMobileSettingsResponse,
     )
     router.add_api_route(
         "/bast/readiness",

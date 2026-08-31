@@ -11,6 +11,7 @@ import type {
   NotificationSettings,
   PeriodView,
   TalentDetailResponse,
+  TalentMobileSettings,
   TalentOpsSession,
   TaskEvidencePage,
   WhatsAppInvite,
@@ -168,6 +169,24 @@ export function saveNotificationSettings(
     method: "PUT",
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify(input),
+  });
+}
+
+export function getTalentMobileSettings(scopeKey = "default"): Promise<TalentMobileSettings> {
+  const query = new URLSearchParams({ scope_key: scopeKey });
+  return apiFetch<TalentMobileSettings>(`${BASE}/talent-mobile-settings?${query.toString()}`);
+}
+
+export function saveTalentMobileSettings(
+  csrfToken: string,
+  publicUrl: string | null,
+  scopeKey = "default",
+): Promise<TalentMobileSettings> {
+  const query = new URLSearchParams({ scope_key: scopeKey });
+  return apiFetch<TalentMobileSettings>(`${BASE}/talent-mobile-settings?${query.toString()}`, {
+    method: "PUT",
+    headers: { "X-CSRF-Token": csrfToken },
+    body: JSON.stringify({ public_url: publicUrl }),
   });
 }
 

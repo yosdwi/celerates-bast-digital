@@ -70,6 +70,12 @@ class NotificationSettings:
     pmo_reminder_days: tuple[int, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class TalentMobileSettings:
+    scope_key: str
+    public_url: str | None
+
+
 class InviteOutcome(StrEnum):
     LINKED = "linked"
     INVALID = "invalid"
@@ -253,9 +259,7 @@ class WorkflowControlService:
             actor,
         )
 
-    async def issue_whatsapp_invite(
-        self, operator_email: str, actor: str
-    ) -> WhatsAppInvite | None:
+    async def issue_whatsapp_invite(self, operator_email: str, actor: str) -> WhatsAppInvite | None:
         return await run_sync(self._issue_whatsapp_invite, operator_email, actor)
 
     async def consume_whatsapp_invite(self, wa_jid: str, token: str) -> InviteResult:
@@ -289,6 +293,23 @@ class WorkflowControlService:
             actor,
         )
 
+    async def talent_mobile_settings(self, scope_key: str = "default") -> TalentMobileSettings:
+        return await run_sync(self._talent_mobile_settings, scope_key)
+
+    async def save_talent_mobile_settings(
+        self,
+        *,
+        scope_key: str,
+        public_url: str | None,
+        actor: str,
+    ) -> TalentMobileSettings:
+        return await run_sync(
+            self._save_talent_mobile_settings,
+            scope_key,
+            public_url,
+            actor,
+        )
+
     def _list_operators(self) -> tuple[WorkflowOperator, ...]:
         try:
             with (
@@ -298,7 +319,9 @@ class WorkflowControlService:
                 _ = cursor.execute(_OPERATOR_SELECT + " ORDER BY o.active DESC, o.role, o.email")
                 return tuple(_operator(row) for row in cursor.fetchall())
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="list_workflow_operators") from error
+            raise InfrastructureError(
+                service="postgres", operation="list_workflow_operators"
+            ) from error
 
     def _operator_by_email(self, email: str) -> WorkflowOperator | None:
         try:
@@ -310,7 +333,9 @@ class WorkflowControlService:
                 row = cursor.fetchone()
                 return None if row is None else _operator(row)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="get_workflow_operator") from error
+            raise InfrastructureError(
+                service="postgres", operation="get_workflow_operator"
+            ) from error
 
     def _operator_by_jid(self, wa_jid: str) -> WorkflowOperator | None:
         try:
@@ -322,7 +347,9 @@ class WorkflowControlService:
                 row = cursor.fetchone()
                 return None if row is None else _operator(row)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="resolve_pmo_whatsapp") from error
+            raise InfrastructureError(
+                service="postgres", operation="resolve_pmo_whatsapp"
+            ) from error
 
     def _upsert_operator(  # noqa: PLR0913, PLR0917
         self,
@@ -373,7 +400,9 @@ class WorkflowControlService:
                 )
             operator = self._operator_by_email(normalized)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="upsert_workflow_operator") from error
+            raise InfrastructureError(
+                service="postgres", operation="upsert_workflow_operator"
+            ) from error
         if operator is None:  # pragma: no cover - INSERT/SELECT invariant
             raise InfrastructureError(service="postgres", operation="reload_workflow_operator")
         return operator
@@ -400,7 +429,9 @@ class WorkflowControlService:
                     (operator.email, _hash_token(token), expires_at, actor),
                 )
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="issue_pmo_whatsapp_invite") from error
+            raise InfrastructureError(
+                service="postgres", operation="issue_pmo_whatsapp_invite"
+            ) from error
         return WhatsAppInvite(token=token, operator_email=operator.email, expires_at=expires_at)
 
     def _consume_whatsapp_invite(self, wa_jid: str, token: str) -> InviteResult:
@@ -429,7 +460,9 @@ class WorkflowControlService:
                     return InviteResult(InviteOutcome.EXPIRED)
                 if not invite.active:
                     return InviteResult(InviteOutcome.INACTIVE)
-                _ = cursor.execute("SELECT 1 FROM wa_operator_identity WHERE wa_jid = %s", (wa_jid,))
+                _ = cursor.execute(
+                    "SELECT 1 FROM wa_operator_identity WHERE wa_jid = %s", (wa_jid,)
+                )
                 if cursor.fetchone() is not None:
                     return InviteResult(InviteOutcome.JID_ALREADY_LINKED)
                 _ = cursor.execute(
@@ -453,7 +486,9 @@ class WorkflowControlService:
             operator = self._operator_by_email(invite.operator_email)
             return InviteResult(InviteOutcome.LINKED, operator)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="consume_pmo_whatsapp_invite") from error
+            raise InfrastructureError(
+                service="postgres", operation="consume_pmo_whatsapp_invite"
+            ) from error
 
     def _unlink_whatsapp(self, operator_email: str) -> bool:
         try:
@@ -464,7 +499,9 @@ class WorkflowControlService:
                 )
                 return cursor.rowcount > 0
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="unlink_pmo_whatsapp") from error
+            raise InfrastructureError(
+                service="postgres", operation="unlink_pmo_whatsapp"
+            ) from error
 
     def _notification_settings(self, scope_key: str) -> NotificationSettings:
         try:
@@ -487,7 +524,9 @@ class WorkflowControlService:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="workflow_notification_settings") from error
+            raise InfrastructureError(
+                service="postgres", operation="workflow_notification_settings"
+            ) from error
         if row is None:
             return NotificationSettings(scope_key, False, False, 9, (), ())
         return NotificationSettings(
@@ -544,7 +583,9 @@ class WorkflowControlService:
                     ),
                 )
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="save_notification_settings") from error
+            raise InfrastructureError(
+                service="postgres", operation="save_notification_settings"
+            ) from error
         return NotificationSettings(
             scope_key,
             attendance_immediate,
@@ -553,3 +594,50 @@ class WorkflowControlService:
             talent_days,
             pmo_days,
         )
+
+    def _talent_mobile_settings(self, scope_key: str) -> TalentMobileSettings:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    SELECT talent_mobile_public_url
+                    FROM workflow_notification_settings
+                    WHERE scope_key = %s
+                    """,
+                    (scope_key,),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres",
+                operation="talent_mobile_settings",
+            ) from error
+        public_url = None if row is None or row[0] is None else str(row[0])
+        return TalentMobileSettings(scope_key=scope_key, public_url=public_url)
+
+    def _save_talent_mobile_settings(
+        self,
+        scope_key: str,
+        public_url: str | None,
+        actor: str,
+    ) -> TalentMobileSettings:
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    INSERT INTO workflow_notification_settings (
+                        scope_key, talent_mobile_public_url, updated_by
+                    ) VALUES (%s,%s,%s)
+                    ON CONFLICT (scope_key) DO UPDATE SET
+                        talent_mobile_public_url = EXCLUDED.talent_mobile_public_url,
+                        updated_by = EXCLUDED.updated_by,
+                        updated_at = now()
+                    """,
+                    (scope_key, public_url, actor),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres",
+                operation="save_talent_mobile_settings",
+            ) from error
+        return TalentMobileSettings(scope_key=scope_key, public_url=public_url)

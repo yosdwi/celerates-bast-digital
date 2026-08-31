@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import {
   getNotificationSettings,
+  getTalentMobileSettings,
   getWorkflowOperators,
   issueWorkflowOperatorInvite,
   saveNotificationSettings,
+  saveTalentMobileSettings,
   saveWorkflowOperator,
   unlinkWorkflowOperatorWhatsApp,
 } from "../api/talentops";
 import type {
   NotificationSettings,
+  TalentMobileSettings,
   TalentOpsSession,
   WhatsAppInvite,
   WorkflowOperator,
@@ -48,6 +51,7 @@ export default function WorkflowSettings({ session }: Props) {
   const admin = isAdmin(session);
   const [operators, setOperators] = useState<WorkflowOperator[]>([]);
   const [notifications, setNotifications] = useState<NotificationSettings | null>(null);
+  const [talentMobile, setTalentMobile] = useState<TalentMobileSettings | null>(null);
   const [form, setForm] = useState<WorkflowOperatorInput>(EMPTY_OPERATOR);
   const [email, setEmail] = useState("");
   const [invite, setInvite] = useState<WhatsAppInvite | null>(null);
@@ -58,13 +62,16 @@ export default function WorkflowSettings({ session }: Props) {
     setError(null);
     const notificationsPromise = getNotificationSettings();
     const operatorsPromise = admin ? getWorkflowOperators() : Promise.resolve([] as WorkflowOperator[]);
+    const talentMobilePromise = admin ? getTalentMobileSettings() : Promise.resolve(null);
     try {
-      const [notificationValue, operatorValue] = await Promise.all([
+      const [notificationValue, operatorValue, talentMobileValue] = await Promise.all([
         notificationsPromise,
         operatorsPromise,
+        talentMobilePromise,
       ]);
       setNotifications(notificationValue);
       setOperators(operatorValue);
+      setTalentMobile(talentMobileValue);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Workflow settings unavailable.");
     }
@@ -140,6 +147,26 @@ export default function WorkflowSettings({ session }: Props) {
     }
   }
 
+  async function saveTalentMobileUrl() {
+    if (!admin || !talentMobile || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const publicUrl = talentMobile.public_url?.trim() || null;
+      setTalentMobile(
+        await saveTalentMobileSettings(
+          session.csrf_token,
+          publicUrl,
+          talentMobile.scope_key,
+        ),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Talent Mobile URL update failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveNotifications() {
     if (!admin || !notifications || busy) return;
     setBusy(true);
@@ -156,6 +183,27 @@ export default function WorkflowSettings({ session }: Props) {
   return (
     <div className="workflow-settings-stack">
       {error ? <div className="ai-unavailable" role="alert">{error}</div> : null}
+
+      {admin ? (
+        <section className="panel settings-card">
+          <div className="panel-title-row">
+            <div>
+              <h2>Talent Mobile</h2>
+              <span>Public URL used in signed Attendance and Task Evidence links</span>
+            </div>
+            {talentMobile ? <button className="primary-button" type="button" disabled={busy} onClick={() => void saveTalentMobileUrl()}>Save URL</button> : null}
+          </div>
+          {talentMobile ? (
+            <>
+              <div className="workflow-form-grid">
+                <label>Public URL<input type="url" value={talentMobile.public_url ?? ""} placeholder="https://talentops.example.com" onChange={(event) => setTalentMobile({ ...talentMobile, public_url: event.target.value })} /></label>
+              </div>
+              <p>Use the public origin of this TalentOps app only, without a path or query. HTTPS is required outside localhost. New WhatsApp links use the saved value immediately; the server environment value is only a fallback when this field is empty.</p>
+              <div className="settings-status">{talentMobile.public_url ? "Configured · new Talent links use this URL" : "Not saved · environment fallback is used only if configured"}</div>
+            </>
+          ) : <div className="empty-state">Talent Mobile setting unavailable.</div>}
+        </section>
+      ) : null}
 
       <section className="panel settings-card">
         <div className="panel-title-row">

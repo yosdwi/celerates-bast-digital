@@ -146,11 +146,17 @@ def configured_talent_mobile_url(
     jid: str,
     period: DateRange,
     tab: Literal["attendance", "tasks"],
+    *,
+    public_url: str | None = None,
 ) -> str | None:
-    public_url = os.environ.get("TALENTOPS_PUBLIC_URL", "").strip().rstrip("/")
-    if not public_url or tab not in _ALLOWED_TABS:
+    resolved_public_url = (
+        (public_url if public_url is not None else os.environ.get("TALENTOPS_PUBLIC_URL", ""))
+        .strip()
+        .rstrip("/")
+    )
+    if not resolved_public_url or tab not in _ALLOWED_TABS:
         return None
-    parsed = urlsplit(public_url)
+    parsed = urlsplit(resolved_public_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     try:
@@ -165,4 +171,4 @@ def configured_talent_mobile_url(
         jid,
         period,
     )
-    return f"{public_url}/talent/mobile?t={quote(token, safe='')}&tab={tab}"
+    return f"{resolved_public_url}/talent/mobile?t={quote(token, safe='')}&tab={tab}"

@@ -21,11 +21,13 @@ from digital_bast.bot.attendance_resolution import ResolutionStatus
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA
+from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.operations import (
     completion_status,
     create_activation_service,
     create_attendance_resolution_service,
     create_evidence_service,
+    create_workflow_control_service,
 )
 
 _TASK_MOBILE_COMMANDS: Final = frozenset(
@@ -43,8 +45,19 @@ def _period() -> DateRange:
     return DateRange(today.replace(day=1), today)
 
 
-async def _task_mobile_reply(employee_id: str, jid: str, period: DateRange) -> str | None:
-    url = configured_talent_mobile_url(employee_id, jid, period, "tasks")
+async def _saved_public_url() -> str | None:
+    try:
+        return (await create_workflow_control_service().talent_mobile_settings()).public_url
+    except InfrastructureError:
+        # Preserve TALENTOPS_PUBLIC_URL as a migration/bootstrap fallback if
+        # the control-plane row is temporarily unavailable.
+        return None
+
+
+async def _task_mobile_reply(
+    employee_id: str, jid: str, period: DateRange, public_url: str | None
+) -> str | None:
+    url = configured_talent_mobile_url(employee_id, jid, period, "tasks", public_url=public_url)
     if url is None:
         return None
     candidates = tuple(
@@ -66,8 +79,12 @@ async def _task_mobile_reply(employee_id: str, jid: str, period: DateRange) -> s
     )
 
 
-async def _attendance_mobile_reply(employee_id: str, jid: str, period: DateRange) -> str | None:
-    url = configured_talent_mobile_url(employee_id, jid, period, "attendance")
+async def _attendance_mobile_reply(
+    employee_id: str, jid: str, period: DateRange, public_url: str | None
+) -> str | None:
+    url = configured_talent_mobile_url(
+        employee_id, jid, period, "attendance", public_url=public_url
+    )
     if url is None:
         return None
     report = await completion_status(period)
@@ -104,10 +121,11 @@ async def reply(text: str, jid: str) -> str:
         return await workflow_reply(text, jid)
 
     period = _period()
+    public_url = await _saved_public_url()
     if normalized in _TASK_MOBILE_COMMANDS:
-        mobile = await _task_mobile_reply(employee_id, jid, period)
+        mobile = await _task_mobile_reply(employee_id, jid, period, public_url)
     else:
-        mobile = await _attendance_mobile_reply(employee_id, jid, period)
+        mobile = await _attendance_mobile_reply(employee_id, jid, period, public_url)
     return await workflow_reply(text, jid) if mobile is None else mobile
 
 

@@ -61,8 +61,8 @@ x-app: &app
     # read-only WhatsApp pairing status/QR (see talentops_router.py's
     # /system/whatsapp) without exposing wa-session's setup page publicly.
     BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://wa-session:8090}
-    # Public origin of this same Digital BAST/TalentOps web app. Used only to
-    # build short-lived signed Talent mobile links sent in WhatsApp DM.
+    # Bootstrap/backward-compatible fallback only. Admin can save the active
+    # Talent Mobile public origin from TalentOps Settings without editing env.
     TALENTOPS_PUBLIC_URL: ${TALENTOPS_PUBLIC_URL:-}
     # scripts/sheet_replay_poller.py: a distinct credential and sheet from
     # the IoT sheet's (that one is dead -- invalid_grant). Optional -- the

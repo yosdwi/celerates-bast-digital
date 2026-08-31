@@ -308,6 +308,15 @@ class NotificationSettingsInput(_FrozenModel):
     pmo_reminder_days: tuple[int, ...] = ()
 
 
+class TalentMobileSettingsResponse(_FrozenModel):
+    scope_key: str
+    public_url: str | None
+
+
+class TalentMobileSettingsInput(_FrozenModel):
+    public_url: str | None = Field(default=None, max_length=2048)
+
+
 class BastBlockerResponse(_FrozenModel):
     employee_id: str
     nrp: str
