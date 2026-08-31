@@ -171,12 +171,12 @@ func (s *runtimeState) snapshot() stateSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return stateSnapshot{
-		Connection: s.connection,
-		Me: s.me,
-		QRDataURL: s.qrDataURL,
+		Connection:  s.connection,
+		Me:          s.me,
+		QRDataURL:   s.qrDataURL,
 		PairingCode: s.pairingCode,
-		Groups: append([]groupInfo(nil), s.groups...),
-		Logs: append([]string(nil), s.logs...),
+		Groups:      append([]groupInfo(nil), s.groups...),
+		Logs:        append([]string(nil), s.logs...),
 	}
 }
 
