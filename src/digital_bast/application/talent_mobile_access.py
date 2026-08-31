@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Final, Literal
+from typing import Final, Literal, cast
 from urllib.parse import quote, urlsplit
 
 from digital_bast.config import get_settings
@@ -115,8 +115,11 @@ def verify_talent_mobile_token(  # noqa: C901, PLR0911
         expected = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest()
         if not hmac.compare_digest(expected, _b64decode(supplied_signature)):
             return None
-        raw = json.loads(_b64decode(encoded))
-        if not isinstance(raw, dict) or raw.get("v") != _TOKEN_VERSION:
+        decoded: object = json.loads(_b64decode(encoded))
+        if not isinstance(decoded, dict):
+            return None
+        raw = cast("dict[str, object]", decoded)
+        if raw.get("v") != _TOKEN_VERSION:
             return None
         employee_id = raw.get("sub")
         binding_tag = raw.get("bind")
