@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import time
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
@@ -17,7 +17,6 @@ from digital_bast.bot.attendance_resolution import (
 )
 from digital_bast.bot.evidence import MAX_IMAGE_BYTES, UploadOutcome
 from digital_bast.config import get_settings
-from digital_bast.domain.completion import DateRange
 from digital_bast.operations import (
     completion_status,
     create_attendance_evidence_service,
@@ -25,6 +24,10 @@ from digital_bast.operations import (
     create_evidence_service,
     create_rebind_onboarding_service,
 )
+if TYPE_CHECKING:
+    from digital_bast.domain.completion import DateRange
+
+
 from digital_bast.web.talent_mobile_contracts import (
     TalentMobileAttendanceItem,
     TalentMobileAttendanceRequest,
