@@ -1,0 +1,245 @@
+name: Patch Talent Mobile Web Setting Once
+
+on:
+  push:
+    branches:
+      - feat/talent-mobile-evidence-ux
+    paths:
+      - .github/workflows/patch-talent-mobile-web-setting.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/talent-mobile-evidence-ux
+      - name: Apply Web-managed Talent mobile setting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"patch anchor missing: {path}: {old[:80]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          # ---- workflow control service -------------------------------------------------
+          path = Path("src/digital_bast/application/workflow_control.py")
+          text = path.read_text()
+          if "class TalentMobileSettings:" not in text:
+              anchor = '''    pmo_reminder_days: tuple[int, ...]\n\n\nclass InviteOutcome(StrEnum):'''
+              replacement = '''    pmo_reminder_days: tuple[int, ...]\n\n\n@dataclass(frozen=True, slots=True)\nclass TalentMobileSettings:\n    scope_key: str\n    public_url: str | None\n\n\nclass InviteOutcome(StrEnum):'''
+              if anchor not in text:
+                  raise SystemExit("workflow control dataclass anchor missing")
+              text = text.replace(anchor, replacement, 1)
+
+          if "async def talent_mobile_settings(" not in text:
+              anchor = '''        )\n\n    def _list_operators(self) -> tuple[WorkflowOperator, ...]:'''
+              replacement = '''        )\n\n    async def talent_mobile_settings(\n        self, scope_key: str = "default"\n    ) -> TalentMobileSettings:\n        return await run_sync(self._talent_mobile_settings, scope_key)\n\n    async def save_talent_mobile_settings(\n        self,\n        *,\n        scope_key: str,\n        public_url: str | None,\n        actor: str,\n    ) -> TalentMobileSettings:\n        return await run_sync(\n            self._save_talent_mobile_settings,\n            scope_key,\n            public_url,\n            actor,\n        )\n\n    def _list_operators(self) -> tuple[WorkflowOperator, ...]:'''
+              if anchor not in text:
+                  raise SystemExit("workflow control public methods anchor missing")
+              text = text.replace(anchor, replacement, 1)
+
+          if "def _talent_mobile_settings(self, scope_key: str)" not in text:
+              text += '''\n\n    def _talent_mobile_settings(self, scope_key: str) -> TalentMobileSettings:\n        try:\n            with self._connect() as connection, connection.cursor() as cursor:\n                _ = cursor.execute(\n                    """\n                    SELECT talent_mobile_public_url\n                    FROM workflow_notification_settings\n                    WHERE scope_key = %s\n                    """,\n                    (scope_key,),\n                )\n                row = cursor.fetchone()\n        except psycopg.Error as error:\n            raise InfrastructureError(\n                service="postgres",\n                operation="talent_mobile_settings",\n            ) from error\n        public_url = None if row is None or row[0] is None else str(row[0])\n        return TalentMobileSettings(scope_key=scope_key, public_url=public_url)\n\n    def _save_talent_mobile_settings(\n        self,\n        scope_key: str,\n        public_url: str | None,\n        actor: str,\n    ) -> TalentMobileSettings:\n        try:\n            with self._connect() as connection, connection.cursor() as cursor:\n                _ = cursor.execute(\n                    """\n                    INSERT INTO workflow_notification_settings (\n                        scope_key, talent_mobile_public_url, updated_by\n                    ) VALUES (%s,%s,%s)\n                    ON CONFLICT (scope_key) DO UPDATE SET\n                        talent_mobile_public_url = EXCLUDED.talent_mobile_public_url,\n                        updated_by = EXCLUDED.updated_by,\n                        updated_at = now()\n                    """,\n                    (scope_key, public_url, actor),\n                )\n        except psycopg.Error as error:\n            raise InfrastructureError(\n                service="postgres",\n                operation="save_talent_mobile_settings",\n            ) from error\n        return TalentMobileSettings(scope_key=scope_key, public_url=public_url)\n'''
+          path.write_text(text)
+
+          # ---- TalentOps API contracts --------------------------------------------------
+          replace_once(
+              "src/digital_bast/web/talentops_contracts.py",
+              '''class NotificationSettingsInput(_FrozenModel):\n    attendance_immediate: bool = False\n    rebind_immediate: bool = False\n    reminder_hour: int = Field(default=9, ge=0, le=23)\n    talent_reminder_days: tuple[int, ...] = ()\n    pmo_reminder_days: tuple[int, ...] = ()\n\n\nclass BastBlockerResponse(_FrozenModel):''',
+              '''class NotificationSettingsInput(_FrozenModel):\n    attendance_immediate: bool = False\n    rebind_immediate: bool = False\n    reminder_hour: int = Field(default=9, ge=0, le=23)\n    talent_reminder_days: tuple[int, ...] = ()\n    pmo_reminder_days: tuple[int, ...] = ()\n\n\nclass TalentMobileSettingsResponse(_FrozenModel):\n    scope_key: str\n    public_url: str | None\n\n\nclass TalentMobileSettingsInput(_FrozenModel):\n    public_url: str | None = Field(default=None, max_length=2048)\n\n\nclass BastBlockerResponse(_FrozenModel):''',
+          )
+
+          # ---- TalentOps router ---------------------------------------------------------
+          path = Path("src/digital_bast/web/talentops_router.py")
+          text = path.read_text()
+          if "from urllib.parse import urlsplit" not in text:
+              text = text.replace(
+                  "from typing import TYPE_CHECKING, Annotated, Literal\n",
+                  "from typing import TYPE_CHECKING, Annotated, Literal\nfrom urllib.parse import urlsplit\n",
+                  1,
+              )
+          if "TalentMobileSettingsInput," not in text:
+              text = text.replace(
+                  "    TalentDetailResponse,\n",
+                  "    TalentDetailResponse,\n    TalentMobileSettingsInput,\n    TalentMobileSettingsResponse,\n",
+                  1,
+              )
+          if "def _normalize_talent_mobile_public_url(" not in text:
+              anchor = '''def _require_admin(record: SessionRecord) -> None:\n    if not _is_admin(record):\n        raise HTTPException(\n            status_code=status.HTTP_403_FORBIDDEN,\n            detail="Admin access is required",\n        )\n\n\nasync def _authorized_operator('''
+              replacement = '''def _require_admin(record: SessionRecord) -> None:\n    if not _is_admin(record):\n        raise HTTPException(\n            status_code=status.HTTP_403_FORBIDDEN,\n            detail="Admin access is required",\n        )\n\n\ndef _normalize_talent_mobile_public_url(value: str | None) -> str | None:\n    if value is None or not value.strip():\n        return None\n    raw = value.strip().rstrip("/")\n    try:\n        parsed = urlsplit(raw)\n    except ValueError as error:\n        raise HTTPException(\n            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,\n            detail="Talent Mobile Public URL is invalid",\n        ) from error\n    if (\n        parsed.scheme not in {"http", "https"}\n        or not parsed.hostname\n        or parsed.username is not None\n        or parsed.password is not None\n        or parsed.path not in {"", "/"}\n        or parsed.query\n        or parsed.fragment\n    ):\n        raise HTTPException(\n            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,\n            detail="Use an origin only, for example https://talentops.example.com",\n        )\n    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}\n    if parsed.scheme != "https" and not loopback:\n        raise HTTPException(\n            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,\n            detail="Talent Mobile Public URL must use HTTPS",\n        )\n    return raw\n\n\nasync def _authorized_operator('''
+              if anchor not in text:
+                  raise SystemExit("talentops router auth anchor missing")
+              text = text.replace(anchor, replacement, 1)
+          if "async def talent_mobile_settings(" not in text:
+              anchor = '''    async def bast_readiness(\n'''
+              replacement = '''    async def talent_mobile_settings(\n        request: Request,\n        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",\n    ) -> TalentMobileSettingsResponse:\n        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)\n        _require_admin(record)\n        settings = await _workflow(deps).talent_mobile_settings(scope_key)\n        return TalentMobileSettingsResponse.model_validate(settings)\n\n    async def save_talent_mobile_settings(\n        request: Request,\n        payload: TalentMobileSettingsInput,\n        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",\n        csrf_token: HeaderCsrf = None,\n    ) -> TalentMobileSettingsResponse:\n        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)\n        verify_csrf(record, csrf_token)\n        _require_admin(record)\n        saved = await _workflow(deps).save_talent_mobile_settings(\n            scope_key=scope_key,\n            public_url=_normalize_talent_mobile_public_url(payload.public_url),\n            actor=record.user.email,\n        )\n        return TalentMobileSettingsResponse.model_validate(saved)\n\n    async def bast_readiness(\n'''
+              if anchor not in text:
+                  raise SystemExit("talentops router function anchor missing")
+              text = text.replace(anchor, replacement, 1)
+          if '"/talent-mobile-settings"' not in text:
+              anchor = '''    router.add_api_route(\n        "/bast/readiness",\n'''
+              replacement = '''    router.add_api_route(\n        "/talent-mobile-settings",\n        talent_mobile_settings,\n        methods=["GET"],\n        response_model=TalentMobileSettingsResponse,\n    )\n    router.add_api_route(\n        "/talent-mobile-settings",\n        save_talent_mobile_settings,\n        methods=["PUT"],\n        response_model=TalentMobileSettingsResponse,\n    )\n    router.add_api_route(\n        "/bast/readiness",\n'''
+              if anchor not in text:
+                  raise SystemExit("talentops router route anchor missing")
+              text = text.replace(anchor, replacement, 1)
+          path.write_text(text)
+
+          # ---- Link builder: DB override, env fallback ---------------------------------
+          path = Path("src/digital_bast/application/talent_mobile_access.py")
+          text = path.read_text()
+          old = '''def configured_talent_mobile_url(\n    employee_id: str,\n    jid: str,\n    period: DateRange,\n    tab: Literal["attendance", "tasks"],\n) -> str | None:\n    public_url = os.environ.get("TALENTOPS_PUBLIC_URL", "").strip().rstrip("/")\n    if not public_url or tab not in _ALLOWED_TABS:\n        return None\n    parsed = urlsplit(public_url)\n'''
+          new = '''def configured_talent_mobile_url(\n    employee_id: str,\n    jid: str,\n    period: DateRange,\n    tab: Literal["attendance", "tasks"],\n    *,\n    public_url: str | None = None,\n) -> str | None:\n    resolved_public_url = (\n        public_url if public_url is not None else os.environ.get("TALENTOPS_PUBLIC_URL", "")\n    ).strip().rstrip("/")\n    if not resolved_public_url or tab not in _ALLOWED_TABS:\n        return None\n    parsed = urlsplit(resolved_public_url)\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit("talent mobile URL function anchor missing")
+              text = text.replace(old, new, 1)
+              text = text.replace(
+                  '    return f"{public_url}/talent/mobile?t={quote(token, safe=\'\')}&tab={tab}"\n',
+                  '    return f"{resolved_public_url}/talent/mobile?t={quote(token, safe=\'\')}&tab={tab}"\n',
+                  1,
+              )
+          path.write_text(text)
+
+          # ---- DM entry reads saved control-plane setting ------------------------------
+          path = Path("src/digital_bast/bot/dm_entry.py")
+          text = path.read_text()
+          if "create_workflow_control_service," not in text:
+              text = text.replace(
+                  "    create_evidence_service,\n",
+                  "    create_evidence_service,\n    create_workflow_control_service,\n",
+                  1,
+              )
+          if "from digital_bast.infrastructure.errors import InfrastructureError" not in text:
+              text = text.replace(
+                  "from digital_bast.domain.time import JAKARTA\n",
+                  "from digital_bast.domain.time import JAKARTA\nfrom digital_bast.infrastructure.errors import InfrastructureError\n",
+                  1,
+              )
+          if "async def _saved_public_url()" not in text:
+              text = text.replace(
+                  '''def _period() -> DateRange:\n    today = datetime.now(JAKARTA).date()\n    return DateRange(today.replace(day=1), today)\n\n\nasync def _task_mobile_reply(employee_id: str, jid: str, period: DateRange) -> str | None:\n    url = configured_talent_mobile_url(employee_id, jid, period, "tasks")\n''',
+                  '''def _period() -> DateRange:\n    today = datetime.now(JAKARTA).date()\n    return DateRange(today.replace(day=1), today)\n\n\nasync def _saved_public_url() -> str | None:\n    try:\n        return (await create_workflow_control_service().talent_mobile_settings()).public_url\n    except InfrastructureError:\n        # Preserve TALENTOPS_PUBLIC_URL as a migration/bootstrap fallback if\n        # the control-plane row is temporarily unavailable.\n        return None\n\n\nasync def _task_mobile_reply(\n    employee_id: str, jid: str, period: DateRange, public_url: str | None\n) -> str | None:\n    url = configured_talent_mobile_url(\n        employee_id, jid, period, "tasks", public_url=public_url\n    )\n''',
+                  1,
+              )
+              text = text.replace(
+                  '''async def _attendance_mobile_reply(employee_id: str, jid: str, period: DateRange) -> str | None:\n    url = configured_talent_mobile_url(employee_id, jid, period, "attendance")\n''',
+                  '''async def _attendance_mobile_reply(\n    employee_id: str, jid: str, period: DateRange, public_url: str | None\n) -> str | None:\n    url = configured_talent_mobile_url(\n        employee_id, jid, period, "attendance", public_url=public_url\n    )\n''',
+                  1,
+              )
+              text = text.replace(
+                  '''    period = _period()\n    if normalized in _TASK_MOBILE_COMMANDS:\n        mobile = await _task_mobile_reply(employee_id, jid, period)\n    else:\n        mobile = await _attendance_mobile_reply(employee_id, jid, period)\n''',
+                  '''    period = _period()\n    public_url = await _saved_public_url()\n    if normalized in _TASK_MOBILE_COMMANDS:\n        mobile = await _task_mobile_reply(employee_id, jid, period, public_url)\n    else:\n        mobile = await _attendance_mobile_reply(employee_id, jid, period, public_url)\n''',
+                  1,
+              )
+          path.write_text(text)
+
+          # ---- Frontend API types -------------------------------------------------------
+          replace_once(
+              "frontend/src/api/types.ts",
+              '''export interface NotificationSettings {\n  scope_key: string;\n  attendance_immediate: boolean;\n  rebind_immediate: boolean;\n  reminder_hour: number;\n  talent_reminder_days: number[];\n  pmo_reminder_days: number[];\n}\n\nexport interface BastBlocker {''',
+              '''export interface NotificationSettings {\n  scope_key: string;\n  attendance_immediate: boolean;\n  rebind_immediate: boolean;\n  reminder_hour: number;\n  talent_reminder_days: number[];\n  pmo_reminder_days: number[];\n}\n\nexport interface TalentMobileSettings {\n  scope_key: string;\n  public_url: string | null;\n}\n\nexport interface BastBlocker {''',
+          )
+
+          # ---- Frontend API calls -------------------------------------------------------
+          path = Path("frontend/src/api/talentops.ts")
+          text = path.read_text()
+          if "  TalentMobileSettings,\n" not in text:
+              text = text.replace(
+                  "  TalentOpsSession,\n",
+                  "  TalentMobileSettings,\n  TalentOpsSession,\n",
+                  1,
+              )
+          if "export function getTalentMobileSettings(" not in text:
+              anchor = '''export function getBastReadiness(\n'''
+              block = '''export function getTalentMobileSettings(scopeKey = "default"): Promise<TalentMobileSettings> {\n  const query = new URLSearchParams({ scope_key: scopeKey });\n  return apiFetch<TalentMobileSettings>(`${BASE}/talent-mobile-settings?${query.toString()}`);\n}\n\nexport function saveTalentMobileSettings(\n  csrfToken: string,\n  publicUrl: string | null,\n  scopeKey = "default",\n): Promise<TalentMobileSettings> {\n  const query = new URLSearchParams({ scope_key: scopeKey });\n  return apiFetch<TalentMobileSettings>(`${BASE}/talent-mobile-settings?${query.toString()}`, {\n    method: "PUT",\n    headers: { "X-CSRF-Token": csrfToken },\n    body: JSON.stringify({ public_url: publicUrl }),\n  });\n}\n\nexport function getBastReadiness(\n'''
+              if anchor not in text:
+                  raise SystemExit("frontend API anchor missing")
+              text = text.replace(anchor, block, 1)
+          path.write_text(text)
+
+          # ---- Settings UI --------------------------------------------------------------
+          path = Path("frontend/src/components/WorkflowSettings.tsx")
+          text = path.read_text()
+          if "getTalentMobileSettings," not in text:
+              text = text.replace(
+                  "  getNotificationSettings,\n",
+                  "  getNotificationSettings,\n  getTalentMobileSettings,\n",
+                  1,
+              )
+              text = text.replace(
+                  "  saveNotificationSettings,\n",
+                  "  saveNotificationSettings,\n  saveTalentMobileSettings,\n",
+                  1,
+              )
+          if "  TalentMobileSettings,\n" not in text:
+              text = text.replace(
+                  "  NotificationSettings,\n",
+                  "  NotificationSettings,\n  TalentMobileSettings,\n",
+                  1,
+              )
+          if "const [talentMobile, setTalentMobile]" not in text:
+              text = text.replace(
+                  '''  const [notifications, setNotifications] = useState<NotificationSettings | null>(null);\n''',
+                  '''  const [notifications, setNotifications] = useState<NotificationSettings | null>(null);\n  const [talentMobile, setTalentMobile] = useState<TalentMobileSettings | null>(null);\n''',
+                  1,
+              )
+              text = text.replace(
+                  '''    const notificationsPromise = getNotificationSettings();\n    const operatorsPromise = admin ? getWorkflowOperators() : Promise.resolve([] as WorkflowOperator[]);\n    try {\n      const [notificationValue, operatorValue] = await Promise.all([\n        notificationsPromise,\n        operatorsPromise,\n      ]);\n      setNotifications(notificationValue);\n      setOperators(operatorValue);\n''',
+                  '''    const notificationsPromise = getNotificationSettings();\n    const operatorsPromise = admin ? getWorkflowOperators() : Promise.resolve([] as WorkflowOperator[]);\n    const talentMobilePromise = admin ? getTalentMobileSettings() : Promise.resolve(null);\n    try {\n      const [notificationValue, operatorValue, talentMobileValue] = await Promise.all([\n        notificationsPromise,\n        operatorsPromise,\n        talentMobilePromise,\n      ]);\n      setNotifications(notificationValue);\n      setOperators(operatorValue);\n      setTalentMobile(talentMobileValue);\n''',
+                  1,
+              )
+          if "async function saveTalentMobileUrl()" not in text:
+              anchor = '''  async function saveNotifications() {\n'''
+              block = '''  async function saveTalentMobileUrl() {\n    if (!admin || !talentMobile || busy) return;\n    setBusy(true);\n    setError(null);\n    try {\n      const publicUrl = talentMobile.public_url?.trim() || null;\n      setTalentMobile(\n        await saveTalentMobileSettings(\n          session.csrf_token,\n          publicUrl,\n          talentMobile.scope_key,\n        ),\n      );\n    } catch (caught) {\n      setError(caught instanceof Error ? caught.message : "Talent Mobile URL update failed.");\n    } finally {\n      setBusy(false);\n    }\n  }\n\n  async function saveNotifications() {\n'''
+              if anchor not in text:
+                  raise SystemExit("WorkflowSettings save anchor missing")
+              text = text.replace(anchor, block, 1)
+          if "<h2>Talent Mobile</h2>" not in text:
+              anchor = '''      <section className="panel settings-card">\n        <div className="panel-title-row">\n          <div>\n            <h2>WhatsApp reminders</h2>\n'''
+              block = '''      {admin ? (\n        <section className="panel settings-card">\n          <div className="panel-title-row">\n            <div>\n              <h2>Talent Mobile</h2>\n              <span>Public URL used in signed Attendance and Task Evidence links</span>\n            </div>\n            {talentMobile ? <button className="primary-button" type="button" disabled={busy} onClick={() => void saveTalentMobileUrl()}>Save URL</button> : null}\n          </div>\n          {talentMobile ? (\n            <>\n              <div className="workflow-form-grid">\n                <label>Public URL<input type="url" value={talentMobile.public_url ?? ""} placeholder="https://talentops.example.com" onChange={(event) => setTalentMobile({ ...talentMobile, public_url: event.target.value })} /></label>\n              </div>\n              <p>Use the public origin of this TalentOps app only, without a path or query. HTTPS is required outside localhost. New WhatsApp links use the saved value immediately; the server environment value is only a fallback when this field is empty.</p>\n              <div className="settings-status">{talentMobile.public_url ? "Configured · new Talent links use this URL" : "Not saved · environment fallback is used only if configured"}</div>\n            </>\n          ) : <div className="empty-state">Talent Mobile setting unavailable.</div>}\n        </section>\n      ) : null}\n\n      <section className="panel settings-card">\n        <div className="panel-title-row">\n          <div>\n            <h2>WhatsApp reminders</h2>\n'''
+              if anchor not in text:
+                  raise SystemExit("WorkflowSettings UI anchor missing")
+              text = text.replace(anchor, block, 1)
+          path.write_text(text)
+
+          # ---- Clarify env is fallback in deployment files ------------------------------
+          path = Path("compose.yaml")
+          text = path.read_text()
+          text = text.replace(
+              '''    # Public origin of this same Digital BAST/TalentOps web app. Used only to\n    # build short-lived signed Talent mobile links sent in WhatsApp DM.\n    TALENTOPS_PUBLIC_URL: ${TALENTOPS_PUBLIC_URL:-}\n''',
+              '''    # Bootstrap/backward-compatible fallback only. Admin can save the active\n    # Talent Mobile public origin from TalentOps Settings without editing env.\n    TALENTOPS_PUBLIC_URL: ${TALENTOPS_PUBLIC_URL:-}\n''',
+              1,
+          )
+          path.write_text(text)
+
+          path = Path(".env.example")
+          text = path.read_text()
+          text = text.replace(
+              "# Public origin used for short-lived signed Talent mobile links.\nTALENTOPS_PUBLIC_URL=\n",
+              "# Optional bootstrap fallback. Prefer saving the public origin in TalentOps Settings.\nTALENTOPS_PUBLIC_URL=\n",
+              1,
+          )
+          path.write_text(text)
+          PY
+      - name: Format Python changes
+        run: |
+          python -m pip install ruff==0.16.1 >/dev/null
+          ruff format src/digital_bast/application/workflow_control.py src/digital_bast/application/talent_mobile_access.py src/digital_bast/bot/dm_entry.py src/digital_bast/web/talentops_contracts.py src/digital_bast/web/talentops_router.py
+          ruff check --fix src/digital_bast/application/workflow_control.py src/digital_bast/application/talent_mobile_access.py src/digital_bast/bot/dm_entry.py src/digital_bast/web/talentops_contracts.py src/digital_bast/web/talentops_router.py
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add migrations/versions/20260901_0014_talent_mobile_public_url.py src/digital_bast/application/workflow_control.py src/digital_bast/application/talent_mobile_access.py src/digital_bast/bot/dm_entry.py src/digital_bast/web/talentops_contracts.py src/digital_bast/web/talentops_router.py frontend/src/api/types.ts frontend/src/api/talentops.ts frontend/src/components/WorkflowSettings.tsx compose.yaml .env.example
+          git commit -m "feat: manage Talent mobile public URL in TalentOps settings"
+          git push origin HEAD:feat/talent-mobile-evidence-ux
