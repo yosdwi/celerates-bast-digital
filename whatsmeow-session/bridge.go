@@ -247,6 +247,8 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 			}
 			if err := b.sendFile(context.Background(), jid, file); err != nil {
 				b.state.logf("send group file failed: %v", err)
+			} else {
+				b.cleanupExport(file.Path)
 			}
 			return
 		}
@@ -304,6 +306,8 @@ func (b *bridge) sendWorkerReply(jid string, result workerResult, errorContext s
 	if file := parseFileReply(result.Text); file != nil {
 		if err := b.sendFile(context.Background(), jid, file); err != nil {
 			_ = b.sendText(context.Background(), jid, b.friendlyError("mengirim berkas", err.Error()))
+		} else {
+			b.cleanupExport(file.Path)
 		}
 		return
 	}
