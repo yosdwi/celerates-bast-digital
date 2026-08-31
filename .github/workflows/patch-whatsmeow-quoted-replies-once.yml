@@ -1,0 +1,78 @@
+name: Patch Whatsmeow Quoted Replies Once
+
+on:
+  push:
+    branches:
+      - feat/whatsmeow-transport
+    paths:
+      - ".github/workflows/patch-whatsmeow-quoted-replies-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/whatsmeow-transport
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: whatsmeow-session/go.sum
+      - name: Preserve quoted-reply parity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('whatsmeow-session/bridge.go')
+          s = p.read_text()
+          replacements = {
+              '_ = b.sendText(context.Background(), jid, evidenceInGroupReply)': '_ = b.sendTextReply(context.Background(), evt, evidenceInGroupReply)',
+              'if err := b.sendFile(context.Background(), jid, file); err != nil {': 'if err := b.sendFile(context.Background(), jid, file, evt); err != nil {',
+              '_ = b.sendText(context.Background(), jid, fmt.Sprintf("%s\\n\\n_%.1fs_", result.Text, elapsed))': '_ = b.sendTextReply(context.Background(), evt, fmt.Sprintf("%s\\n\\n_%.1fs_", result.Text, elapsed))',
+              '_ = b.sendText(context.Background(), jid, b.friendlyError("menjalankan perintah", result.Text))': '_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menjalankan perintah", result.Text))',
+              'b.sendWorkerReply(jid, result, "menjalankan perintah")': 'b.sendWorkerReply(evt, jid, result, "menjalankan perintah")',
+              '_ = b.sendText(context.Background(), evt.Info.Chat.String(), waitingReply(evt.Info.PushName))': '_ = b.sendTextReply(context.Background(), evt, waitingReply(evt.Info.PushName))',
+              'func (b *bridge) sendWorkerReply(jid string, result workerResult, errorContext string) {': 'func (b *bridge) sendWorkerReply(evt *events.Message, jid string, result workerResult, errorContext string) {',
+              '_ = b.sendText(context.Background(), jid, b.friendlyError(errorContext, result.Text))': '_ = b.sendTextReply(context.Background(), evt, b.friendlyError(errorContext, result.Text))',
+              '_ = b.sendText(context.Background(), jid, fallbackText(interactive))': '_ = b.sendTextReply(context.Background(), evt, fallbackText(interactive))',
+              '_ = b.sendText(context.Background(), jid, b.friendlyError("mengirim berkas", err.Error()))': '_ = b.sendTextReply(context.Background(), evt, b.friendlyError("mengirim berkas", err.Error()))',
+              '_ = b.sendText(context.Background(), jid, result.Text)': '_ = b.sendTextReply(context.Background(), evt, result.Text)',
+              '_ = b.sendText(context.Background(), jid, b.friendlyError("mengunduh foto/dokumen", err.Error()))': '_ = b.sendTextReply(context.Background(), evt, b.friendlyError("mengunduh foto/dokumen", err.Error()))',
+              '_ = b.sendText(context.Background(), jid, b.friendlyError("menyimpan evidence", err.Error()))': '_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menyimpan evidence", err.Error()))',
+              'b.sendWorkerReply(jid, result, "menyimpan evidence")': 'b.sendWorkerReply(evt, jid, result, "menyimpan evidence")',
+              'func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePayload) error {': 'func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePayload, replyTo *events.Message) error {',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected block: {old}')
+              s = s.replace(old, new)
+
+          marker = '''func (b *bridge) sendText(ctx context.Context, rawJID, text string) error {\n\tjid, err := types.ParseJID(rawJID)\n\tif err != nil {\n\t\treturn err\n\t}\n\t_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(text)})\n\treturn err\n}\n\n'''
+          addition = marker + '''func quotedContext(evt *events.Message) *waE2E.ContextInfo {\n\tif evt == nil {\n\t\treturn nil\n\t}\n\treturn &waE2E.ContextInfo{\n\t\tStanzaID:      proto.String(string(evt.Info.ID)),\n\t\tParticipant:   proto.String(evt.Info.Sender.ToNonAD().String()),\n\t\tQuotedMessage: evt.Message,\n\t}\n}\n\nfunc (b *bridge) sendTextReply(ctx context.Context, evt *events.Message, text string) error {\n\tif evt == nil {\n\t\treturn fmt.Errorf("reply event is nil")\n\t}\n\t_, err := b.client.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{\n\t\tText:        proto.String(text),\n\t\tContextInfo: quotedContext(evt),\n\t}})\n\treturn err\n}\n\n'''
+          if s.count(marker) != 1:
+              raise SystemExit(f'sendText marker count={s.count(marker)}')
+          s = s.replace(marker, addition)
+
+          image_marker = '''\t\t_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: &waE2E.ImageMessage{\n\t\t\tCaption:       proto.String(payload.Caption),\n'''
+          image_new = '''\t\t_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: &waE2E.ImageMessage{\n\t\t\tContextInfo:   quotedContext(replyTo),\n\t\t\tCaption:       proto.String(payload.Caption),\n'''
+          if s.count(image_marker) != 1:
+              raise SystemExit(f'image marker count={s.count(image_marker)}')
+          s = s.replace(image_marker, image_new)
+
+          doc_marker = '''\t_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{\n\t\tCaption:       proto.String(payload.Caption),\n'''
+          doc_new = '''\t_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{\n\t\tContextInfo:   quotedContext(replyTo),\n\t\tCaption:       proto.String(payload.Caption),\n'''
+          if s.count(doc_marker) != 1:
+              raise SystemExit(f'document marker count={s.count(doc_marker)}')
+          s = s.replace(doc_marker, doc_new)
+          p.write_text(s)
+          PY
+          gofmt -w whatsmeow-session/bridge.go
+          (cd whatsmeow-session && go test ./... && go vet ./... && go build -trimpath -o /tmp/digital-bast-whatsmeow .)
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add whatsmeow-session/bridge.go
+          git commit -m 'fix: preserve quoted replies in whatsmeow transport'
+          git push origin HEAD:feat/whatsmeow-transport
