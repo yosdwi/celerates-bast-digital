@@ -230,7 +230,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 			return
 		}
 		b.state.logf("evidence-in-group redirect for %s", jid)
-		_ = b.sendText(context.Background(), jid, evidenceInGroupReply)
+		_ = b.sendTextReply(context.Background(), evt, evidenceInGroupReply)
 		return
 	}
 	if text == "" || !forUs || !b.state.isAllowedGroup(jid) {
@@ -245,17 +245,17 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 			if file.Caption != "" {
 				file.Caption = fmt.Sprintf("%s (%.1fs)", file.Caption, elapsed)
 			}
-			if err := b.sendFile(context.Background(), jid, file); err != nil {
+			if err := b.sendFile(context.Background(), jid, file, evt); err != nil {
 				b.state.logf("send group file failed: %v", err)
 			} else {
 				b.cleanupExport(file.Path)
 			}
 			return
 		}
-		_ = b.sendText(context.Background(), jid, fmt.Sprintf("%s\n\n_%.1fs_", result.Text, elapsed))
+		_ = b.sendTextReply(context.Background(), evt, fmt.Sprintf("%s\n\n_%.1fs_", result.Text, elapsed))
 		return
 	}
-	_ = b.sendText(context.Background(), jid, b.friendlyError("menjalankan perintah", result.Text))
+	_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menjalankan perintah", result.Text))
 }
 
 func (b *bridge) handleDM(evt *events.Message, jid string) {
@@ -270,7 +270,7 @@ func (b *bridge) handleDM(evt *events.Message, jid string) {
 	b.state.logf("dm from %s: %.120s", jid, text)
 	resolved := b.menus.resolve(jid, text)
 	result := b.callWorkerWithNotice(evt, map[string]any{"kind": "text", "text": resolved, "jid": jid, "channel": "dm"}, !looksLikeDMFastPath(resolved))
-	b.sendWorkerReply(jid, result, "menjalankan perintah")
+	b.sendWorkerReply(evt, jid, result, "menjalankan perintah")
 }
 
 func (b *bridge) callWorkerWithNotice(evt *events.Message, payload any, delayed bool) workerResult {
@@ -285,27 +285,27 @@ func (b *bridge) callWorkerWithNotice(evt *events.Message, payload any, delayed 
 	case result := <-ch:
 		return result
 	case <-timer.C:
-		_ = b.sendText(context.Background(), evt.Info.Chat.String(), waitingReply(evt.Info.PushName))
+		_ = b.sendTextReply(context.Background(), evt, waitingReply(evt.Info.PushName))
 		return <-ch
 	}
 }
 
-func (b *bridge) sendWorkerReply(jid string, result workerResult, errorContext string) {
+func (b *bridge) sendWorkerReply(evt *events.Message, jid string, result workerResult, errorContext string) {
 	b.menus.forget(jid)
 	if !result.OK {
-		_ = b.sendText(context.Background(), jid, b.friendlyError(errorContext, result.Text))
+		_ = b.sendTextReply(context.Background(), evt, b.friendlyError(errorContext, result.Text))
 		return
 	}
 	if interactive := parseInteractiveReply(result.Text); interactive != nil {
 		if digitShortcutsEnabled(interactive) {
 			b.menus.remember(jid, interactive.Actions)
 		}
-		_ = b.sendText(context.Background(), jid, fallbackText(interactive))
+		_ = b.sendTextReply(context.Background(), evt, fallbackText(interactive))
 		return
 	}
 	if file := parseFileReply(result.Text); file != nil {
-		if err := b.sendFile(context.Background(), jid, file); err != nil {
-			_ = b.sendText(context.Background(), jid, b.friendlyError("mengirim berkas", err.Error()))
+		if err := b.sendFile(context.Background(), jid, file, evt); err != nil {
+			_ = b.sendTextReply(context.Background(), evt, b.friendlyError("mengirim berkas", err.Error()))
 		} else {
 			b.cleanupExport(file.Path)
 		}
@@ -314,7 +314,7 @@ func (b *bridge) sendWorkerReply(jid string, result workerResult, errorContext s
 	if strings.TrimSpace(result.Text) == "" {
 		result.Text = "(kosong)"
 	}
-	_ = b.sendText(context.Background(), jid, result.Text)
+	_ = b.sendTextReply(context.Background(), evt, result.Text)
 }
 
 func (b *bridge) friendlyError(contextName, detail string) string {
@@ -340,17 +340,17 @@ func (b *bridge) handleEvidence(evt *events.Message, jid string) {
 		data, err = b.client.Download(ctx, doc)
 	}
 	if err != nil {
-		_ = b.sendText(context.Background(), jid, b.friendlyError("mengunduh foto/dokumen", err.Error()))
+		_ = b.sendTextReply(context.Background(), evt, b.friendlyError("mengunduh foto/dokumen", err.Error()))
 		return
 	}
 	dir := filepath.Join(b.dataDir, "evidence-uploads")
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		_ = b.sendText(context.Background(), jid, b.friendlyError("menyimpan evidence", err.Error()))
+		_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menyimpan evidence", err.Error()))
 		return
 	}
 	file, err := os.CreateTemp(dir, "evidence-*"+evidenceExtension(mimetype))
 	if err != nil {
-		_ = b.sendText(context.Background(), jid, b.friendlyError("menyimpan evidence", err.Error()))
+		_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menyimpan evidence", err.Error()))
 		return
 	}
 	path := file.Name()
@@ -361,12 +361,12 @@ func (b *bridge) handleEvidence(evt *events.Message, jid string) {
 		_ = file.Close()
 	}
 	if err != nil {
-		_ = b.sendText(context.Background(), jid, b.friendlyError("menyimpan evidence", err.Error()))
+		_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menyimpan evidence", err.Error()))
 		return
 	}
 	b.state.logf("evidence upload from %s (%d bytes)", jid, len(data))
 	result := b.callWorker(context.Background(), map[string]any{"kind": "evidence", "jid": jid, "filePath": path, "caption": caption})
-	b.sendWorkerReply(jid, result, "menyimpan evidence")
+	b.sendWorkerReply(evt, jid, result, "menyimpan evidence")
 }
 
 func (b *bridge) sendText(ctx context.Context, rawJID, text string) error {
@@ -378,7 +378,29 @@ func (b *bridge) sendText(ctx context.Context, rawJID, text string) error {
 	return err
 }
 
-func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePayload) error {
+func quotedContext(evt *events.Message) *waE2E.ContextInfo {
+	if evt == nil {
+		return nil
+	}
+	return &waE2E.ContextInfo{
+		StanzaID:      proto.String(string(evt.Info.ID)),
+		Participant:   proto.String(evt.Info.Sender.ToNonAD().String()),
+		QuotedMessage: evt.Message,
+	}
+}
+
+func (b *bridge) sendTextReply(ctx context.Context, evt *events.Message, text string) error {
+	if evt == nil {
+		return fmt.Errorf("reply event is nil")
+	}
+	_, err := b.client.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text:        proto.String(text),
+		ContextInfo: quotedContext(evt),
+	}})
+	return err
+}
+
+func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePayload, replyTo *events.Message) error {
 	jid, err := types.ParseJID(rawJID)
 	if err != nil {
 		return err
@@ -394,6 +416,7 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 			return err
 		}
 		_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			ContextInfo:   quotedContext(replyTo),
 			Caption:       proto.String(payload.Caption),
 			Mimetype:      proto.String(mime),
 			URL:           &upload.URL,
@@ -414,6 +437,7 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 		name = filepath.Base(payload.Path)
 	}
 	_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+		ContextInfo:   quotedContext(replyTo),
 		Caption:       proto.String(payload.Caption),
 		Mimetype:      proto.String(mime),
 		FileName:      proto.String(name),
