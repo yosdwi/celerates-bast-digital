@@ -45,6 +45,18 @@ def _isolate_pmo_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+async def _no_sleep(seconds: float) -> None:
+    del seconds
+
+
+@pytest.fixture(autouse=True)
+def _skip_reply_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    # reply() deliberately sleeps a few real seconds before every DM reply
+    # (anti-automation-detection delay) -- skip it so these tests don't
+    # actually wait.
+    monkeypatch.setattr(dm_workflow.anyio, "sleep", _no_sleep)
+
+
 class _FakeState:
     def __init__(self, draft: AttendanceResolutionDraft | None) -> None:
         self.draft = draft
@@ -122,6 +134,30 @@ class _FakeAttendanceEvidence:
 
 def _draft(resolution_type: ResolutionType) -> AttendanceResolutionDraft:
     return AttendanceResolutionDraft(_ATTENDANCE_KEY, _EMPLOYEE_ID, resolution_type)
+
+
+@pytest.mark.asyncio
+async def test_reply_paces_every_dm_with_a_randomized_delay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _FakeState(None)
+    monkeypatch.setattr(
+        dm_workflow, "create_attendance_resolution_dm_state_service", lambda: state
+    )
+    monkeypatch.setattr(dm_workflow.cli, "bot_reply", lambda text, *, jid, channel: "ok")
+
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(dm_workflow.anyio, "sleep", fake_sleep)
+
+    await dm_workflow.reply("halo", _JID)
+
+    assert len(slept) == 1
+    low, high = dm_workflow._REPLY_DELAY_SECONDS
+    assert low <= slept[0] <= high
 
 
 @pytest.mark.asyncio

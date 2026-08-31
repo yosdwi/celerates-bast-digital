@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import re
 import sys
 from contextlib import nullcontext
@@ -499,17 +498,6 @@ def _other_employee_reply(name: str) -> str:
 # internal Employee ID -- that stays purely an internal key from here on.
 _NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
 _NRP_ATTEMPT_MAX_ECHO: Final = 40
-# _dm_onboarding only ever runs for a JID with no bound employee_id yet --
-# i.e. every reply here goes to a number the system has never talked to
-# before. An instant, perfectly-formatted reply to a brand-new contact is
-# exactly the kind of signal WhatsApp's automation detection watches for
-# (confirmed the hard way: a real account restriction, then two same-day
-# forced logouts, both within seconds of an unfamiliar number's first
-# message). Talent onboarding happens once per person and is not
-# latency-sensitive, so a few seconds of human-plausible delay here costs
-# nothing real while making this account's traffic to strangers look less
-# like a bot replying to everyone who says hello.
-_ONBOARDING_REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
 # dm_workflow.py imports this to route an already-bound talent's greeting to
 # the home menu -- one canonical set instead of two copies. An unbound
 # sender typing "halo" deserves the same friendly _NRP_HELP a blank message
@@ -582,7 +570,6 @@ async def _bound_reply_with_nudge(name: str, employee_id: str) -> str:
 
 
 async def _dm_onboarding(text: str, jid: str) -> str:  # noqa: PLR0911 -- one short-circuit per case
-    await anyio.sleep(random.uniform(*_ONBOARDING_REPLY_DELAY_SECONDS))  # noqa: S311 -- timing jitter, not a secret
     activation = create_activation_service()
     pending_employee_id = await activation.pending_claim(jid)
     lowered = text.strip().casefold()

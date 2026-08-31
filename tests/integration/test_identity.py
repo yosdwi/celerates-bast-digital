@@ -2,7 +2,6 @@ import os
 from collections.abc import Iterator
 from uuid import uuid4
 
-import anyio
 import psycopg
 import pytest
 from alembic import command
@@ -10,10 +9,6 @@ from alembic.config import Config
 
 from digital_bast.bot.identity import ActivationOutcome, ActivationService
 from digital_bast.cli import bot_reply
-
-
-async def _no_sleep(seconds: float) -> None:
-    del seconds
 
 
 @pytest.fixture(scope="module")
@@ -111,13 +106,7 @@ async def test_unknown_employee_id_is_rejected(database_dsn: str, jid: str) -> N
     assert result.outcome is ActivationOutcome.UNKNOWN_EMPLOYEE
 
 
-def test_unbound_dm_jid_can_only_attempt_activation(
-    database_dsn: str, jid: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # _dm_onboarding deliberately adds a real, human-plausible delay before
-    # replying to any not-yet-bound JID (see cli.py) -- skip it here so this
-    # test doesn't actually sleep for several seconds.
-    monkeypatch.setattr(anyio, "sleep", _no_sleep)
+def test_unbound_dm_jid_can_only_attempt_activation(database_dsn: str, jid: str) -> None:
     reply = bot_reply("evidence", jid=jid, channel="dm")
 
     assert "aktivasi" in reply.casefold()

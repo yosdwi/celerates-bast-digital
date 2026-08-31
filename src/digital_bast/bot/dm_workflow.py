@@ -10,6 +10,7 @@ validated against durable backend state before a mutation happens.
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 from datetime import datetime, time
 from pathlib import Path
@@ -67,6 +68,17 @@ _REBIND_SUBMIT_WORDS: Final = frozenset(
     {"ganti nomor", "ajukan ganti nomor", "rebind", "rebind:submit"}
 )
 _REBIND_CANCEL_WORDS: Final = frozenset({"batal", "cancel", "rebind:cancel"})
+# Every text reply this account sends is under WhatsApp's own automation/spam
+# detection -- an instant, perfectly-formatted response is exactly the signal
+# that detection watches for, regardless of who's on the other end (confirmed
+# the hard way: two same-day forced logouts on this account, both within
+# seconds of a reply going out). This was first scoped to only not-yet-bound
+# senders (cli._dm_onboarding had its own delay), but the same risk applies to
+# every number this account talks to, so the delay now lives here instead --
+# at the top of `reply`, the one entry point every DM text reply passes
+# through (see bot-worker/server.js, which routes `bot-reply --channel dm` to
+# this module, not the `digital-bast` CLI directly).
+_REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
 
 
 class DmArguments(argparse.Namespace):
@@ -400,6 +412,7 @@ async def _route_operator(text: str, jid: str) -> str | None:
 
 
 async def reply(text: str, jid: str) -> str:
+    await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 -- timing jitter, not a secret
     operator_reply = await _route_operator(text, jid)
     if operator_reply is not None:
         return operator_reply
