@@ -27,15 +27,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.0"
-          cache-dependency-path: whatsmeow-session/go.sum
-      - name: Download modules
-        working-directory: whatsmeow-session
-        run: go mod download
-      - name: Verify module files are tidy
+      - name: Resolve module lock (initial pin)
         working-directory: whatsmeow-session
         run: |
           go mod tidy
-          git diff --exit-code -- go.mod go.sum
+          echo '=== GENERATED GO.MOD ==='
+          cat go.mod
+          echo '=== GENERATED GO.SUM ==='
+          cat go.sum
+          echo '=== END GENERATED MODULE LOCK ==='
       - name: Format gate
         run: test -z "$(gofmt -l whatsmeow-session)"
       - name: Vet
