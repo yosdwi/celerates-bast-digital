@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git archive --format=tar "$RELEASE_SHA" -- compose.yaml scripts config/nginx/nginx.conf wa-session whatsmeow-session bot-worker > release-assets.tar
+          git archive --format=tar "$RELEASE_SHA" -- compose.yaml compose.production.yaml scripts config/nginx/nginx.conf wa-session whatsmeow-session bot-worker > release-assets.tar
       - name: Blue-green production deployment
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
@@ -102,6 +102,7 @@ jobs:
           rm -f "$DEPLOY_PATH/$ASSET_NAME"
           test -x "$stage_dir/scripts/deploy.sh"
           test -f "$stage_dir/compose.yaml"
+          test -f "$stage_dir/compose.production.yaml"
           test -f "$stage_dir/config/nginx/nginx.conf"
           test -f "$stage_dir/wa-session/Dockerfile"
           test -f "$stage_dir/whatsmeow-session/Dockerfile"
