@@ -1,5 +1,17 @@
+# Docker's json-file driver has no size limit by default -- a long-running
+# container's stdout/stderr can silently grow into gigabytes (found one at
+# 2.7GB, another at 338MB, 2026-08-31) and was the actual cause of the disk
+# preflight gate failing repeatedly, not the box being genuinely undersized.
+# Applied to every service below so this can't recur for any of them.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-app: &app
   image: ${APP_IMAGE:-digital-bast:local}
+  logging: *default-logging
   build:
     context: .
     target: runtime
@@ -134,6 +146,7 @@ services:
   postgres:
     image: postgres:17.6-bookworm
     restart: unless-stopped
+    logging: *default-logging
     entrypoint: ["/usr/local/bin/digital-bast-postgres-entrypoint"]
     command: ["postgres"]
     environment:
@@ -168,6 +181,7 @@ services:
   redis:
     image: redis:7.4.0-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: ["redis-server", "--aclfile", "/run/secrets/redis_acl", "--appendonly", "yes", "--save", "60", "1000"]
     group_add:
       - "${SECRETS_GID:?SECRETS_GID is required}"
@@ -240,6 +254,7 @@ services:
   reverse-proxy:
     image: nginx:1.27.1-alpine
     restart: unless-stopped
+    logging: *default-logging
     read_only: true
     user: "101:101"
     cap_drop:
@@ -282,6 +297,7 @@ services:
   nocodb-v2:
     image: nocodb/nocodb:0.301.2
     restart: unless-stopped
+    logging: *default-logging
     environment:
       NC_DB: "pg://postgres:5432?u=${NOCODB_V2_DB_USER:-digital_bast_app}&p=${NOCODB_V2_DB_PASSWORD:?NOCODB_V2_DB_PASSWORD is required}&d=nocodb_v2_meta"
       NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8083}
@@ -323,6 +339,7 @@ services:
       dockerfile: whatsmeow-session/Dockerfile
     image: ${WA_SESSION_IMAGE:-digital-bast-whatsmeow-session:local}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       BOT_SETUP_HOST: 0.0.0.0
       BOT_SETUP_PORT: "8090"
@@ -378,6 +395,7 @@ services:
         APP_IMAGE: ${APP_IMAGE:-digital-bast:local}
     image: ${BOT_WORKER_IMAGE:-digital-bast-bot-worker:local}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       <<: *app-environment
       BAST_CLI: digital-bast
