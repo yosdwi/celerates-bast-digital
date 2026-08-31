@@ -19,6 +19,7 @@ from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.bot.rebind_onboarding import RebindOnboardingService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
+from digital_bast.infrastructure.cloudflare_workers_ai_chat import CloudflareWorkersAiChatClient
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.pmo_notification_outbox import PostgresPmoNotificationOutbox
 from digital_bast.infrastructure.whatsapp_outbound import (
@@ -216,10 +217,19 @@ def create_talent_reminder_service(scope_key: str = "default") -> TalentReminder
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
+    # Same Cloudflare Workers AI provider as TalentOps AI (web/production.py) --
+    # one LLM backend for the bot's own interpreter, not a second one pointed at
+    # a local Ollama instance the account no longer runs.
     settings = _settings()
-    if settings.bot_llm_url is None:
+    if settings.cloudflare_account_id is None or settings.cloudflare_api_token is None:
         return None
-    return LlmInterpreter(str(settings.bot_llm_url), settings.bot_llm_model)
+    return LlmInterpreter(
+        CloudflareWorkersAiChatClient(
+            settings.cloudflare_account_id,
+            settings.cloudflare_api_token.get_secret_value(),
+            settings.cloudflare_workers_ai_model,
+        )
+    )
 
 
 async def load_roster() -> tuple[Employee, ...]:
