@@ -52,7 +52,7 @@ test("executionFor keeps group replies on the legacy digital-bast CLI", () => {
   assert.deepEqual(execution.args, ["bot-reply", "--text", "status hari ini"]);
 });
 
-test("executionFor routes DM text through the Python DM workflow wrapper", () => {
+test("executionFor routes DM text through the mobile-aware Python entry wrapper", () => {
   const execution = executionFor([
     "bot-reply",
     "--text",
@@ -65,7 +65,7 @@ test("executionFor routes DM text through the Python DM workflow wrapper", () =>
   assert.equal(execution.command, "python");
   assert.deepEqual(execution.args, [
     "-m",
-    "digital_bast.bot.dm_workflow",
+    "digital_bast.bot.dm_entry",
     "reply",
     "--text",
     "17:00",
@@ -74,7 +74,7 @@ test("executionFor routes DM text through the Python DM workflow wrapper", () =>
   ]);
 });
 
-test("executionFor routes evidence through the Python DM workflow wrapper", () => {
+test("executionFor routes evidence through the existing Python DM workflow wrapper", () => {
   const execution = executionFor([
     "bot-evidence",
     "--jid",

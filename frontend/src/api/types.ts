@@ -277,6 +277,11 @@ export interface NotificationSettings {
   pmo_reminder_days: number[];
 }
 
+export interface TalentMobileSettings {
+  scope_key: string;
+  public_url: string | null;
+}
+
 export interface BastBlocker {
   employee_id: string;
   nrp: string;

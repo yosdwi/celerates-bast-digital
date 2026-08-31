@@ -1,0 +1,105 @@
+.talent-mobile-shell {
+  min-height: 100vh;
+  color: #202124;
+  background: #f6f7f9;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.talent-mobile-header {
+  padding: calc(18px + env(safe-area-inset-top)) 18px 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  color: #fff;
+  background: #17212b;
+}
+.talent-mobile-eyebrow { display: block; margin-bottom: 6px; color: #aeb9c4; font-size: 10px; font-weight: 750; letter-spacing: .12em; }
+.talent-mobile-header h1 { margin: 0; font-size: 21px; font-weight: 720; line-height: 1.2; }
+.talent-mobile-header p { margin: 5px 0 0; color: #c7d0d9; font-size: 12px; }
+.talent-mobile-header-mark { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.18); border-radius: 12px; color: #fff; background: rgba(255,255,255,.08); font-size: 16px; font-weight: 800; }
+
+.talent-mobile-summary { margin: -1px 0 0; padding: 12px 12px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #17212b; }
+.talent-mobile-summary button { min-width: 0; padding: 12px 13px; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; border: 1px solid rgba(255,255,255,.13); border-radius: 12px 12px 0 0; color: #d4dbe2; background: rgba(255,255,255,.05); text-align: left; }
+.talent-mobile-summary button.active { border-color: #fff; color: #202124; background: #f6f7f9; }
+.talent-mobile-summary button span { grid-column: 1; font-size: 11px; font-weight: 650; }
+.talent-mobile-summary button strong { grid-column: 2; grid-row: 1 / span 2; font-size: 19px; line-height: 1; }
+.talent-mobile-summary button small { grid-column: 1; color: inherit; opacity: .72; font-size: 9.5px; }
+
+.talent-mobile-content { width: min(680px, 100%); margin: 0 auto; padding: 18px 14px calc(36px + env(safe-area-inset-bottom)); }
+.talent-mobile-section-head { margin-bottom: 14px; }
+.talent-mobile-section-head h2 { margin: 0; font-size: 18px; line-height: 1.25; }
+.talent-mobile-section-head p { margin: 5px 0 0; color: #68727d; font-size: 11.5px; line-height: 1.5; }
+.talent-mobile-progress { height: 5px; margin-top: 12px; overflow: hidden; border-radius: 999px; background: #e1e5ea; }
+.talent-mobile-progress span { display: block; height: 100%; border-radius: inherit; background: #1f7a4d; }
+
+.talent-mobile-notice { position: sticky; z-index: 10; top: 0; width: min(652px, calc(100% - 28px)); margin: 12px auto 0; padding: 10px 12px; border: 1px solid #c7d6ec; border-radius: 10px; color: #214b7b; background: #eef5ff; font-size: 11px; line-height: 1.45; box-shadow: 0 4px 14px rgba(32,33,36,.08); }
+
+.talent-mobile-chips { margin-bottom: 12px; display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; }
+.talent-mobile-chips::-webkit-scrollbar { display: none; }
+.talent-mobile-chips button { min-height: 34px; padding: 0 11px; flex: 0 0 auto; border: 1px solid #d8dde4; border-radius: 999px; color: #5f6872; background: #fff; font-size: 10.5px; font-weight: 600; }
+.talent-mobile-chips button.active { border-color: #17212b; color: #fff; background: #17212b; }
+.talent-mobile-chips b { margin-left: 5px; font-size: 10px; }
+
+.talent-mobile-card-list { display: grid; gap: 10px; }
+.talent-mobile-card { padding: 14px; border: 1px solid #dde1e6; border-radius: 14px; background: #fff; box-shadow: 0 1px 2px rgba(32,33,36,.04); }
+.talent-mobile-card.complete { background: #fbfdfb; }
+.talent-mobile-card-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #727b85; font-size: 9.5px; }
+.talent-mobile-card-topline .status-ok, .talent-mobile-card-topline .status-needed { padding: 4px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; }
+.talent-mobile-card-topline .status-ok { color: #17633d; background: #e8f5ee; }
+.talent-mobile-card-topline .status-needed { color: #875d10; background: #fff4d8; }
+.talent-mobile-card h3 { margin: 10px 0 0; color: #202124; font-size: 14px; font-weight: 680; line-height: 1.42; }
+.talent-mobile-source { margin: 5px 0 0; color: #747d87; font-size: 10px; }
+.talent-mobile-complete-row { margin-top: 13px; padding: 9px 10px; border-radius: 9px; color: #17633d; background: #eef8f2; font-size: 10.5px; font-weight: 650; }
+
+.talent-mobile-upload { margin-top: 13px; min-height: 58px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; border: 1px dashed #aeb8c4; border-radius: 10px; color: #254f7d; background: #f8fbff; cursor: pointer; }
+.talent-mobile-upload.busy { opacity: .6; cursor: wait; }
+.talent-mobile-upload input, .talent-mobile-file-row input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.talent-mobile-upload span { font-size: 11px; font-weight: 700; }
+.talent-mobile-upload small { margin-top: 3px; color: #7b8490; font-size: 9px; }
+
+.talent-mobile-request-strip, .talent-mobile-data-warning { margin-bottom: 12px; padding: 11px 12px; display: grid; gap: 5px; border-radius: 10px; font-size: 10.5px; line-height: 1.45; }
+.talent-mobile-request-strip { border: 1px solid #c9d9ee; color: #31567e; background: #eef5ff; }
+.talent-mobile-data-warning { border: 1px solid #eed6a5; color: #755414; background: #fff8e8; }
+.talent-mobile-data-warning p { margin: 0; }
+
+.talent-mobile-clock-row { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.talent-mobile-clock-row div { padding: 9px 10px; border: 1px solid #e1e5ea; border-radius: 9px; background: #fafbfc; }
+.talent-mobile-clock-row small { display: block; color: #7b8490; font-size: 9px; }
+.talent-mobile-clock-row strong { display: block; margin-top: 3px; font-size: 13px; }
+
+.talent-mobile-action-group { margin-top: 13px; }
+.talent-mobile-action-group > span { display: block; margin-bottom: 7px; color: #606a75; font-size: 10px; font-weight: 650; }
+.talent-mobile-action-group > div { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 5px; }
+.talent-mobile-action-group button { min-height: 36px; padding: 0 6px; border: 1px solid #d8dde4; border-radius: 8px; color: #59636e; background: #fff; font-size: 9.5px; }
+.talent-mobile-action-group button.active { border-color: #17212b; color: #fff; background: #17212b; }
+
+.talent-mobile-time-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.talent-mobile-time-grid label { color: #626c77; font-size: 9.5px; font-weight: 600; }
+.talent-mobile-time-grid input { width: 100%; height: 38px; margin-top: 5px; padding: 0 9px; border: 1px solid #d8dde4; border-radius: 8px; color: #202124; background: #fff; font: inherit; font-size: 12px; }
+
+.talent-mobile-file-row { min-height: 42px; margin-top: 12px; padding: 0 11px; display: flex; align-items: center; overflow: hidden; border: 1px dashed #abb6c2; border-radius: 9px; color: #315b88; background: #fafcff; cursor: pointer; }
+.talent-mobile-file-row span { overflow: hidden; font-size: 10.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.talent-mobile-submit { width: 100%; min-height: 42px; margin-top: 9px; border: 0; border-radius: 9px; color: #fff; background: #17212b; font-size: 11px; font-weight: 700; }
+.talent-mobile-submit:disabled { color: #8b949d; background: #e2e5e8; }
+.talent-mobile-rule-note { display: block; margin-top: 7px; color: #858d96; font-size: 9px; text-align: center; }
+
+.talent-mobile-empty { padding: 34px 16px; border: 1px dashed #d7dce2; border-radius: 12px; color: #737c86; background: #fff; font-size: 11px; line-height: 1.5; text-align: center; }
+
+.talent-mobile-state { min-height: 100vh; padding: 32px; display: grid; place-content: center; justify-items: center; color: #3c4043; background: #f6f7f9; text-align: center; }
+.talent-mobile-state h1 { margin: 12px 0 5px; font-size: 19px; }
+.talent-mobile-state p { max-width: 360px; margin: 0; color: #68727d; font-size: 12px; line-height: 1.55; }
+.talent-mobile-state small { max-width: 360px; margin-top: 10px; color: #8a929b; font-size: 10px; }
+.talent-mobile-state-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #914040; background: #fdecec; font-size: 18px; font-weight: 800; }
+.talent-mobile-spinner { width: 28px; height: 28px; margin-bottom: 12px; border: 3px solid #dce1e7; border-top-color: #17212b; border-radius: 50%; animation: talent-mobile-spin .7s linear infinite; }
+@keyframes talent-mobile-spin { to { transform: rotate(360deg); } }
+
+@media (min-width: 700px) {
+  .talent-mobile-header { padding-left: max(24px, calc((100vw - 680px) / 2)); padding-right: max(24px, calc((100vw - 680px) / 2)); }
+  .talent-mobile-summary { padding-left: max(24px, calc((100vw - 680px) / 2)); padding-right: max(24px, calc((100vw - 680px) / 2)); }
+}
+
+@media (max-width: 370px) {
+  .talent-mobile-action-group > div { grid-template-columns: 1fr 1fr; }
+  .talent-mobile-time-grid { grid-template-columns: 1fr; }
+}
