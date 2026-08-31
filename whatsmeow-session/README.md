@@ -9,6 +9,21 @@ It deliberately keeps the same backend contracts instead of moving business rule
 - setup/status -> port 8090 (`/`, `/health`, `/internal/v1/status`)
 - interactive backend envelopes remain a numbered text fallback, so protocol experiments cannot silently drop a business reply.
 
+## Transport parity
+
+The Go bridge preserves the behavior that matters to the existing WhatsApp workflow while changing
+only the session/protocol implementation:
+
+- DM, group, delayed-notice, error and file responses quote the triggering WhatsApp message;
+- generated export files are removed only after a successful WhatsApp send, while failed sends keep
+  the file available for diagnosis/retry;
+- inbound legacy button, template-button, list-row and native-flow selections are still normalized
+  to the same worker action IDs even though outbound menus currently use the safe numbered-text path;
+- per-JID numbered-menu shortcuts expire and are forgotten when a non-interactive reply supersedes
+  the menu, matching the existing anti-stale-menu behavior;
+- trusted-group allowlisting and the DM-only evidence rule remain transport concerns; all attendance,
+  PMO, Talent and BAST business decisions continue to live in the existing worker/backend.
+
 ## Session storage
 
 Whatsmeow state is stored in SQLite at `${BOT_AUTH_DIR}/session.db`. The database is the durable
