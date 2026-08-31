@@ -7,14 +7,11 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Final, Literal
+from typing import Final, Literal
 from urllib.parse import quote, urlsplit
 
 from digital_bast.config import get_settings
 from digital_bast.domain.completion import DateRange
-
-if TYPE_CHECKING:
-    pass
 
 _TOKEN_VERSION: Final = 2
 _DEFAULT_TTL_SECONDS: Final = 30 * 60
