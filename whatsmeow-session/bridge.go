@@ -211,6 +211,24 @@ func (b *bridge) isForUs(evt *events.Message, text string) bool {
 	return groupTrigger.MatchString(text)
 }
 
+// markReadAndTyping gives dm_workflow.reply()'s reply delay a visible reason
+// on the sender's side: a blue check and a "typing…" bubble read as someone
+// reading the message and composing a reply, instead of the account going
+// silent for a few seconds and then dumping a reply out of nowhere. Only
+// called where a reply is actually about to happen (every DM; a group
+// message only after it's passed the mention/allow-list filters) -- a bot
+// that shows "typing…" and then never sends anything is its own tell.
+func (b *bridge) markReadAndTyping(evt *events.Message) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := b.client.MarkRead(ctx, []types.MessageID{evt.Info.ID}, time.Now(), evt.Info.Chat, evt.Info.Sender); err != nil {
+		b.state.logf("mark read failed: %v", err)
+	}
+	if err := b.client.SendChatPresence(ctx, evt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaText); err != nil {
+		b.state.logf("send composing presence failed: %v", err)
+	}
+}
+
 func (b *bridge) handleMessage(evt *events.Message) {
 	jid := evt.Info.Chat.String()
 	if evt.Info.IsGroup {
@@ -229,6 +247,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 			b.state.logf("ignored media from unlisted group %s", jid)
 			return
 		}
+		b.markReadAndTyping(evt)
 		b.state.logf("evidence-in-group redirect for %s", jid)
 		_ = b.sendTextReply(context.Background(), evt, evidenceInGroupReply)
 		return
@@ -236,6 +255,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 	if text == "" || !forUs || !b.state.isAllowedGroup(jid) {
 		return
 	}
+	b.markReadAndTyping(evt)
 	b.state.logf("command from %s: %.120s", jid, text)
 	started := time.Now()
 	result := b.callWorkerWithNotice(evt, map[string]any{"kind": "text", "text": text}, !looksLikeConversation(text))
@@ -259,6 +279,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 }
 
 func (b *bridge) handleDM(evt *events.Message, jid string) {
+	b.markReadAndTyping(evt)
 	if evt.Message.GetImageMessage() != nil || evt.Message.GetDocumentMessage() != nil {
 		b.handleEvidence(evt, jid)
 		return
