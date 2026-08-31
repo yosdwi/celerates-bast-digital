@@ -1,8 +1,9 @@
 """Button-first Talent WhatsApp home, status, and request history views.
 
-These views are projections only. Completion/readiness and attendance request
-state remain owned by the existing domain/application services; button IDs are
-just deterministic entry points back into dm_workflow.
+WhatsApp is the entry/notification surface; Talent Mobile is the primary work
+surface. These projections therefore answer one question first: what does this
+Talent actually need to do? Readiness/business state remains owned by existing
+domain/application services.
 """
 
 from __future__ import annotations
@@ -12,9 +13,13 @@ from typing import TYPE_CHECKING, Final
 
 from digital_bast.bot.attendance_resolution import ResolutionStatus, ResolutionType
 from digital_bast.bot.interactive import interactive
-from digital_bast.domain.completion import MONTH_NAMES, CheckState, DateRange, format_day
+from digital_bast.domain.completion import MONTH_NAMES, DateRange, format_day
 from digital_bast.domain.time import JAKARTA
-from digital_bast.operations import completion_status, create_attendance_resolution_service
+from digital_bast.operations import (
+    completion_status,
+    create_attendance_resolution_service,
+    create_evidence_service,
+)
 
 if TYPE_CHECKING:
     from digital_bast.bot.attendance_resolution import AttendanceResolution
@@ -44,14 +49,6 @@ def _period_label(period: DateRange) -> str:
     return f"{MONTH_NAMES[period.start.month - 1]} {period.start.year}"
 
 
-def _state_icon(state: CheckState) -> str:
-    if state is CheckState.COMPLETE:
-        return "✅"
-    if state is CheckState.NEEDS_REVIEW:
-        return "⚠️"
-    return "❌"
-
-
 def _mine(report: CompletionReport, employee_id: str) -> EmployeeCompletion | None:
     return next((item for item in report.employees if item.employee_id == employee_id), None)
 
@@ -75,109 +72,143 @@ def _resolution_description(request: AttendanceResolution) -> str:
     return "Attendance"
 
 
-async def home(employee_id: str, *, greeting: str | None = None) -> str:
-    """`greeting`, when given, is prepended above the usual "Halo {name} 👋" --
-    used by cli._dm_onboarding right after a successful NRP bind to show a
-    "connected" confirmation and this same home menu in one message, instead
-    of the onboarding flow dead-ending into a differently-formatted summary
-    that was never updated when this button-first home screen was added.
-    """
-    period = _period_now()
-    report = await completion_status(period)
+def _latest_request_by_day(
+    items: tuple[AttendanceResolution, ...], period: DateRange
+) -> dict[object, AttendanceResolution]:
+    # AttendanceResolutionService.for_employee() is newest-first. Keep only
+    # the latest decision for each day so an old rejection does not keep a day
+    # actionable after a newer request has been submitted/approved.
+    latest: dict[object, AttendanceResolution] = {}
+    for item in items:
+        if not period.start <= item.work_date <= period.end:
+            continue
+        latest.setdefault(item.work_date, item)
+    return latest
+
+
+async def _task_missing_count(employee_id: str, period: DateRange) -> int:
+    candidates = tuple(
+        item
+        for item in await create_evidence_service().list_candidates(employee_id)
+        if period.start <= item.work_date <= period.end
+    )
+    return sum(item.evidence_count <= 0 for item in candidates)
+
+
+async def _home_counts(
+    employee_id: str,
+    period: DateRange,
+    mine: EmployeeCompletion,
+) -> tuple[int, int, int, int, int]:
+    requests = await create_attendance_resolution_service().for_employee(employee_id)
+    latest = _latest_request_by_day(requests, period)
+    pending = sum(item.status is ResolutionStatus.PENDING for item in latest.values())
+    rejected = sum(item.status is ResolutionStatus.REJECTED for item in latest.values())
+    attendance_actions = len(mine.log_1_pama_evidence_days) + rejected
+    task_actions = await _task_missing_count(employee_id, period)
+    unavailable = len(mine.log_1_pama_missing_data_days)
+    return attendance_actions + task_actions, pending, unavailable, attendance_actions, task_actions
+
+
+async def home(
+    employee_id: str,
+    *,
+    greeting: str | None = None,
+    period: DateRange | None = None,
+) -> str:
+    active_period = period or _period_now()
+    report = await completion_status(active_period)
     mine = _mine(report, employee_id)
     if mine is None:
-        text = "Halo. Data BAST kamu belum tersedia untuk periode ini."
-        if greeting:
-            text = f"{greeting}\n\n{text}"
+        text = (
+            f"*BAST Saya — {_period_label(active_period)}*\n\n"
+            "Data BAST kamu belum tersedia untuk periode ini."
+        )
+    else:
+        needs_action, pending, unavailable, _, _ = await _home_counts(
+            employee_id, active_period, mine
+        )
+        lines = [
+            f"Halo {mine.name} 👋",
+            "",
+            f"*BAST Saya — {_period_label(active_period)}*",
+            "",
+            f"Perlu tindakan     : {needs_action}",
+            f"Menunggu PMO       : {pending}",
+            f"Data belum tersedia: {unavailable}",
+            "",
+        ]
+        if needs_action:
+            lines.append("Selesaikan yang masih menjadi bagian kamu dari BAST Saya.")
+        elif pending:
+            lines.append("✅ Bagian kamu sudah selesai. Tinggal menunggu review PMO.")
+        elif unavailable:
+            lines.append(
+                "✅ Tidak ada tindakan dari kamu. Data yang belum tersedia perlu ditindaklanjuti sistem/Admin."
+            )
+        else:
+            lines.append("✅ Tidak ada tindakan yang perlu kamu lakukan.")
+        text = "\n".join(lines)
+    if greeting:
+        text = f"{greeting}\n\n{text}"
+    return interactive(
+        text,
+        ("bast-saya", "Buka BAST Saya"),
+        ("attendance", "Attendance"),
+        ("tasklist", "Task & Evidence"),
+        footer='Kamu juga bisa ketik seperti "attendance Agustus"',
+    )
+
+
+async def status(employee_id: str, period: DateRange | None = None) -> str:
+    active_period = period or _period_now()
+    report = await completion_status(active_period)
+    mine = _mine(report, employee_id)
+    if mine is None:
         return interactive(
-            text,
-            ("status", "Status Saya"),
+            f"*Status Saya — {_period_label(active_period)}*\n\nData belum tersedia.",
+            ("bast-saya", "BAST Saya"),
             ("attendance", "Attendance"),
             ("tasklist", "Task & Evidence"),
         )
 
-    attendance_gaps = len(mine.log_1_pama.issues)
-    evidence_gaps = len(mine.evidence.issues)
-    if mine.state is CheckState.COMPLETE:
-        text = (
-            f"Halo {mine.name} 👋\n\n"
-            f"*BAST {_period_label(period)}*\n"
-            "✅ BAST kamu sudah lengkap."
-        )
-    else:
-        text = (
-            f"Halo {mine.name} 👋\n\n"
-            f"*BAST {_period_label(period)}*\n"
-            "⚠️ Masih ada yang perlu dilengkapi\n\n"
-            f"Attendance : {attendance_gaps} perlu tindakan\n"
-            f"Evidence   : {evidence_gaps} belum lengkap"
-        )
-        other_blockers = len(mine.timesheet.issues) + len(mine.task_list.issues)
-        if other_blockers:
-            text += f"\nLainnya    : {other_blockers} blocker — cek Status Saya"
-    if greeting:
-        text = f"{greeting}\n\n{text}"
-
-    return interactive(
-        text,
-        ("status", "Status Saya"),
-        ("attendance", "Attendance"),
-        ("tasklist", "Task & Evidence"),
-        footer="Kamu juga tetap bisa ketik dengan bahasa biasa",
-    )
-
-
-async def status(employee_id: str) -> str:
-    period = _period_now()
-    report = await completion_status(period)
-    mine = _mine(report, employee_id)
-    if mine is None:
-        return interactive(
-            "Status kamu belum tersedia untuk periode ini.",
-            ("requests", "Request Saya"),
-            ("attendance", "Attendance"),
-            ("menu", "Menu"),
-        )
-
-    requests = await create_attendance_resolution_service().for_employee(employee_id)
-    pending = sum(
-        request.status is ResolutionStatus.PENDING
-        and period.start <= request.work_date <= period.end
-        for request in requests
+    needs_action, pending, unavailable, attendance_actions, task_actions = await _home_counts(
+        employee_id, active_period, mine
     )
     lines = [
-        f"*Status Saya — {_period_label(period)}*",
+        f"*Status Saya — {_period_label(active_period)}*",
         "",
-        f"{_state_icon(mine.log_1_pama.state)} Attendance : {len(mine.log_1_pama.issues)} gap",
-        f"{_state_icon(mine.task_list.state)} Task List  : {len(mine.task_list.issues)} issue",
-        f"{_state_icon(mine.evidence.state)} Evidence   : {len(mine.evidence.issues)} missing",
-        f"{_state_icon(mine.timesheet.state)} Timesheet  : {len(mine.timesheet.issues)} issue",
-        f"⏳ Request PMO: {pending} pending",
+        f"Attendance       : {attendance_actions} perlu tindakan",
+        f"Task & Evidence  : {task_actions} perlu dilengkapi",
+        f"Menunggu PMO     : {pending}",
+        f"Data unavailable : {unavailable}",
     ]
-    if mine.state is CheckState.COMPLETE:
-        lines.extend(("", "✅ Semua readiness check kamu lengkap."))
+    if needs_action == 0 and pending == 0:
+        lines.extend(("", "✅ Tidak ada pekerjaan BAST yang perlu kamu selesaikan sekarang."))
+    elif needs_action == 0 and pending:
+        lines.extend(("", "✅ Bagian kamu sudah selesai; tunggu keputusan PMO."))
 
     return interactive(
         "\n".join(lines),
-        ("requests", "Request Saya"),
+        ("bast-saya", "BAST Saya"),
         ("attendance", "Attendance"),
         ("tasklist", "Task & Evidence"),
     )
 
 
-async def requests(employee_id: str) -> str:
-    period = _period_now()
+async def requests(employee_id: str, period: DateRange | None = None) -> str:
+    active_period = period or _period_now()
     items = tuple(
         request
         for request in await create_attendance_resolution_service().for_employee(employee_id)
-        if period.start <= request.work_date <= period.end
+        if active_period.start <= request.work_date <= active_period.end
     )
     if not items:
         return interactive(
-            f"*Request Saya — {_period_label(period)}*\n\nBelum ada request attendance bulan ini.",
-            ("status", "Status Saya"),
+            f"*Pengajuan — {_period_label(active_period)}*\n\nBelum ada pengajuan attendance pada periode ini.",
+            ("bast-saya", "BAST Saya"),
             ("attendance", "Attendance"),
-            ("menu", "Menu"),
+            ("tasklist", "Task & Evidence"),
         )
 
     icons = {
@@ -190,7 +221,7 @@ async def requests(employee_id: str) -> str:
         ResolutionStatus.APPROVED: "Approved",
         ResolutionStatus.REJECTED: "Rejected",
     }
-    lines = [f"*Request Saya — {_period_label(period)}*", ""]
+    lines = [f"*Pengajuan — {_period_label(active_period)}*", ""]
     for request in items[:_REQUEST_HISTORY_LIMIT]:
         lines.append(
             f"{icons[request.status]} {format_day(request.work_date)} — "
@@ -202,11 +233,11 @@ async def requests(employee_id: str) -> str:
         lines.append("")
     if len(items) > _REQUEST_HISTORY_LIMIT:
         remaining = len(items) - _REQUEST_HISTORY_LIMIT
-        lines.append(f"+ {remaining} request lain di TalentOps Web")
+        lines.append(f"+ {remaining} pengajuan lain")
 
     return interactive(
         "\n".join(lines).strip(),
-        ("status", "Status Saya"),
+        ("bast-saya", "BAST Saya"),
         ("attendance", "Attendance"),
-        ("menu", "Menu"),
+        ("tasklist", "Task & Evidence"),
     )
