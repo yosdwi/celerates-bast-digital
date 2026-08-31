@@ -17,6 +17,7 @@ from digital_bast.bot.llm import LlmInterpreter
 from digital_bast.bot.pmo_state import PmoDmStateService
 from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.bot.rebind_onboarding import RebindOnboardingService
+from digital_bast.bot.talent_context import TalentConversationContextService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import CloudflareWorkersAiChatClient
@@ -129,6 +130,10 @@ def create_attendance_resolution_service() -> AttendanceResolutionService:
 
 def create_attendance_resolution_dm_state_service() -> AttendanceResolutionDmStateService:
     return AttendanceResolutionDmStateService(_application_dsn())
+
+
+def create_talent_conversation_context_service() -> TalentConversationContextService:
+    return TalentConversationContextService(_application_dsn())
 
 
 def create_workflow_control_service() -> WorkflowControlService:
