@@ -7,6 +7,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, s
 
 from digital_bast.application.talent_mobile_access import (
     TalentMobileClaims,
+    talent_mobile_binding_matches,
     verify_talent_mobile_token,
 )
 from digital_bast.bot.attendance_resolution import (
@@ -17,13 +18,12 @@ from digital_bast.bot.attendance_resolution import (
 from digital_bast.bot.evidence import MAX_IMAGE_BYTES, UploadOutcome
 from digital_bast.config import get_settings
 from digital_bast.domain.completion import DateRange
-from digital_bast.domain.time import month_dates
 from digital_bast.operations import (
     completion_status,
-    create_activation_service,
     create_attendance_evidence_service,
     create_attendance_resolution_service,
     create_evidence_service,
+    create_rebind_onboarding_service,
 )
 from digital_bast.web.talent_mobile_contracts import (
     TalentMobileAttendanceItem,
@@ -41,8 +41,7 @@ _AUTH_SCHEME = "bearer"
 
 
 def _period(claims: TalentMobileClaims) -> DateRange:
-    dates = month_dates(claims.year, claims.month)
-    return DateRange(dates[0], dates[-1])
+    return claims.period
 
 
 def _secret() -> str:
@@ -61,24 +60,29 @@ def _secret() -> str:
     return settings.session_secret.get_secret_value()
 
 
-async def _claims(request: Request) -> TalentMobileClaims:
+async def _claims(request: Request) -> tuple[TalentMobileClaims, str]:
     authorization = request.headers.get("authorization", "")
     scheme, separator, token = authorization.partition(" ")
     if not separator or scheme.casefold() != _AUTH_SCHEME:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Link tidak valid")
-    claims = verify_talent_mobile_token(_secret(), token.strip())
+    secret = _secret()
+    claims = verify_talent_mobile_token(secret, token.strip())
     if claims is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Link sudah tidak valid atau kedaluwarsa",
         )
-    employee_id = await create_activation_service().resolve(claims.jid)
-    if employee_id != claims.employee_id:
+    current_jid = await create_rebind_onboarding_service().existing_jid(claims.employee_id)
+    if current_jid is None or not talent_mobile_binding_matches(
+        secret,
+        current_jid,
+        claims.binding_tag,
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Binding WhatsApp sudah berubah. Minta link baru dari bot.",
         )
-    return claims
+    return claims, current_jid
 
 
 def _clock_label(value: time | None) -> str | None:
@@ -173,7 +177,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     router = APIRouter(prefix=_API_PREFIX)
 
     async def overview(request: Request) -> TalentMobileOverview:
-        claims = await _claims(request)
+        claims, _current_jid = await _claims(request)
         period = _period(claims)
         report = await completion_status(period)
         mine = next(
@@ -238,8 +242,8 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         return TalentMobileOverview(
             name=mine.name,
             period=TalentMobilePeriod(
-                year=claims.year,
-                month=claims.month,
+                year=period.start.year,
+                month=period.start.month,
                 label=period.label(),
             ),
             task=TalentMobileTaskSummary(
@@ -263,7 +267,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         file: Annotated[UploadFile, File()],
         caption: Annotated[str, Form(max_length=500)] = "",
     ) -> TalentMobileMutationResponse:
-        claims = await _claims(request)
+        claims, _current_jid = await _claims(request)
         period = _period(claims)
         service = create_evidence_service()
         candidates = tuple(
@@ -317,7 +321,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         check_out: Annotated[str | None, Form(max_length=8)] = None,
         caption: Annotated[str, Form(max_length=500)] = "",
     ) -> TalentMobileMutationResponse:
-        claims = await _claims(request)
+        claims, current_jid = await _claims(request)
         period = _period(claims)
         report = await completion_status(period)
         mine = next(
@@ -376,7 +380,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         submit = await create_attendance_resolution_service().submit(
             claims.employee_id,
             attendance_key,
-            claims.jid,
+            current_jid,
             resolution_type,
             proposed_check_in=proposed_in,
             proposed_check_out=proposed_out,
