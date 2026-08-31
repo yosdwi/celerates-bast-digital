@@ -25,6 +25,18 @@ class _FakeActivationService:
         assert wa_jid == _JID
 
 
+async def _no_sleep(seconds: float) -> None:
+    del seconds
+
+
+@pytest.fixture(autouse=True)
+def _skip_onboarding_reply_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    # _dm_onboarding deliberately sleeps a few real seconds before replying
+    # to any not-yet-bound JID (see cli.py) -- skip it so these tests don't
+    # actually wait.
+    monkeypatch.setattr(cli.anyio, "sleep", _no_sleep)
+
+
 @pytest.mark.asyncio
 async def test_onboarding_greets_a_not_yet_bound_sender_instead_of_erroring(
     monkeypatch: pytest.MonkeyPatch,
