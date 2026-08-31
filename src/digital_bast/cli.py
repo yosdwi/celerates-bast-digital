@@ -481,6 +481,20 @@ _ATTENDANCE_HELP_REPLY: Final = (
     "Nggak nemu attendance yang cocok. Kirim `attendance` untuk melihat daftar ulang, "
     "lalu balas nomornya."
 )
+# extract_index only matches "poin N"/"nomor N"/a bare digit -- a photo's
+# caption that echoes the numbered line the bot itself showed ("1. 5 Agustus
+# 2026", typed from the attendance list above) has neither, since it leads
+# with the index then a title, not a keyword. Requiring the digit be
+# immediately followed by "." (the bot's own list format, see
+# _format_approval_aware_attendance/_format_evidence_list) keeps this from
+# misreading an unrelated caption that happens to start with a number for a
+# different reason (a duration, a time) as a selection.
+_CAPTION_LEADING_INDEX_PATTERN: Final = re.compile(r"^\s*(\d{1,2})\.")
+
+
+def _caption_leading_index(caption: str) -> int | None:
+    match = _CAPTION_LEADING_INDEX_PATTERN.match(caption)
+    return int(match[1]) if match else None
 # Own DM keyword, separate from _SUMMARY_WORDS below -- Task List evidence and
 # Attendance evidence are deliberately two non-overlapping upload flows, never
 # merged into one ambiguous list (see plan discussion).
@@ -1036,7 +1050,9 @@ async def _resolve_evidence_target(  # noqa: C901 -- a sequential priority chain
     return None, narrowed
 
 
-async def bot_evidence(jid: str, file_path: Path, caption: str) -> str:
+async def bot_evidence(  # noqa: C901, PLR0911 -- a resolution priority chain, same shape as _dm_reply
+    jid: str, file_path: Path, caption: str
+) -> str:
     activation = create_activation_service()
     employee_id = await activation.resolve(jid)
     if employee_id is None:
@@ -1065,6 +1081,44 @@ async def bot_evidence(jid: str, file_path: Path, caption: str) -> str:
             return await _complete_attendance_upload(
                 attendance, employee_id, jid, target, image, caption
             )
+
+    if await evidence.active_kind(jid) == "attendance":
+        # The attendance list was the last thing shown (mark_active in
+        # _attendance_list_reply/_attendance_status_reply) but no day has
+        # been picked yet. A photo sent with its day number as the photo's
+        # OWN caption -- one WhatsApp message, not "1" as a separate text
+        # reply first, which is the normal way people attach a photo -- never
+        # reaches _pick_attendance_day, so pending_attendance_key above stays
+        # unset. Try the same index-only match _dm_reply already uses for a
+        # bare-text pick (index-only on purpose: attendance titles in the
+        # same month only differ by day number) against this caption before
+        # falling through to the Closed-task pool below -- without this, the
+        # photo silently gets judged against task titles instead, never
+        # matches, and reports "Closed task tanpa evidence" for a photo that
+        # was never about a task at all.
+        today = datetime.now(JAKARTA).date()
+        attendance_candidates = await _attendance_evidence_candidates(
+            employee_id, attendance, today
+        )
+        if attendance_candidates:
+            index = extract_index(caption)
+            if index is None:
+                index = _caption_leading_index(caption)
+            picked = (
+                select_by_index(attendance_candidates, str(index)) if index is not None else None
+            )
+            image = await run_sync(file_path.read_bytes)
+            if picked is not None:
+                return await _complete_attendance_upload(
+                    attendance, employee_id, jid, picked, image, caption
+                )
+            # §5: don't make the user resend the photo -- stash it and
+            # extend the attendance-list TTL so they still have time to
+            # answer with the right number.
+            content_type = sniff_content_type(image) or "image/jpeg"
+            await evidence.stash_image(jid, image, content_type, caption)
+            await attendance.mark_active(jid)
+            return _ATTENDANCE_HELP_REPLY if index is None else _ATTENDANCE_SELECT_INVALID
 
     candidates = outstanding(await evidence.list_candidates(employee_id))
     if not candidates:
