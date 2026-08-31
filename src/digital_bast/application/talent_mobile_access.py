@@ -7,15 +7,20 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 from urllib.parse import quote, urlsplit
 
 from digital_bast.config import get_settings
-from digital_bast.domain.completion import DateRange
+
+if TYPE_CHECKING:
+    from digital_bast.domain.completion import DateRange
 
 _TOKEN_VERSION: Final = 1
 _DEFAULT_TTL_SECONDS: Final = 30 * 60
 _MAX_TOKEN_LENGTH: Final = 4096
+_MIN_YEAR: Final = 2020
+_MAX_YEAR: Final = 2100
+_MONTHS_PER_YEAR: Final = 12
 _ALLOWED_TABS: Final = frozenset({"attendance", "tasks"})
 
 
@@ -37,7 +42,7 @@ def _b64decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + padding)
 
 
-def issue_talent_mobile_token(
+def issue_talent_mobile_token(  # noqa: PLR0913
     secret: str,
     employee_id: str,
     jid: str,
@@ -67,7 +72,7 @@ def issue_talent_mobile_token(
     return f"{encoded}.{_b64encode(signature)}"
 
 
-def verify_talent_mobile_token(
+def verify_talent_mobile_token(  # noqa: C901, PLR0911
     secret: str,
     token: str,
     *,
@@ -92,9 +97,9 @@ def verify_talent_mobile_token(
             return None
         if not isinstance(jid, str) or not jid:
             return None
-        if not isinstance(year, int) or not 2020 <= year <= 2100:
+        if not isinstance(year, int) or not _MIN_YEAR <= year <= _MAX_YEAR:
             return None
-        if not isinstance(month, int) or not 1 <= month <= 12:
+        if not isinstance(month, int) or not 1 <= month <= _MONTHS_PER_YEAR:
             return None
         if not isinstance(exp, int):
             return None
