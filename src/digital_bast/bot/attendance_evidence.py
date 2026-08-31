@@ -27,7 +27,7 @@ from digital_bast.domain.completion import format_day
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
-    from datetime import date
+    from datetime import date, time
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +36,8 @@ class AttendanceEvidenceCandidate:
     work_date: date
     title: str
     evidence_count: int
+    check_in: time | None = None
+    check_out: time | None = None
 
 
 def _candidate_title(work_date: date) -> str:
@@ -43,12 +45,21 @@ def _candidate_title(work_date: date) -> str:
 
 
 class _CandidateRow:
-    __slots__ = ("evidence_count", "record_key", "work_date")
+    __slots__ = ("check_in", "check_out", "evidence_count", "record_key", "work_date")
 
-    def __init__(self, record_key: str, work_date: date, evidence_count: int) -> None:
+    def __init__(
+        self,
+        record_key: str,
+        work_date: date,
+        evidence_count: int,
+        check_in: time | None = None,
+        check_out: time | None = None,
+    ) -> None:
         self.record_key = record_key
         self.work_date = work_date
         self.evidence_count = evidence_count
+        self.check_in = check_in
+        self.check_out = check_out
 
 
 class _AttendanceRow:
@@ -84,9 +95,9 @@ class AttendanceEvidenceService:
         await run_sync(self._clear_pending_attendance, wa_jid)
 
     async def mark_active(self, wa_jid: str) -> None:
-        # Mirrors EvidenceService.mark_active -- records "attendance" as the
-        # most recently shown list, so a bare number reply before a specific
-        # day is picked resolves against this pool, not the task pool.
+        # Showing the Attendance list starts a fresh selection context. Clear
+        # both prior concrete targets so merely opening/refreshing this view
+        # can never revive a stale task/day selection via updated_at.
         await run_sync(self._mark_active, wa_jid)
 
     async def upload(
@@ -106,7 +117,8 @@ class AttendanceEvidenceService:
             ):
                 _ = cursor.execute(
                     """
-                    SELECT a.record_key, a.work_date, COUNT(ae.id) AS evidence_count
+                    SELECT a.record_key, a.work_date, a.check_in, a.check_out,
+                           COUNT(ae.id) AS evidence_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.employee_id = %s
@@ -129,7 +141,12 @@ class AttendanceEvidenceService:
             ) from error
         return tuple(
             AttendanceEvidenceCandidate(
-                row.record_key, row.work_date, _candidate_title(row.work_date), row.evidence_count
+                row.record_key,
+                row.work_date,
+                _candidate_title(row.work_date),
+                row.evidence_count,
+                row.check_in,
+                row.check_out,
             )
             for row in rows
         )
@@ -185,10 +202,13 @@ class AttendanceEvidenceService:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
                     """
-                    INSERT INTO bot_conversations (wa_jid, pending_evidence_kind)
-                    VALUES (%s, 'attendance')
+                    INSERT INTO bot_conversations (
+                        wa_jid, pending_evidence_kind, pending_task_id, pending_attendance_id
+                    ) VALUES (%s, 'attendance', NULL, NULL)
                     ON CONFLICT (wa_jid) DO UPDATE SET
                         pending_evidence_kind = 'attendance',
+                        pending_task_id = NULL,
+                        pending_attendance_id = NULL,
                         updated_at = now()
                     """,
                     (wa_jid,),
