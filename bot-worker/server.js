@@ -59,7 +59,7 @@ function executionFor(args) {
     if (text !== null && jid) {
       return {
         command: PYTHON,
-        args: ["-m", "digital_bast.bot.dm_workflow", "reply", "--text", text, "--jid", jid],
+        args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
       };
     }
   }
