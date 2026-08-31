@@ -37,7 +37,7 @@ from digital_bast.web.talent_mobile_contracts import (
 )
 
 _API_PREFIX = "/api/talent/v1"
-_TOKEN_PREFIX = "bearer "
+_AUTH_SCHEME = "bearer"
 
 
 def _period(claims: TalentMobileClaims) -> DateRange:
@@ -63,10 +63,10 @@ def _secret() -> str:
 
 async def _claims(request: Request) -> TalentMobileClaims:
     authorization = request.headers.get("authorization", "")
-    if not authorization.casefold().startswith(_TOKEN_PREFIX):
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.casefold() != _AUTH_SCHEME:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Link tidak valid")
-    token = authorization[len(_TOKEN_PREFIX) :].strip()
-    claims = verify_talent_mobile_token(_secret(), token)
+    claims = verify_talent_mobile_token(_secret(), token.strip())
     if claims is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -169,7 +169,7 @@ def _resolution_shape(
     return ResolutionType.ABSENCE, None, None, absence
 
 
-def talent_mobile_router() -> APIRouter:
+def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     router = APIRouter(prefix=_API_PREFIX)
 
     async def overview(request: Request) -> TalentMobileOverview:
@@ -308,7 +308,7 @@ def talent_mobile_router() -> APIRouter:
             detail="Task sudah berubah dan evidence tidak dapat disimpan",
         )
 
-    async def submit_attendance(
+    async def submit_attendance(  # noqa: PLR0913, PLR0917
         request: Request,
         attendance_key: str,
         action: Annotated[str, Form(max_length=32)],
@@ -325,7 +325,10 @@ def talent_mobile_router() -> APIRouter:
             None,
         )
         if mine is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attendance tidak tersedia")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Attendance tidak tersedia",
+            )
 
         attendance_service = create_attendance_evidence_service()
         candidates = await attendance_service.list_candidates(
@@ -399,7 +402,12 @@ def talent_mobile_router() -> APIRouter:
             detail="Attendance sudah berubah dan pengajuan tidak dapat dibuat",
         )
 
-    router.add_api_route("/overview", overview, methods=["GET"], response_model=TalentMobileOverview)
+    router.add_api_route(
+        "/overview",
+        overview,
+        methods=["GET"],
+        response_model=TalentMobileOverview,
+    )
     router.add_api_route(
         "/tasks/{task_key}/evidence",
         upload_task_evidence,
