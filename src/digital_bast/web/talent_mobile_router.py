@@ -21,8 +21,8 @@ from digital_bast.operations import (
     completion_status,
     create_attendance_evidence_service,
     create_attendance_resolution_service,
-    create_evidence_service,
     create_rebind_onboarding_service,
+    create_task_evidence_submission_service,
 )
 from digital_bast.web.talent_mobile_contracts import (
     TalentMobileAttendanceItem,
@@ -193,7 +193,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 detail="Data talent belum tersedia untuk periode ini",
             )
 
-        task_service = create_evidence_service()
+        task_service = create_task_evidence_submission_service()
         period_tasks = tuple(
             item
             for item in await task_service.list_candidates(claims.employee_id)
@@ -206,11 +206,13 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 work_date=item.work_date,
                 task_source=item.task_source,
                 evidence_count=item.evidence_count,
+                staged_count=item.staged_count,
                 complete=item.evidence_count > 0,
             )
             for item in period_tasks
         )
         task_complete = sum(item.complete for item in task_items)
+        task_staged = sum(not item.complete and item.staged_count > 0 for item in task_items)
 
         attendance_service = create_attendance_evidence_service()
         attendance_candidates = await attendance_service.list_candidates(
@@ -253,6 +255,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 closed=len(task_items),
                 complete=task_complete,
                 missing=len(task_items) - task_complete,
+                staged=task_staged,
                 items=task_items,
             ),
             attendance=TalentMobileAttendanceSummary(
@@ -272,7 +275,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     ) -> TalentMobileMutationResponse:
         claims, _current_jid = await _claims(request)
         period = _period(claims)
-        service = create_evidence_service()
+        service = create_task_evidence_submission_service()
         candidates = tuple(
             item
             for item in await service.list_candidates(claims.employee_id)
@@ -284,7 +287,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Task tidak tersedia pada periode link ini",
             )
-        result = await service.upload(
+        result = await service.stage(
             claims.employee_id,
             task_key,
             await _read_upload(file),
@@ -292,13 +295,13 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         )
         if result.outcome is UploadOutcome.STORED:
             return TalentMobileMutationResponse(
-                status="stored",
-                message="Evidence task berhasil disimpan",
+                status="staged",
+                message="Evidence ditambahkan. Setelah semua lengkap, tekan Ajukan ke PMO.",
             )
         if result.outcome is UploadOutcome.DUPLICATE:
             return TalentMobileMutationResponse(
                 status="already_present",
-                message="Evidence ini sudah tersimpan pada task tersebut",
+                message="Evidence ini sudah ditambahkan pada task tersebut",
             )
         if result.outcome is UploadOutcome.TOO_LARGE:
             raise HTTPException(
@@ -313,6 +316,31 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Task sudah berubah dan evidence tidak dapat disimpan",
+        )
+
+    async def submit_task_evidence(request: Request) -> TalentMobileMutationResponse:
+        claims, current_jid = await _claims(request)
+        period = _period(claims)
+        service = create_task_evidence_submission_service()
+        candidates = tuple(
+            item
+            for item in await service.list_candidates(claims.employee_id)
+            if period.start <= item.work_date <= period.end
+        )
+        if not any(item.staged_count > 0 for item in candidates):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Belum ada evidence baru yang siap diajukan ke PMO",
+            )
+        submitted = await service.submit(claims.employee_id, period, current_jid)
+        if submitted <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Task sudah berubah. Refresh halaman sebelum mengajukan kembali.",
+            )
+        return TalentMobileMutationResponse(
+            status="submitted",
+            message="Task & Evidence berhasil diajukan ke PMO dan masuk ke Conform.",
         )
 
     async def submit_attendance(  # noqa: PLR0913, PLR0917
@@ -418,6 +446,12 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     router.add_api_route(
         "/tasks/{task_key}/evidence",
         upload_task_evidence,
+        methods=["POST"],
+        response_model=TalentMobileMutationResponse,
+    )
+    router.add_api_route(
+        "/tasks/evidence/submit",
+        submit_task_evidence,
         methods=["POST"],
         response_model=TalentMobileMutationResponse,
     )
