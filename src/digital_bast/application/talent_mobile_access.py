@@ -15,6 +15,7 @@ from digital_bast.domain.completion import DateRange
 
 _TOKEN_VERSION: Final = 2
 _DEFAULT_TTL_SECONDS: Final = 30 * 60
+_MAX_PMO_TTL_SECONDS: Final = 7 * 24 * 60 * 60
 _MAX_TOKEN_LENGTH: Final = 4096
 _MAX_PERIOD_DAYS: Final = 31
 _ALLOWED_TABS: Final = frozenset({"attendance", "tasks"})
@@ -110,14 +111,18 @@ def issue_pmo_talent_mobile_token(  # noqa: PLR0913
     now: datetime | None = None,
     ttl_seconds: int = _DEFAULT_TTL_SECONDS,
 ) -> str:
-    """Issue a short-lived bearer grant from authenticated PMO Web.
+    """Issue a bounded bearer grant from authenticated PMO Web.
 
     PMO-issued links deliberately do not depend on WhatsApp binding. The token
-    remains signed, employee-bound, period-bound and short-lived. The issuer is
+    remains signed, employee-bound, period-bound and time-limited. The issuer is
     represented only by a keyed non-reversible audit tag, never by raw email.
     """
     normalized_issuer = issuer.strip()
-    if not normalized_issuer:
+    if (
+        not normalized_issuer
+        or ttl_seconds <= 0
+        or ttl_seconds > _MAX_PMO_TTL_SECONDS
+    ):
         raise ValueError
     issued_at = now or datetime.now(UTC)
     if issued_at.tzinfo is None:
@@ -262,13 +267,20 @@ def configured_pmo_talent_mobile_url(
     tab: Literal["attendance", "tasks"],
     *,
     public_url: str | None = None,
+    ttl_seconds: int = _DEFAULT_TTL_SECONDS,
 ) -> str | None:
     resolved_public_url = _public_url(public_url)
     secret = _session_secret()
     if resolved_public_url is None or secret is None or tab not in _ALLOWED_TABS:
         return None
     try:
-        token = issue_pmo_talent_mobile_token(secret, employee_id, issuer, period)
+        token = issue_pmo_talent_mobile_token(
+            secret,
+            employee_id,
+            issuer,
+            period,
+            ttl_seconds=ttl_seconds,
+        )
     except ValueError:
         return None
     return f"{resolved_public_url}/talent/mobile?t={quote(token, safe='')}&tab={tab}"
