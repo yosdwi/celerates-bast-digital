@@ -44,9 +44,9 @@ from digital_bast.operations import (
     create_activation_service,
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
-    create_evidence_service,
     create_llm_interpreter,
     create_talent_conversation_context_service,
+    create_task_evidence_submission_service,
     create_workflow_control_service,
 )
 
@@ -102,7 +102,7 @@ async def _task_mobile_reply(
     url = configured_talent_mobile_url(employee_id, jid, period, "tasks", public_url=public_url)
     candidates = tuple(
         item
-        for item in await create_evidence_service().list_candidates(employee_id)
+        for item in await create_task_evidence_submission_service().list_candidates(employee_id)
         if period.start <= item.work_date <= period.end
     )
     complete = sum(item.evidence_count > 0 for item in candidates)
