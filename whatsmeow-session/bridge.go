@@ -90,10 +90,19 @@ func (b *bridge) callWorker(ctx context.Context, payload any) workerResult {
 	return result
 }
 
+func (b *bridge) callWorkerTraced(ctx context.Context, trace string, payload any) workerResult {
+	started := time.Now()
+	b.state.logf("worker start in=%s", trace)
+	result := b.callWorker(ctx, payload)
+	b.state.logf("worker done in=%s ok=%t elapsed=%s", trace, result.OK, time.Since(started).Round(time.Millisecond))
+	return result
+}
+
 func (b *bridge) eventHandler(raw any) {
 	switch evt := raw.(type) {
 	case *events.Connected:
 		b.state.setConnection("connected")
+		b.state.clearOperatorAction()
 		if b.client.Store.ID != nil {
 			b.state.setMe(b.client.Store.ID.String())
 		}
@@ -103,19 +112,34 @@ func (b *bridge) eventHandler(raw any) {
 		b.state.setConnection("disconnected")
 		b.state.logf("whatsmeow websocket disconnected; library auto-reconnect remains enabled")
 	case *events.LoggedOut:
-		b.state.setConnection("logged-out")
-		b.state.logf("whatsmeow logged out (on_connect=%t reason=%s); auth DB preserved for diagnosis", evt.OnConnect, evt.Reason.String())
+		reason := evt.Reason.String()
+		b.state.requireOperatorAction("logged-out", reason)
+		b.state.logf("whatsmeow permanent logout (on_connect=%t reason=%s); automatic re-pair blocked", evt.OnConnect, reason)
 	case *events.StreamReplaced:
-		b.state.setConnection("stream-replaced")
-		b.state.logf("whatsmeow stream replaced: another client connected with the same session keys")
+		reason := "another client connected with the same session keys"
+		b.state.requireOperatorAction("stream-replaced", reason)
+		b.state.logf("whatsmeow stream replaced: %s", reason)
 	case *events.TemporaryBan:
-		b.state.setConnection("temporary-ban")
-		b.state.logf("whatsmeow temporary ban: %s", evt.String())
+		reason := evt.String()
+		b.state.requireOperatorAction("temporary-ban", reason)
+		b.state.logf("whatsmeow temporary ban: %s", reason)
 	case *events.ClientOutdated:
-		b.state.setConnection("client-outdated")
-		b.state.logf("whatsmeow client rejected as outdated")
+		reason := "client rejected as outdated"
+		b.state.requireOperatorAction("client-outdated", reason)
+		b.state.logf("whatsmeow %s", reason)
 	case *events.ConnectFailure:
-		b.state.logf("whatsmeow connect failure: reason=%s message=%s", evt.Reason.String(), evt.Message)
+		reason := fmt.Sprintf("%s: %s", evt.Reason.String(), evt.Message)
+		b.state.requireOperatorAction("connect-failure", reason)
+		b.state.logf("whatsmeow permanent connect failure: %s", reason)
+	case *events.UndecryptableMessage:
+		b.state.logf(
+			"undecryptable inbound id=%s chat=%s sender=%s unavailable=%t retry_mode=%s",
+			evt.Info.ID,
+			evt.Info.Chat,
+			evt.Info.Sender,
+			evt.IsUnavailable,
+			evt.DecryptFailMode,
+		)
 	case *events.Message:
 		if !evt.Info.IsFromMe {
 			go b.handleMessage(evt)
@@ -211,31 +235,56 @@ func (b *bridge) isForUs(evt *events.Message, text string) bool {
 	return groupTrigger.MatchString(text)
 }
 
-// markReadAndTyping gives dm_workflow.reply()'s reply delay a visible reason
-// on the sender's side: a blue check and a "typing…" bubble read as someone
-// reading the message and composing a reply, instead of the account going
-// silent for a few seconds and then dumping a reply out of nowhere. Only
-// called where a reply is actually about to happen (every DM; a group
-// message only after it's passed the mention/allow-list filters) -- a bot
-// that shows "typing…" and then never sends anything is its own tell.
 func (b *bridge) markReadAndTyping(evt *events.Message) {
+	trace := string(evt.Info.ID)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	b.state.logf("mark-read start in=%s chat=%s sender=%s", trace, evt.Info.Chat, evt.Info.Sender)
 	if err := b.client.MarkRead(ctx, []types.MessageID{evt.Info.ID}, time.Now(), evt.Info.Chat, evt.Info.Sender); err != nil {
-		b.state.logf("mark read failed: %v", err)
+		b.state.logf("mark-read failed in=%s: %v", trace, err)
+	} else {
+		b.state.logf("mark-read ack in=%s", trace)
 	}
 	if err := b.client.SendChatPresence(ctx, evt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaText); err != nil {
-		b.state.logf("send composing presence failed: %v", err)
+		b.state.logf("typing failed in=%s: %v", trace, err)
+	} else {
+		b.state.logf("typing ack in=%s", trace)
 	}
 }
 
 func (b *bridge) handleMessage(evt *events.Message) {
-	jid := evt.Info.Chat.String()
 	if evt.Info.IsGroup {
-		b.handleGroup(evt, jid)
+		b.handleGroup(evt, evt.Info.Chat.String())
 		return
 	}
-	b.handleDM(evt, jid)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	identity, err := canonicalDMIdentity(ctx, evt, b.client.Store.LIDs)
+	if err != nil {
+		b.state.logf(
+			"dm identity unresolved in=%s mode=%s chat=%s sender=%s sender_alt=%s: %v",
+			evt.Info.ID,
+			evt.Info.AddressingMode,
+			evt.Info.Chat,
+			evt.Info.Sender,
+			evt.Info.SenderAlt,
+			err,
+		)
+		return
+	}
+	transportJID := evt.Info.Chat.ToNonAD().String()
+	identityJID := identity.String()
+	b.state.logf(
+		"inbound dm in=%s mode=%s chat=%s sender=%s sender_alt=%s transport=%s identity=%s",
+		evt.Info.ID,
+		evt.Info.AddressingMode,
+		evt.Info.Chat,
+		evt.Info.Sender,
+		evt.Info.SenderAlt,
+		transportJID,
+		identityJID,
+	)
+	b.handleDM(evt, transportJID, identityJID)
 }
 
 func (b *bridge) handleGroup(evt *events.Message, jid string) {
@@ -248,7 +297,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 			return
 		}
 		b.markReadAndTyping(evt)
-		b.state.logf("evidence-in-group redirect for %s", jid)
+		b.state.logf("evidence-in-group redirect in=%s group=%s", evt.Info.ID, jid)
 		_ = b.sendTextReply(context.Background(), evt, evidenceInGroupReply)
 		return
 	}
@@ -256,7 +305,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 		return
 	}
 	b.markReadAndTyping(evt)
-	b.state.logf("command from %s: %.120s", jid, text)
+	b.state.logf("group command in=%s group=%s text=%.120s", evt.Info.ID, jid, text)
 	started := time.Now()
 	result := b.callWorkerWithNotice(evt, map[string]any{"kind": "text", "text": text}, !looksLikeConversation(text))
 	elapsed := time.Since(started).Seconds()
@@ -266,7 +315,7 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 				file.Caption = fmt.Sprintf("%s (%.1fs)", file.Caption, elapsed)
 			}
 			if err := b.sendFile(context.Background(), jid, file, evt); err != nil {
-				b.state.logf("send group file failed: %v", err)
+				b.state.logf("send group file failed in=%s: %v", evt.Info.ID, err)
 			} else {
 				b.cleanupExport(file.Path)
 			}
@@ -278,54 +327,56 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 	_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menjalankan perintah", result.Text))
 }
 
-func (b *bridge) handleDM(evt *events.Message, jid string) {
+func (b *bridge) handleDM(evt *events.Message, transportJID, identityJID string) {
 	b.markReadAndTyping(evt)
 	if evt.Message.GetImageMessage() != nil || evt.Message.GetDocumentMessage() != nil {
-		b.handleEvidence(evt, jid)
+		b.handleEvidence(evt, transportJID, identityJID)
 		return
 	}
 	text := messageTextCompat(evt.Message)
 	if text == "" {
 		return
 	}
-	b.state.logf("dm from %s: %.120s", jid, text)
-	resolved := b.menus.resolve(jid, text)
-	result := b.callWorkerWithNotice(evt, map[string]any{"kind": "text", "text": resolved, "jid": jid, "channel": "dm"}, !looksLikeDMFastPath(resolved))
-	b.sendWorkerReply(evt, jid, result, "menjalankan perintah")
+	b.state.logf("dm text in=%s transport=%s identity=%s text=%.120s", evt.Info.ID, transportJID, identityJID, text)
+	resolved := b.menus.resolve(identityJID, text)
+	result := b.callWorkerWithNotice(evt, map[string]any{"kind": "text", "text": resolved, "jid": identityJID, "channel": "dm"}, !looksLikeDMFastPath(resolved))
+	b.sendWorkerReply(evt, transportJID, identityJID, result, "menjalankan perintah")
 }
 
 func (b *bridge) callWorkerWithNotice(evt *events.Message, payload any, delayed bool) workerResult {
+	trace := string(evt.Info.ID)
 	if !delayed {
-		return b.callWorker(context.Background(), payload)
+		return b.callWorkerTraced(context.Background(), trace, payload)
 	}
 	ch := make(chan workerResult, 1)
-	go func() { ch <- b.callWorker(context.Background(), payload) }()
+	go func() { ch <- b.callWorkerTraced(context.Background(), trace, payload) }()
 	timer := time.NewTimer(b.waitDelay)
 	defer timer.Stop()
 	select {
 	case result := <-ch:
 		return result
 	case <-timer.C:
+		b.state.logf("worker wait-notice in=%s", trace)
 		_ = b.sendTextReply(context.Background(), evt, waitingReply(evt.Info.PushName))
 		return <-ch
 	}
 }
 
-func (b *bridge) sendWorkerReply(evt *events.Message, jid string, result workerResult, errorContext string) {
-	b.menus.forget(jid)
+func (b *bridge) sendWorkerReply(evt *events.Message, transportJID, menuKey string, result workerResult, errorContext string) {
+	b.menus.forget(menuKey)
 	if !result.OK {
 		_ = b.sendTextReply(context.Background(), evt, b.friendlyError(errorContext, result.Text))
 		return
 	}
 	if interactive := parseInteractiveReply(result.Text); interactive != nil {
 		if digitShortcutsEnabled(interactive) {
-			b.menus.remember(jid, interactive.Actions)
+			b.menus.remember(menuKey, interactive.Actions)
 		}
 		_ = b.sendTextReply(context.Background(), evt, fallbackText(interactive))
 		return
 	}
 	if file := parseFileReply(result.Text); file != nil {
-		if err := b.sendFile(context.Background(), jid, file, evt); err != nil {
+		if err := b.sendFile(context.Background(), transportJID, file, evt); err != nil {
 			_ = b.sendTextReply(context.Background(), evt, b.friendlyError("mengirim berkas", err.Error()))
 		} else {
 			b.cleanupExport(file.Path)
@@ -344,7 +395,7 @@ func (b *bridge) friendlyError(contextName, detail string) string {
 	return fmt.Sprintf("Maaf, proses gagal saat %s.\nCoba lagi beberapa saat atau hubungi admin jika tetap gagal. (ref: %s)", contextName, ref)
 }
 
-func (b *bridge) handleEvidence(evt *events.Message, jid string) {
+func (b *bridge) handleEvidence(evt *events.Message, transportJID, identityJID string) {
 	var (
 		data     []byte
 		caption  string
@@ -385,9 +436,25 @@ func (b *bridge) handleEvidence(evt *events.Message, jid string) {
 		_ = b.sendTextReply(context.Background(), evt, b.friendlyError("menyimpan evidence", err.Error()))
 		return
 	}
-	b.state.logf("evidence upload from %s (%d bytes)", jid, len(data))
-	result := b.callWorker(context.Background(), map[string]any{"kind": "evidence", "jid": jid, "filePath": path, "caption": caption})
-	b.sendWorkerReply(evt, jid, result, "menyimpan evidence")
+	b.state.logf("evidence upload in=%s transport=%s identity=%s bytes=%d", evt.Info.ID, transportJID, identityJID, len(data))
+	result := b.callWorkerTraced(context.Background(), string(evt.Info.ID), map[string]any{"kind": "evidence", "jid": identityJID, "filePath": path, "caption": caption})
+	b.sendWorkerReply(evt, transportJID, identityJID, result, "menyimpan evidence")
+}
+
+func (b *bridge) logSendAck(kind string, target types.JID, inboundID string, response whatsmeow.SendResponse, started time.Time) {
+	b.state.logf(
+		"send ack kind=%s in=%s out=%s target=%s elapsed=%s lid_fetch=%s peer_encrypt=%s send=%s resp=%s retry=%s",
+		kind,
+		inboundID,
+		response.ID,
+		target,
+		time.Since(started).Round(time.Millisecond),
+		response.DebugTimings.LIDFetch.Round(time.Millisecond),
+		response.DebugTimings.PeerEncrypt.Round(time.Millisecond),
+		response.DebugTimings.Send.Round(time.Millisecond),
+		response.DebugTimings.Resp.Round(time.Millisecond),
+		response.DebugTimings.Retry.Round(time.Millisecond),
+	)
 }
 
 func (b *bridge) sendText(ctx context.Context, rawJID, text string) error {
@@ -395,8 +462,15 @@ func (b *bridge) sendText(ctx context.Context, rawJID, text string) error {
 	if err != nil {
 		return err
 	}
-	_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(text)})
-	return err
+	started := time.Now()
+	b.state.logf("send start kind=outbound target=%s text_len=%d", jid, len(text))
+	response, err := b.client.SendMessage(ctx, jid, &waE2E.Message{Conversation: proto.String(text)})
+	if err != nil {
+		b.state.logf("send failed kind=outbound target=%s elapsed=%s: %v", jid, time.Since(started).Round(time.Millisecond), err)
+		return err
+	}
+	b.logSendAck("outbound", jid, "", response, started)
+	return nil
 }
 
 func quotedContext(evt *events.Message) *waE2E.ContextInfo {
@@ -414,11 +488,20 @@ func (b *bridge) sendTextReply(ctx context.Context, evt *events.Message, text st
 	if evt == nil {
 		return fmt.Errorf("reply event is nil")
 	}
-	_, err := b.client.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+	trace := string(evt.Info.ID)
+	target := evt.Info.Chat.ToNonAD()
+	started := time.Now()
+	b.state.logf("send start kind=reply in=%s target=%s text_len=%d", trace, target, len(text))
+	response, err := b.client.SendMessage(ctx, target, &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
 		Text:        proto.String(text),
 		ContextInfo: quotedContext(evt),
 	}})
-	return err
+	if err != nil {
+		b.state.logf("send failed kind=reply in=%s target=%s elapsed=%s: %v", trace, target, time.Since(started).Round(time.Millisecond), err)
+		return err
+	}
+	b.logSendAck("reply", target, trace, response, started)
+	return nil
 }
 
 func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePayload, replyTo *events.Message) error {
@@ -430,13 +513,19 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 	if err != nil {
 		return err
 	}
+	trace := ""
+	if replyTo != nil {
+		trace = string(replyTo.Info.ID)
+	}
 	mime := mimeForPath(payload.Path)
+	started := time.Now()
+	b.state.logf("send start kind=file in=%s target=%s mime=%s bytes=%d", trace, jid, mime, len(data))
 	if strings.HasPrefix(mime, "image/") {
 		upload, err := b.client.Upload(ctx, data, whatsmeow.MediaImage)
 		if err != nil {
 			return err
 		}
-		_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+		response, err := b.client.SendMessage(ctx, jid, &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 			ContextInfo:   quotedContext(replyTo),
 			Caption:       proto.String(payload.Caption),
 			Mimetype:      proto.String(mime),
@@ -447,7 +536,11 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 			FileSHA256:    upload.FileSHA256,
 			FileLength:    &upload.FileLength,
 		}})
-		return err
+		if err != nil {
+			return err
+		}
+		b.logSendAck("file", jid, trace, response, started)
+		return nil
 	}
 	upload, err := b.client.Upload(ctx, data, whatsmeow.MediaDocument)
 	if err != nil {
@@ -457,7 +550,7 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 	if name == "" {
 		name = filepath.Base(payload.Path)
 	}
-	_, err = b.client.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+	response, err := b.client.SendMessage(ctx, jid, &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
 		ContextInfo:   quotedContext(replyTo),
 		Caption:       proto.String(payload.Caption),
 		Mimetype:      proto.String(mime),
@@ -469,7 +562,11 @@ func (b *bridge) sendFile(ctx context.Context, rawJID string, payload *filePaylo
 		FileSHA256:    upload.FileSHA256,
 		FileLength:    &upload.FileLength,
 	}})
-	return err
+	if err != nil {
+		return err
+	}
+	b.logSendAck("file", jid, trace, response, started)
+	return nil
 }
 
 type outboundRecord struct {
