@@ -53,7 +53,7 @@ func TestCleanupExportRemovesGeneratedFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("report"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	b := &bridge{state: newRuntimeState(dir)}
+	b := &bridge{state: newRuntimeState(dir, filepath.Join(dir, "auth-whatsmeow"))}
 	b.cleanupExport(path)
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("export still exists after cleanup: %v", err)
