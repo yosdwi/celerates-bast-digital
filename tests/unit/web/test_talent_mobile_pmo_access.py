@@ -65,7 +65,7 @@ async def test_pmo_grant_does_not_require_whatsapp_binding(
     monkeypatch.setattr(mobile_router_module, "_secret", lambda: secret)
 
     def _unexpected_identity_lookup() -> _IdentityStub:
-        raise AssertionError("PMO-issued grants must not require a WhatsApp identity")
+        raise AssertionError
 
     monkeypatch.setattr(
         mobile_router_module,
@@ -131,7 +131,7 @@ async def test_pmo_link_directory_issues_url_for_unbound_talent(
         ),
     )
     dependencies = cast(
-        Any,
+        "Any",
         SimpleNamespace(
             talentops=_TalentOpsStub(),
             workflow_control=_WorkflowControlStub(),
