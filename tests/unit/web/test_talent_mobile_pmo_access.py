@@ -60,7 +60,7 @@ async def test_pmo_grant_does_not_require_whatsapp_binding(
         "employee-unbound",
         "pmo.operator@celerates.co.id",
         period,
-        now=datetime(2026, 9, 1, 5, 0, tzinfo=UTC),
+        now=datetime.now(UTC),
     )
     monkeypatch.setattr(mobile_router_module, "_secret", lambda: secret)
 
@@ -92,7 +92,7 @@ async def test_whatsapp_grant_still_requires_current_binding(
         "employee-bound",
         jid,
         period,
-        now=datetime(2026, 9, 1, 5, 0, tzinfo=UTC),
+        now=datetime.now(UTC),
     )
     monkeypatch.setattr(mobile_router_module, "_secret", lambda: secret)
     monkeypatch.setattr(
