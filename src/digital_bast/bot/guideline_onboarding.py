@@ -54,6 +54,20 @@ def _mask_jid(jid: str) -> str:
     return f"{number[:3]}***{number[-3:]}"
 
 
+def _rebind_prompt(existing_jid: str) -> str:
+    body = (
+        "NRP ini sudah terhubung ke WhatsApp lain.\n"
+        f"Binding aktif: {_mask_jid(existing_jid)}\n\n"
+        "Kalau ini nomor barumu, ajukan ganti nomor. "
+        "Nomor lama tetap aktif sampai PMO approve."
+    )
+    return interactive(
+        body,
+        ("rebind:submit", "Ajukan Ganti Nomor"),
+        ("rebind:cancel", "Batal"),
+    )
+
+
 async def try_guideline_onboarding(  # noqa: PLR0911 - explicit identity guards
     text: str,
     jid: str,
@@ -87,16 +101,7 @@ async def try_guideline_onboarding(  # noqa: PLR0911 - explicit identity guards
     existing_jid = await create_rebind_onboarding_service().existing_jid(employee_id)
     if existing_jid is not None and existing_jid != jid:
         await create_identity_rebind_service().stage(jid, employee_id)
-        return interactive(
-            "NRP ini sudah terhubung ke WhatsApp lain.\n"
-            f"Binding aktif: {_mask_jid(existing_jid)}\n\n"
-            (
-                "Kalau ini nomor barumu, ajukan ganti nomor. "
-                "Nomor lama tetap aktif sampai PMO approve."
-            ),
-            ("rebind:submit", "Ajukan Ganti Nomor"),
-            ("rebind:cancel", "Batal"),
-        )
+        return _rebind_prompt(existing_jid)
 
     outcome = await activation.bind(jid, employee_id)
     if outcome is ActivationOutcome.SUCCESS:
@@ -106,10 +111,5 @@ async def try_guideline_onboarding(  # noqa: PLR0911 - explicit identity guards
     existing_jid = await create_rebind_onboarding_service().existing_jid(employee_id)
     if existing_jid is not None and existing_jid != jid:
         await create_identity_rebind_service().stage(jid, employee_id)
-        return interactive(
-            "NRP ini baru saja terhubung ke WhatsApp lain.\n"
-            "Ajukan ganti nomor jika ini memang nomor barumu.",
-            ("rebind:submit", "Ajukan Ganti Nomor"),
-            ("rebind:cancel", "Batal"),
-        )
+        return _rebind_prompt(existing_jid)
     return "Onboarding belum bisa diselesaikan. Coba kirim ulang NRP atau hubungi PMO."
