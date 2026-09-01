@@ -1,0 +1,77 @@
+.talent-directory-tabs {
+  min-height: 43px;
+  padding: 0 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.talent-directory-tabs button {
+  height: 43px;
+  padding: 0 1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.talent-directory-tabs button:hover { color: #3c4043; }
+.talent-directory-tabs button.active {
+  border-bottom-color: var(--blue);
+  color: var(--blue-700);
+  font-weight: 650;
+}
+.talent-url-note {
+  margin: 0 13px 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid #c6dafc;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #3c4043;
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+.talent-url-note strong { flex: 0 0 auto; font-weight: 650; }
+.talent-url-note span { color: var(--muted); }
+.talent-url-table th:first-child { min-width: 230px; }
+.talent-url-table th:nth-child(2) { min-width: 125px; }
+.talent-url-table th:nth-child(4) { min-width: 175px; }
+.talent-url-table th:last-child { width: 100px; }
+.talent-url-name {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.talent-url-name strong, .talent-url-name span { display: block; }
+.talent-url-name strong { color: #202124; font-size: 10.5px; font-weight: 650; }
+.talent-url-name span { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.talent-url-access { color: var(--muted); font-size: 9.5px; }
+.talent-url-access.ready { color: #137333; font-weight: 600; }
+.talent-url-access.unbound { color: var(--amber); }
+.talent-url-access.not_configured { color: var(--red); }
+.talent-url-preview { color: var(--muted); font-size: 9.5px; }
+.talent-url-copy { min-width: 76px; }
+.talent-url-mobile-card {
+  padding: 13px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #fff;
+}
+.talent-url-mobile-card:last-child { border-bottom: 0; }
+.talent-url-mobile-access { margin: 10px 0; }
+.talent-url-mobile-access span, .talent-url-mobile-access small { display: block; }
+.talent-url-mobile-access span { color: #3c4043; font-size: 10px; }
+.talent-url-mobile-access small { margin-top: 3px; color: var(--muted); font-size: 8.5px; }
+
+@media (max-width: 760px) {
+  .talent-directory-tabs { padding: 0 12px; gap: 17px; }
+  .talent-url-note { margin: 0 12px 11px; display: block; }
+  .talent-url-note strong, .talent-url-note span { display: block; }
+  .talent-url-note span { margin-top: 4px; }
+  .talent-url-mobile-card .secondary-button { width: 100%; justify-content: center; }
+}
