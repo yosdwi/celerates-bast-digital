@@ -35,33 +35,42 @@ type groupInfo struct {
 }
 
 type stateSnapshot struct {
-	Connection  string      `json:"connection"`
-	Me          string      `json:"me"`
-	QRDataURL   string      `json:"qrDataUrl,omitempty"`
-	PairingCode string      `json:"pairingCode,omitempty"`
-	Groups      []groupInfo `json:"groups,omitempty"`
-	Logs        []string    `json:"logs,omitempty"`
+	Connection             string      `json:"connection"`
+	Me                     string      `json:"me"`
+	QRDataURL              string      `json:"qrDataUrl,omitempty"`
+	PairingCode            string      `json:"pairingCode,omitempty"`
+	Groups                 []groupInfo `json:"groups,omitempty"`
+	Logs                   []string    `json:"logs,omitempty"`
+	OperatorActionRequired bool        `json:"operatorActionRequired"`
+	OperatorReason         string      `json:"operatorReason,omitempty"`
+	ConnectionChangedAt    time.Time   `json:"connectionChangedAt"`
 }
 
 type runtimeState struct {
-	mu           sync.RWMutex
-	connection   string
-	me           string
-	qrDataURL    string
-	pairingCode  string
-	groups       []groupInfo
-	logs         []string
-	allowedEnv   map[string]struct{}
-	allowedFile  string
-	allowedSaved map[string]struct{}
+	mu                     sync.RWMutex
+	connection             string
+	me                     string
+	qrDataURL              string
+	pairingCode            string
+	groups                 []groupInfo
+	logs                   []string
+	allowedEnv             map[string]struct{}
+	allowedFile            string
+	allowedSaved           map[string]struct{}
+	repairMarker           string
+	operatorActionRequired bool
+	operatorReason         string
+	connectionChangedAt    time.Time
 }
 
-func newRuntimeState(dataDir string) *runtimeState {
+func newRuntimeState(dataDir, authDir string) *runtimeState {
 	s := &runtimeState{
-		connection:   "starting",
-		allowedEnv:   make(map[string]struct{}),
-		allowedSaved: make(map[string]struct{}),
-		allowedFile:  filepath.Join(dataDir, "config.json"),
+		connection:          "starting",
+		connectionChangedAt: time.Now().UTC(),
+		allowedEnv:          make(map[string]struct{}),
+		allowedSaved:        make(map[string]struct{}),
+		allowedFile:         filepath.Join(dataDir, "config.json"),
+		repairMarker:        filepath.Join(authDir, "operator-action-required.json"),
 	}
 	for _, jid := range strings.Split(os.Getenv("BOT_ALLOWED_GROUPS"), ",") {
 		if jid = strings.TrimSpace(jid); jid != "" {
@@ -69,6 +78,7 @@ func newRuntimeState(dataDir string) *runtimeState {
 		}
 	}
 	s.loadAllowed()
+	s.loadOperatorActionMarker()
 	return s
 }
 
@@ -143,18 +153,23 @@ func (s *runtimeState) allowedGroups() map[string]struct{} {
 }
 
 func (s *runtimeState) logf(format string, args ...any) {
-	entry := time.Now().UTC().Format(time.RFC3339) + " " + fmt.Sprintf(format, args...)
+	entry := time.Now().UTC().Format(time.RFC3339Nano) + " " + fmt.Sprintf(format, args...)
 	log.Print(entry)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.logs = append([]string{entry}, s.logs...)
-	if len(s.logs) > 80 {
-		s.logs = s.logs[:80]
+	if len(s.logs) > 200 {
+		s.logs = s.logs[:200]
 	}
 }
 
-func (s *runtimeState) setConnection(value string) { s.mu.Lock(); s.connection = value; s.mu.Unlock() }
-func (s *runtimeState) setMe(value string)         { s.mu.Lock(); s.me = value; s.mu.Unlock() }
+func (s *runtimeState) setConnection(value string) {
+	s.mu.Lock()
+	s.connection = value
+	s.connectionChangedAt = time.Now().UTC()
+	s.mu.Unlock()
+}
+func (s *runtimeState) setMe(value string) { s.mu.Lock(); s.me = value; s.mu.Unlock() }
 func (s *runtimeState) setGroups(value []groupInfo) {
 	s.mu.Lock()
 	s.groups = append([]groupInfo(nil), value...)
@@ -171,12 +186,15 @@ func (s *runtimeState) snapshot() stateSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return stateSnapshot{
-		Connection:  s.connection,
-		Me:          s.me,
-		QRDataURL:   s.qrDataURL,
-		PairingCode: s.pairingCode,
-		Groups:      append([]groupInfo(nil), s.groups...),
-		Logs:        append([]string(nil), s.logs...),
+		Connection:             s.connection,
+		Me:                     s.me,
+		QRDataURL:              s.qrDataURL,
+		PairingCode:            s.pairingCode,
+		Groups:                 append([]groupInfo(nil), s.groups...),
+		Logs:                   append([]string(nil), s.logs...),
+		OperatorActionRequired: s.operatorActionRequired,
+		OperatorReason:         s.operatorReason,
+		ConnectionChangedAt:    s.connectionChangedAt,
 	}
 }
 
@@ -200,7 +218,7 @@ func main() {
 		log.Fatalf("create data dir: %v", err)
 	}
 
-	state := newRuntimeState(dataDir)
+	state := newRuntimeState(dataDir, authDir)
 	state.logf("starting whatsmeow transport; auth=%s", authDir)
 
 	if latest, err := whatsmeow.GetLatestVersion(ctx, nil); err != nil {
@@ -241,7 +259,13 @@ func main() {
 	}()
 
 	if device.ID == nil {
-		if err := application.connectForPairing(ctx); err != nil {
+		if state.operatorActionPending() {
+			state.setConnection("pairing-required")
+			state.logf(
+				"automatic pairing blocked after permanent disconnect; explicit operator action required: %s",
+				state.snapshot().OperatorReason,
+			)
+		} else if err := application.connectForPairing(ctx); err != nil {
 			state.setConnection("pairing-failed")
 			state.logf("pairing startup failed: %v", err)
 		}
@@ -262,6 +286,13 @@ func main() {
 }
 
 func (a *app) connectForPairing(ctx context.Context) error {
+	if a.client.IsLoggedIn() {
+		return nil
+	}
+	s := a.state.snapshot()
+	if s.Connection == "awaiting-scan" || s.Connection == "connecting" {
+		return nil
+	}
 	a.state.setConnection("awaiting-scan")
 	qrChan, err := a.client.GetQRChannel(ctx)
 	if err != nil {
@@ -288,14 +319,6 @@ func (a *app) connectForPairing(ctx context.Context) error {
 				a.state.logf("pairing QR refreshed (valid ~%s)", item.Timeout.Round(time.Second))
 				if pairingNumber != "" && !pairingRequested {
 					pairingRequested = true
-					// PairPhone's own doc comment: clientDisplayName "must be formatted
-					// as `Browser (OS)`, and only common browsers/OSes are allowed (the
-					// server will validate it and return 400 if it's wrong)" -- "Google
-					// Chrome" is the branded product name, not a recognized browser
-					// token; confirmed live (repeatable 400: bad-request on every
-					// attempt). Plain "Chrome" matches WhatsApp's own convention (and
-					// wa-session's pre-existing Baileys browser identity in this same
-					// project already used bare "Chrome", never "Google Chrome").
 					code, err := a.client.PairPhone(context.Background(), pairingNumber, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 					if err != nil {
 						a.state.logf("pairing code request failed: %v", err)
@@ -323,17 +346,48 @@ func (a *app) connectForPairing(ctx context.Context) error {
 func (a *app) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.health)
+	mux.HandleFunc("GET /ready", a.ready)
 	mux.HandleFunc("GET /internal/v1/status", a.status)
 	mux.HandleFunc("POST /internal/v1/messages", a.sendOutbound)
+	mux.HandleFunc("POST /pair", a.beginPairing)
 	mux.HandleFunc("POST /allow", a.allow)
 	mux.HandleFunc("POST /try", a.tryWorker)
 	mux.HandleFunc("GET /", a.setupPage)
 	return mux
 }
 
+func (a *app) isReady() bool {
+	s := a.state.snapshot()
+	return s.Connection == "connected" &&
+		!s.OperatorActionRequired &&
+		a.client.IsConnected() &&
+		a.client.IsLoggedIn()
+}
+
 func (a *app) health(w http.ResponseWriter, _ *http.Request) {
 	s := a.state.snapshot()
-	writeJSON(w, http.StatusOK, map[string]any{"connection": s.Connection, "me": s.Me, "transport": "whatsmeow"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"alive":      true,
+		"ready":      a.isReady(),
+		"connection": s.Connection,
+		"me":         s.Me,
+		"transport":  "whatsmeow",
+	})
+}
+
+func (a *app) ready(w http.ResponseWriter, _ *http.Request) {
+	s := a.state.snapshot()
+	statusCode := http.StatusServiceUnavailable
+	if a.isReady() {
+		statusCode = http.StatusOK
+	}
+	writeJSON(w, statusCode, map[string]any{
+		"ready":                  a.isReady(),
+		"connection":             s.Connection,
+		"operatorActionRequired": s.OperatorActionRequired,
+		"operatorReason":         nullable(s.OperatorReason),
+		"transport":              "whatsmeow",
+	})
 }
 
 func (a *app) status(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +396,17 @@ func (a *app) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := a.state.snapshot()
-	writeJSON(w, http.StatusOK, map[string]any{"connection": s.Connection, "me": s.Me, "qrDataUrl": nullable(s.QRDataURL), "pairingCode": nullable(s.PairingCode), "transport": "whatsmeow"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connection":             s.Connection,
+		"ready":                  a.isReady(),
+		"me":                     s.Me,
+		"qrDataUrl":              nullable(s.QRDataURL),
+		"pairingCode":            nullable(s.PairingCode),
+		"operatorActionRequired": s.OperatorActionRequired,
+		"operatorReason":         nullable(s.OperatorReason),
+		"connectionChangedAt":    s.ConnectionChangedAt,
+		"transport":              "whatsmeow",
+	})
 }
 
 func (a *app) sendOutbound(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +414,7 @@ func (a *app) sendOutbound(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"status": "forbidden"})
 		return
 	}
-	if a.state.snapshot().Connection != "connected" || !a.client.IsConnected() || !a.client.IsLoggedIn() {
+	if !a.isReady() {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unavailable", "error": "whatsapp_not_connected"})
 		return
 	}
@@ -402,18 +466,30 @@ func (a *app) sendOutboundOnce(jid, text, requestID string) outboundRecord {
 	defer cancel()
 	target, err := types.ParseJID(jid)
 	var result outboundRecord
+	started := time.Now()
+	a.state.logf("outbound start request=%s target=%s text_len=%d", requestID, jid, len(text))
 	if err == nil {
 		var response whatsmeow.SendResponse
 		response, err = a.client.SendMessage(ctx, target, textMessage(text))
 		if err == nil {
 			result = outboundRecord{JID: jid, Text: text, Status: http.StatusOK, Payload: map[string]any{"status": "sent", "provider_message_id": string(response.ID)}}
+			a.state.logf(
+				"outbound ack request=%s provider=%s target=%s elapsed=%s lid_fetch=%s peer_encrypt=%s send=%s resp=%s retry=%s",
+				requestID,
+				response.ID,
+				jid,
+				time.Since(started).Round(time.Millisecond),
+				response.DebugTimings.LIDFetch.Round(time.Millisecond),
+				response.DebugTimings.PeerEncrypt.Round(time.Millisecond),
+				response.DebugTimings.Send.Round(time.Millisecond),
+				response.DebugTimings.Resp.Round(time.Millisecond),
+				response.DebugTimings.Retry.Round(time.Millisecond),
+			)
 		}
 	}
 	if err != nil {
-		a.state.logf("outbound follow-up failed request=%s: %v", requestID, err)
+		a.state.logf("outbound follow-up failed request=%s elapsed=%s: %v", requestID, time.Since(started).Round(time.Millisecond), err)
 		result = outboundRecord{JID: jid, Text: text, Status: http.StatusServiceUnavailable, Payload: map[string]any{"status": "unavailable", "error": "send_failed"}}
-	} else {
-		a.state.logf("outbound follow-up sent request=%s provider=%v", requestID, result.Payload["provider_message_id"])
 	}
 
 	a.outbound.mu.Lock()
@@ -431,6 +507,24 @@ func (a *app) sendOutboundOnce(jid, text, requestID string) outboundRecord {
 	close(call.Done)
 	a.outbound.mu.Unlock()
 	return result
+}
+
+func (a *app) beginPairing(w http.ResponseWriter, r *http.Request) {
+	if a.isReady() {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	s := a.state.snapshot()
+	if s.Connection != "awaiting-scan" && s.Connection != "connecting" {
+		a.state.logf("operator explicitly requested WhatsApp pairing")
+		go func() {
+			if err := a.connectForPairing(context.Background()); err != nil {
+				a.state.setConnection("pairing-failed")
+				a.state.logf("explicit pairing startup failed: %v", err)
+			}
+		}()
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (a *app) allow(w http.ResponseWriter, r *http.Request) {
@@ -479,12 +573,15 @@ func (a *app) setupPage(w http.ResponseWriter, _ *http.Request) {
 	if s.PairingCode != "" {
 		pairing += `<p>Atau masukkan kode ini di WhatsApp &gt; Tautkan dengan nomor telepon: <strong>` + html.EscapeString(s.PairingCode) + `</strong></p>`
 	}
+	if s.OperatorActionRequired && s.Connection == "pairing-required" {
+		pairing = `<p><strong>Pairing otomatis diblokir setelah disconnect permanen.</strong></p><p>` + html.EscapeString(s.OperatorReason) + `</p><form method="post" action="/pair"><button type="submit">Mulai pairing terkontrol</button></form>`
+	}
 	refresh := ""
-	if s.Connection != "connected" {
+	if s.Connection != "connected" && s.Connection != "pairing-required" {
 		refresh = `<meta http-equiv="refresh" content="5">`
 	}
 	page := `<!doctype html><html lang="id"><head><meta charset="utf-8">` + refresh + `<meta name="viewport" content="width=device-width,initial-scale=1"><title>Setup BAST Bot</title><style>body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:52rem;padding:0 1rem;line-height:1.5}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:.4rem .6rem;text-align:left}code{font-size:.85em}pre{background:#f5f5f5;padding:.75rem;overflow:auto;max-height:18rem}.status{font-weight:600}</style></head><body>` +
-		`<h1>Setup BAST Bot — whatsmeow</h1><p class="status">Status: ` + html.EscapeString(s.Connection) + ` — ` + html.EscapeString(s.Me) + `</p><h2>1. Pairing WhatsApp</h2>` + pairing +
+		`<h1>Setup BAST Bot — whatsmeow</h1><p class="status">Status: ` + html.EscapeString(s.Connection) + ` — ready=` + fmt.Sprint(a.isReady()) + ` — ` + html.EscapeString(s.Me) + `</p><h2>1. Pairing WhatsApp</h2>` + pairing +
 		`<h2>2. Grup yang diizinkan</h2><form method="post" action="/allow"><table><thead><tr><th>Aktif</th><th>Nama grup</th><th>JID</th></tr></thead><tbody>` + rows.String() + `</tbody></table><p><button type="submit">Simpan</button></p></form>` +
 		`<h2>3. Uji backend</h2><form method="post" action="/try"><p><input name="text" size="60" value="@BAST Bot system status"> <button type="submit">Jalankan</button></p></form><h2>Log</h2><pre>` + html.EscapeString(strings.Join(s.Logs, "\n")) + `</pre></body></html>`
 	w.Header().Set("content-type", "text/html; charset=utf-8")
