@@ -20,7 +20,12 @@ import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
-from digital_bast.bot.evidence import MAX_IMAGE_BYTES, UploadOutcome, UploadResult, sniff_content_type
+from digital_bast.bot.evidence import (
+    MAX_IMAGE_BYTES,
+    UploadOutcome,
+    UploadResult,
+    sniff_content_type,
+)
 from digital_bast.domain.completion import CLOSED_STATUS
 from digital_bast.infrastructure.errors import InfrastructureError
 
@@ -50,7 +55,7 @@ class _CandidateRow:
         "work_date",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - mirrors one SQL row
         self,
         task_source: str,
         task_key: str,
@@ -207,7 +212,9 @@ class TaskEvidenceSubmissionService:
                 )
                 return UploadResult(UploadOutcome.STORED)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="stage_task_evidence") from error
+            raise InfrastructureError(
+                service="postgres", operation="stage_task_evidence"
+            ) from error
 
     def _submit(self, employee_id: str, period: DateRange, jid: str) -> int:
         try:
@@ -254,4 +261,6 @@ class TaskEvidenceSubmissionService:
                 )
                 return max(cursor.rowcount, 0)
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="submit_task_evidence") from error
+            raise InfrastructureError(
+                service="postgres", operation="submit_task_evidence"
+            ) from error
