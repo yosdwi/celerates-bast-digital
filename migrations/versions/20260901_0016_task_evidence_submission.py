@@ -48,6 +48,8 @@ def upgrade() -> None:
             ON task_evidence_staged (task_id);
         CREATE INDEX ix_task_evidence_staged_employee_date
             ON task_evidence_staged (employee_id, work_date);
+        CREATE UNIQUE INDEX ux_task_evidence_staged_dedupe
+            ON task_evidence_staged (task_id, sha256);
         """
     )
 
