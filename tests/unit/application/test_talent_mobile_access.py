@@ -1,5 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from digital_bast.application.talent_mobile_access import (
     issue_pmo_talent_mobile_token,
     issue_talent_mobile_token,
@@ -63,6 +65,46 @@ def test_pmo_talent_mobile_token_round_trip_hides_operator_identity() -> None:
     assert claims.actor_tag is not None
     assert issuer not in token
     assert issuer.casefold() not in token.casefold()
+
+
+def test_pmo_talent_mobile_token_supports_seven_days_and_expires_after_boundary() -> None:
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
+    period = DateRange(date(2026, 9, 1), date(2026, 9, 30))
+    ttl_seconds = 7 * 24 * 60 * 60
+    token = issue_pmo_talent_mobile_token(
+        "x" * 48,
+        "employee-unbound",
+        "pmo.operator@celerates.co.id",
+        period,
+        now=now,
+        ttl_seconds=ttl_seconds,
+    )
+
+    assert verify_talent_mobile_token(
+        "x" * 48,
+        token,
+        now=now + timedelta(days=6, hours=23),
+    ) is not None
+    assert verify_talent_mobile_token(
+        "x" * 48,
+        token,
+        now=now + timedelta(days=7),
+    ) is None
+
+
+def test_pmo_talent_mobile_token_rejects_ttl_over_seven_days() -> None:
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
+    period = DateRange(date(2026, 9, 1), date(2026, 9, 30))
+
+    with pytest.raises(ValueError):
+        issue_pmo_talent_mobile_token(
+            "x" * 48,
+            "employee-unbound",
+            "pmo.operator@celerates.co.id",
+            period,
+            now=now,
+            ttl_seconds=(7 * 24 * 60 * 60) + 1,
+        )
 
 
 def test_talent_mobile_token_rejects_tampering_and_expiry() -> None:
