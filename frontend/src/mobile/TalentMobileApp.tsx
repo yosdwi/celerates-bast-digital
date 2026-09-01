@@ -3,6 +3,7 @@ import {
   captureTalentToken,
   getTalentMobileOverview,
   submitTalentAttendance,
+  submitTalentTaskEvidence,
   uploadTalentTaskEvidence,
 } from "../api/talentMobile";
 import type {
@@ -111,7 +112,22 @@ export default function TalentMobileApp() {
       setNotice(result.message);
       await refresh();
     } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : "Evidence gagal disimpan.");
+      setNotice(reason instanceof Error ? reason.message : "Evidence gagal ditambahkan.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function submitTasks() {
+    if (busyKey || !data?.task.staged) return;
+    setBusyKey("tasks:submit");
+    setNotice(null);
+    try {
+      const result = await submitTalentTaskEvidence();
+      setNotice(result.message);
+      await refresh();
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "Task & Evidence gagal diajukan.");
     } finally {
       setBusyKey(null);
     }
@@ -197,7 +213,7 @@ export default function TalentMobileApp() {
           <div className="talent-mobile-section-head">
             <div>
               <h2>Task Evidence</h2>
-              <p>Upload langsung di task yang sesuai. Tidak perlu pilih nomor di WhatsApp.</p>
+              <p>Lampirkan evidence pada Closed Task yang sesuai, lalu Ajukan ke PMO.</p>
             </div>
             <div className="talent-mobile-progress" aria-label={`${data.task.complete} dari ${data.task.closed} lengkap`}>
               <span style={{ width: `${data.task.closed ? (data.task.complete / data.task.closed) * 100 : 100}%` }} />
@@ -214,33 +230,56 @@ export default function TalentMobileApp() {
           </div>
 
           <div className="talent-mobile-card-list">
-            {visibleTasks.length ? visibleTasks.map((item) => (
-              <article className={`talent-mobile-card task ${item.complete ? "complete" : ""}`} key={`${item.task_source}:${item.task_key}`}>
-                <div className="talent-mobile-card-topline">
-                  <span>{dateLabel(item.work_date)}</span>
-                  <span className={item.complete ? "status-ok" : "status-needed"}>{item.complete ? "✓ Lengkap" : "Belum ada evidence"}</span>
-                </div>
-                <h3>{item.title}</h3>
-                <p className="talent-mobile-source">Closed · {item.task_source}</p>
-                {item.complete ? (
-                  <div className="talent-mobile-complete-row">✓ Evidence sudah tersimpan</div>
-                ) : (
-                  <label className={`talent-mobile-upload ${busyKey === `task:${item.task_key}` ? "busy" : ""}`}>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      disabled={busyKey !== null}
-                      onChange={(event) => void uploadTask(item.task_key, event.target.files?.[0] ?? null)}
-                    />
-                    <span>{busyKey === `task:${item.task_key}` ? "Mengupload…" : "+ Tambah Evidence"}</span>
-                    <small>Foto dari kamera atau galeri · maks. 5 MB</small>
-                  </label>
-                )}
-              </article>
-            )) : (
+            {visibleTasks.length ? visibleTasks.map((item) => {
+              const staged = !item.complete && item.staged_count > 0;
+              return (
+                <article className={`talent-mobile-card task ${item.complete ? "complete" : ""}`} key={`${item.task_source}:${item.task_key}`}>
+                  <div className="talent-mobile-card-topline">
+                    <span>{dateLabel(item.work_date)}</span>
+                    <span className={item.complete ? "status-ok" : "status-needed"}>
+                      {item.complete ? "✓ Lengkap" : staged ? "Siap diajukan" : "Belum ada evidence"}
+                    </span>
+                  </div>
+                  <h3>{item.title}</h3>
+                  <p className="talent-mobile-source">Closed · {item.task_source}</p>
+                  {item.complete ? (
+                    <div className="talent-mobile-complete-row">✓ Evidence sudah masuk ke Conform</div>
+                  ) : (
+                    <>
+                      {staged ? <div className="talent-mobile-complete-row">✓ Evidence siap diajukan ke PMO</div> : null}
+                      <label className={`talent-mobile-upload ${busyKey === `task:${item.task_key}` ? "busy" : ""}`}>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={busyKey !== null}
+                          onChange={(event) => void uploadTask(item.task_key, event.target.files?.[0] ?? null)}
+                        />
+                        <span>{busyKey === `task:${item.task_key}` ? "Mengupload…" : staged ? "+ Tambah Evidence Lagi" : "+ Tambah Evidence"}</span>
+                        <small>Foto dari kamera atau galeri · maks. 5 MB</small>
+                      </label>
+                    </>
+                  )}
+                </article>
+              );
+            }) : (
               <div className="talent-mobile-empty">{taskFilter === "missing" ? "Semua closed task sudah punya evidence ✓" : "Belum ada task yang lengkap."}</div>
             )}
           </div>
+
+          {data.task.staged > 0 ? (
+            <section className="talent-mobile-request-strip">
+              <strong>{data.task.staged} task siap diajukan ke PMO</strong>
+              <span>Pastikan evidence sudah sesuai sebelum dikirim ke Conform.</span>
+              <button
+                className="talent-mobile-submit"
+                type="button"
+                disabled={busyKey !== null}
+                onClick={() => void submitTasks()}
+              >
+                {busyKey === "tasks:submit" ? "Mengirim…" : "Ajukan ke PMO"}
+              </button>
+            </section>
+          ) : null}
         </main>
       ) : (
         <main className="talent-mobile-content">
