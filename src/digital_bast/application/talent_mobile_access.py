@@ -260,7 +260,7 @@ def configured_talent_mobile_url(
     return f"{resolved_public_url}/talent/mobile?t={quote(token, safe='')}&tab={tab}"
 
 
-def configured_pmo_talent_mobile_url(
+def configured_pmo_talent_mobile_url(  # noqa: PLR0913
     employee_id: str,
     issuer: str,
     period: DateRange,
