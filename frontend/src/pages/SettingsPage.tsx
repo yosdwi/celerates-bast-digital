@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
 import { CloseIcon, ExternalIcon, SparkleIcon } from "../components/Icons";
+import TalentMobileLinkPolicySettings from "../components/TalentMobileLinkPolicySettings";
 import WorkflowSettings from "../components/WorkflowSettings";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 
@@ -44,6 +45,7 @@ export default function SettingsPage({ session, data, onNavigate }: Props) {
         <div className="page-heading"><div><h1>Settings</h1><p>Workflow authorization, routing, and operating boundaries</p></div></div>
 
         <WorkflowSettings session={session} />
+        <TalentMobileLinkPolicySettings session={session} />
 
         <div className="settings-grid">
           <section className="panel settings-card"><div className="panel-title-row"><div><h2>Workspace</h2><span>Current session behavior</span></div></div><dl><div><dt>Timezone</dt><dd>{session.timezone}</dd></div><div><dt>Identity</dt><dd>{session.user.name}</dd></div><div><dt>Role</dt><dd>{session.user.role}</dd></div><div><dt>Environment</dt><dd>TalentOps Production</dd></div></dl><p>Login credentials remain in NocoDB. Workflow permissions live in the Digital BAST backend and are not inferred from a WhatsApp number.</p></section>
