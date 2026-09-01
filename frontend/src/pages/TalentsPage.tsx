@@ -25,9 +25,8 @@ function percentage(value: number, total: number): string {
 
 function accessLabel(link: TalentMobileLinkItem | undefined): string {
   if (!link) return "Belum dimuat";
-  if (link.status === "unbound") return "WhatsApp belum terhubung";
   if (link.status === "not_configured") return "Public URL belum dikonfigurasi";
-  return "Siap dibagikan";
+  return link.whatsapp_bound ? "Siap dibagikan" : "Siap dibagikan · WA belum terhubung";
 }
 
 export default function TalentsPage({ session, data, onNavigate, onOpenTalent }: Props) {
@@ -159,7 +158,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
           {tab === "links" ? (
             <div className="talent-url-note">
               <strong>Link personal · berlaku {Math.round((links?.ttl_seconds ?? 1800) / 60)} menit.</strong>
-              <span>URL mengikuti periode aktif dan hanya dapat dibuat untuk Talent yang sudah terhubung ke WhatsApp. PMO dapat copy lalu share manual ke Talent.</span>
+              <span>URL tersedia untuk semua Talent pada hasil filter dan mengikuti periode aktif. Binding WhatsApp tidak diperlukan untuk link yang diterbitkan PMO.</span>
             </div>
           ) : null}
 
