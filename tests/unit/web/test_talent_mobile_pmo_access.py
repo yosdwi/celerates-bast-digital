@@ -38,6 +38,11 @@ class _WorkflowControlStub:
         return SimpleNamespace(public_url="https://talent.example.test")
 
 
+class _PolicyServiceStub:
+    async def get(self, scope_key: str) -> SimpleNamespace:
+        return SimpleNamespace(scope_key=scope_key, ttl_days=7)
+
+
 def _request(token: str) -> Request:
     return Request(
         {
@@ -108,7 +113,7 @@ async def test_whatsapp_grant_still_requires_current_binding(
 
 
 @pytest.mark.asyncio
-async def test_pmo_link_directory_issues_url_for_unbound_talent(
+async def test_pmo_link_directory_issues_seven_day_url_for_unbound_talent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _operator_context(
@@ -120,14 +125,19 @@ async def test_pmo_link_directory_issues_url_for_unbound_talent(
     monkeypatch.setattr(links_router_module, "_operator_context", _operator_context)
     monkeypatch.setattr(
         links_router_module,
+        "_policy_service",
+        lambda: _PolicyServiceStub(),
+    )
+    monkeypatch.setattr(
+        links_router_module,
         "create_rebind_onboarding_service",
         lambda: _IdentityStub(None),
     )
     monkeypatch.setattr(
         links_router_module,
         "configured_pmo_talent_mobile_url",
-        lambda _employee_id, _issuer, _period, _tab, *, public_url=None: (
-            f"{public_url}/talent/mobile?t=signed"
+        lambda _employee_id, _issuer, _period, _tab, *, public_url=None, ttl_seconds=0: (
+            f"{public_url}/talent/mobile?t=signed&ttl={ttl_seconds}"
         ),
     )
     dependencies = cast(
@@ -140,9 +150,12 @@ async def test_pmo_link_directory_issues_url_for_unbound_talent(
 
     response = await links_router_module._links(_request("unused"), dependencies, 2026, 9)
 
+    assert response.ttl_seconds == 7 * 24 * 60 * 60
     assert len(response.items) == 1
     item = response.items[0]
     assert item.employee_id == "employee-unbound"
     assert item.whatsapp_bound is False
     assert item.status == "ready"
-    assert item.url == "https://talent.example.test/talent/mobile?t=signed"
+    assert item.url == (
+        "https://talent.example.test/talent/mobile?t=signed&ttl=604800"
+    )
