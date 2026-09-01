@@ -18,9 +18,9 @@ from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import CloudflareWorkersAiChatClient
 from digital_bast.operations import completion_status, load_roster
 
-Dimension = Literal["readiness", "task", "evidence", "attendance", "timesheet"]
-Scope = Literal["all", "developer", "iot"]
-GroupInterpretation = GroupQuery | Literal["conversation", "unknown"] | None
+type Dimension = Literal["readiness", "task", "evidence", "attendance", "timesheet"]
+type Scope = Literal["all", "developer", "iot"]
+type GroupInterpretation = GroupQuery | Literal["conversation", "unknown"] | None
 
 _CLOSEOUT_GRACE_DAYS: Final = 7
 _MAX_PERIOD_DAYS: Final = 366
