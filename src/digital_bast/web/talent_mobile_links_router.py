@@ -16,6 +16,7 @@ from digital_bast.operations import create_rebind_onboarding_service
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 
 if TYPE_CHECKING:
+    from digital_bast.web.contracts import SessionRecord
     from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX: Final = "/api/talentops/v1"
@@ -118,7 +119,7 @@ async def _operator_context(
 async def _admin_context(
     request: Request,
     dependencies: WebDependencies,
-) -> tuple[object, str]:
+) -> tuple[SessionRecord, str]:
     _, session = await require_session(
         request,
         dependencies.sessions,
