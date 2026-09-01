@@ -1,4 +1,4 @@
-"""Top-level bound-Talent WhatsApp DM entrypoint.
+"""Top-level Talent WhatsApp DM entrypoint.
 
 WhatsApp is a button-first entry/notification surface; Talent Mobile is the
 primary work surface for Attendance and Task & Evidence. Exact controlled
@@ -7,8 +7,9 @@ LLM-backed whole-sentence interpreter with a short-lived intent/period context;
 we deliberately do not fall back to substring keyword routing when that
 interpretation is ambiguous.
 
-Existing PMO/onboarding/rebind flows and direct media evidence remain delegated
-to dm_workflow unchanged.
+The PMO guideline's canonical first message (``Halo, saya <NRP>``) is handled
+before the legacy onboarding fallback. PMO/rebind flows and direct media
+evidence remain delegated to the existing workflow.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import anyio
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
 from digital_bast.bot.attendance_resolution import AttendanceResolution, ResolutionStatus
 from digital_bast.bot.dm_workflow import reply as workflow_reply
+from digital_bast.bot.guideline_onboarding import try_guideline_onboarding
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.talent_context import (
     TalentConversationContext,
@@ -59,18 +61,11 @@ _REQUEST_COMMANDS: Final = frozenset(
     {"request", "requests", "request saya", "pengajuan", "pengajuan saya"}
 )
 _CLOSEOUT_GRACE_DAYS: Final = 7
-# dm_workflow intentionally waits before automated replies. Preserve the same
-# sending pattern for responses owned by this entrypoint.
 _REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
 
 
 def _period_now() -> DateRange:
-    """Default Talent BAST period used by the PMO operational guideline.
-
-    During the first seven days of a new month, the administration flow is
-    closing the previous BAST month. Explicit natural-language periods still
-    override this through TalentInterpretation.
-    """
+    """Default Talent BAST period used by the PMO operational guideline."""
     today = datetime.now(JAKARTA).date()
     if today.day <= _CLOSEOUT_GRACE_DAYS:
         last_previous = today.replace(day=1) - timedelta(days=1)
@@ -82,17 +77,12 @@ async def _saved_public_url() -> str | None:
     try:
         return (await create_workflow_control_service().talent_mobile_settings()).public_url
     except InfrastructureError:
-        # Preserve TALENTOPS_PUBLIC_URL as the bootstrap fallback inside
-        # configured_talent_mobile_url if the control-plane row is unavailable.
         return None
 
 
 def _latest_request_statuses(
     requests: tuple[AttendanceResolution, ...], period: DateRange
 ) -> tuple[int, int]:
-    # AttendanceResolutionService returns newest-first. Keep the newest
-    # decision per day so an old rejection cannot stay actionable after a
-    # newer request was submitted or approved.
     latest: dict[date, AttendanceResolution] = {}
     for item in requests:
         if not period.start <= item.work_date <= period.end:
@@ -225,9 +215,6 @@ async def _dispatch_talent(  # noqa: PLR0911 - explicit intent dispatch
     intent = interpretation.intent
     await _remember(jid, intent, period)
     if intent is TalentIntent.HOME:
-        # Mobile Overview is intentionally not invented here: the current
-        # Talent Mobile surface has Attendance/Tasks tabs only. This personal
-        # status view is the stable `bast-saya` action until Overview ships.
         return await talent_status(employee_id, period)
     if intent is TalentIntent.ATTENDANCE:
         return await _attendance_mobile_reply(employee_id, jid, period, await _saved_public_url())
@@ -252,29 +239,23 @@ async def _free_text_interpretation(
 
 
 async def _period_for_exact_action(jid: str) -> DateRange:
-    # A controlled button never needs AI, but it should keep the period of the
-    # screen it came from. With no recent context, use the BAST closeout period.
     context = await create_talent_conversation_context_service().load(jid)
     return context.period if context is not None else _period_now()
 
 
 async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
-    # A correction draft is a transactional workflow: once evidence has been
-    # attached and the system is waiting for proposed clock/absence values,
-    # navigation/NL interpretation must not steal the next message.
     if await create_attendance_resolution_dm_state_service().pending(jid) is not None:
         return await workflow_reply(text, jid)
 
-    # Bare digits that survive wa-session are not menu-button shortcuts (those
-    # are translated to action IDs by the transport). Preserve the legacy
-    # numbered task/attendance evidence selection workflow.
     if text.strip().isdigit():
         return await workflow_reply(text, jid)
 
     employee_id = await create_activation_service().resolve(jid)
     if employee_id is None:
-        # PMO, onboarding, rebind, and unknown senders remain entirely under
-        # the existing workflow.
+        guided = await try_guideline_onboarding(text, jid)
+        if guided is not None:
+            await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
+            return guided
         return await workflow_reply(text, jid)
 
     normalized = text.strip().casefold()
@@ -299,9 +280,6 @@ async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow
         await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
         return GROUP_ONLY_COMMAND_IN_DM_REPLY
     if interpretation.intent is TalentIntent.CONVERSATION:
-        # Let the existing persona/onboarding-safe conversation response own
-        # wording; this path was explicitly classified as non-business first,
-        # so no substring business routing is reintroduced here.
         return await workflow_reply(text, jid)
 
     result = await _dispatch_talent(employee_id, jid, interpretation)
