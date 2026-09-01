@@ -292,16 +292,12 @@ func (b *bridge) handleGroup(evt *events.Message, jid string) {
 	forUs := b.isForUs(evt, text)
 	isMedia := evt.Message.GetImageMessage() != nil || evt.Message.GetDocumentMessage() != nil
 	if isMedia && forUs {
-		if !b.state.isAllowedGroup(jid) {
-			b.state.logf("ignored media from unlisted group %s", jid)
-			return
-		}
 		b.markReadAndTyping(evt)
 		b.state.logf("evidence-in-group redirect in=%s group=%s", evt.Info.ID, jid)
 		_ = b.sendTextReply(context.Background(), evt, evidenceInGroupReply)
 		return
 	}
-	if text == "" || !forUs || !b.state.isAllowedGroup(jid) {
+	if text == "" || !forUs {
 		return
 	}
 	b.markReadAndTyping(evt)
