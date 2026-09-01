@@ -152,9 +152,12 @@ class _TaskEvidenceCountRow:
 
 @final
 class PostgresTaskEvidenceReader:
-    """Per-task evidence counts from task_evidence (talent uploads over WhatsApp DM,
-    see bot/evidence.py), keyed by tasks.record_key -- the same key domain Task
-    records expose as str(task.key).
+    """Per-task counts for evidence explicitly submitted by the Talent.
+
+    Talent Mobile may stage files before the final "Ajukan ke PMO" action.
+    Those draft rows stay out of completion/readiness and therefore out of the
+    Generator BAST until ``submitted_at`` is set. Legacy evidence is
+    grandfathered by the migration that backfills submitted_at=uploaded_at.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -178,6 +181,7 @@ class PostgresTaskEvidenceReader:
                     FROM task_evidence e
                     JOIN tasks t ON t.id = e.task_id
                     WHERE e.work_date BETWEEN %s AND %s
+                      AND e.submitted_at IS NOT NULL
                     GROUP BY t.record_key
                     """,
                     (period.start, period.end),

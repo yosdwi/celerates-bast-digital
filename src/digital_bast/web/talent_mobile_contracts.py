@@ -22,6 +22,7 @@ class TalentMobileTask(BaseModel):
     work_date: date
     task_source: str
     evidence_count: int
+    staged_count: int = 0
     complete: bool
 
 
@@ -32,6 +33,7 @@ class TalentMobileTaskSummary(BaseModel):
     complete: int
     missing: int
     items: tuple[TalentMobileTask, ...]
+    staged: int = 0
 
 
 class TalentMobileAttendanceItem(BaseModel):
@@ -77,5 +79,5 @@ class TalentMobileOverview(BaseModel):
 class TalentMobileMutationResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    status: Literal["stored", "submitted", "already_present", "already_open"]
+    status: Literal["stored", "staged", "submitted", "already_present", "already_open"]
     message: str

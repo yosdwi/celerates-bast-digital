@@ -8,7 +8,7 @@ domain/application services.
 
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
 
 from digital_bast.bot.attendance_resolution import ResolutionStatus, ResolutionType
@@ -18,7 +18,7 @@ from digital_bast.domain.time import JAKARTA
 from digital_bast.operations import (
     completion_status,
     create_attendance_resolution_service,
-    create_evidence_service,
+    create_task_evidence_submission_service,
 )
 
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ _REQUEST_WORDS: Final = frozenset(
     {"request", "requests", "request saya", "pengajuan", "pengajuan saya"}
 )
 _REQUEST_HISTORY_LIMIT: Final = 10
+_CLOSEOUT_GRACE_DAYS: Final = 7
 
 
 def looks_like_status(text: str) -> bool:
@@ -44,6 +45,9 @@ def looks_like_requests(text: str) -> bool:
 
 def _period_now() -> DateRange:
     today = datetime.now(JAKARTA).date()
+    if today.day <= _CLOSEOUT_GRACE_DAYS:
+        last_previous = today.replace(day=1) - timedelta(days=1)
+        return DateRange(last_previous.replace(day=1), last_previous)
     return DateRange(today.replace(day=1), today)
 
 
@@ -91,7 +95,7 @@ def _latest_request_by_day(
 async def _task_missing_count(employee_id: str, period: DateRange) -> int:
     candidates = tuple(
         item
-        for item in await create_evidence_service().list_candidates(employee_id)
+        for item in await create_task_evidence_submission_service().list_candidates(employee_id)
         if period.start <= item.work_date <= period.end
     )
     return sum(item.evidence_count <= 0 for item in candidates)

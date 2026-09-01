@@ -12,6 +12,7 @@ export interface TalentMobileTask {
   work_date: string;
   task_source: string;
   evidence_count: number;
+  staged_count: number;
   complete: boolean;
 }
 
@@ -39,6 +40,7 @@ export interface TalentMobileOverview {
     closed: number;
     complete: number;
     missing: number;
+    staged: number;
     items: TalentMobileTask[];
   };
   attendance: {
@@ -51,7 +53,7 @@ export interface TalentMobileOverview {
 }
 
 interface MutationResponse {
-  status: "stored" | "submitted" | "already_present" | "already_open";
+  status: "stored" | "staged" | "submitted" | "already_present" | "already_open";
   message: string;
 }
 
@@ -121,6 +123,10 @@ export function uploadTalentTaskEvidence(taskKey: string, file: File): Promise<M
     method: "POST",
     body,
   });
+}
+
+export function submitTalentTaskEvidence(): Promise<MutationResponse> {
+  return request<MutationResponse>("/tasks/evidence/submit", { method: "POST" });
 }
 
 export interface AttendanceResolutionInput {

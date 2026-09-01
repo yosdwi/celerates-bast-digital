@@ -117,7 +117,11 @@ def _patch_common(
         "create_attendance_resolution_service",
         lambda: resolution_service,
     )
-    monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: evidence_service)
+    monkeypatch.setattr(
+        dm_entry,
+        "create_task_evidence_submission_service",
+        lambda: evidence_service,
+    )
     monkeypatch.setattr(dm_entry, "create_llm_interpreter", lambda: interpreter)
 
     async def completion(_period: DateRange) -> object:
