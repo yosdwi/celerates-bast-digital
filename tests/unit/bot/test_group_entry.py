@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,9 +14,6 @@ from digital_bast.domain.completion import (
     EmployeeCompletion,
 )
 from digital_bast.domain.models import Employee, EmployeeId, EmployeeRole
-
-if TYPE_CHECKING:
-    from pytest import MonkeyPatch
 
 
 def _check(state: CheckState, *issues: str) -> CheckResult:
@@ -72,7 +68,7 @@ class _FakeClient:
 
 @pytest.mark.asyncio
 async def test_screenshot_phrase_resolves_to_iot_task_status_without_keyword_guessing(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = _FakeClient(
         '{"kind":"status","dimension":"task","scope":"iot","employee":null,'
@@ -104,7 +100,7 @@ def test_only_explicit_operational_commands_bypass_group_natural_query() -> None
 
 @pytest.mark.asyncio
 async def test_iot_scope_filters_completion_by_authoritative_employee_role(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     period = DateRange(date(2026, 8, 1), date(2026, 8, 31))
     report = CompletionReport(
@@ -126,12 +122,30 @@ async def test_iot_scope_filters_completion_by_authoritative_employee_role(
         ),
     )
     roster = (
-        Employee(EmployeeId("iot-1"), "NRP-IOT-1", "Putra Tama", EmployeeRole.IOT_OPERATIONS),
-        Employee(EmployeeId("dev-1"), "NRP-DEV-1", "Developer Satu", EmployeeRole.DEVELOPER),
-        Employee(EmployeeId("iot-2"), "NRP-IOT-2", "IoT Lengkap", EmployeeRole.IOT_OPERATIONS),
+        Employee(
+            EmployeeId("iot-1"),
+            "NRP-IOT-1",
+            "Putra Tama",
+            EmployeeRole.IOT_OPERATIONS,
+        ),
+        Employee(
+            EmployeeId("dev-1"),
+            "NRP-DEV-1",
+            "Developer Satu",
+            EmployeeRole.DEVELOPER,
+        ),
+        Employee(
+            EmployeeId("iot-2"),
+            "NRP-IOT-2",
+            "IoT Lengkap",
+            EmployeeRole.IOT_OPERATIONS,
+        ),
     )
 
-    async def fake_completion_status(requested: DateRange, employee: str | None = None) -> CompletionReport:
+    async def fake_completion_status(
+        requested: DateRange,
+        employee: str | None = None,
+    ) -> CompletionReport:
         assert requested == period
         assert employee is None
         return report
@@ -152,13 +166,25 @@ async def test_iot_scope_filters_completion_by_authoritative_employee_role(
 
 
 @pytest.mark.asyncio
-async def test_employee_filter_is_applied_after_role_scope(monkeypatch: MonkeyPatch) -> None:
+async def test_employee_filter_is_applied_after_role_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     period = DateRange(date(2026, 8, 1), date(2026, 8, 31))
     report = CompletionReport(
         period,
         (
-            _completion("iot-1", "Putra Tama", task=CheckState.INCOMPLETE, task_issues=("x",)),
-            _completion("dev-1", "Putra Developer", task=CheckState.INCOMPLETE, task_issues=("x",)),
+            _completion(
+                "iot-1",
+                "Putra Tama",
+                task=CheckState.INCOMPLETE,
+                task_issues=("x",),
+            ),
+            _completion(
+                "dev-1",
+                "Putra Developer",
+                task=CheckState.INCOMPLETE,
+                task_issues=("x",),
+            ),
         ),
     )
     roster = (
@@ -166,7 +192,10 @@ async def test_employee_filter_is_applied_after_role_scope(monkeypatch: MonkeyPa
         Employee(EmployeeId("dev-1"), "D1", "Putra Developer", EmployeeRole.DEVELOPER),
     )
 
-    async def fake_completion_status(requested: DateRange, employee: str | None = None) -> CompletionReport:
+    async def fake_completion_status(
+        requested: DateRange,
+        employee: str | None = None,
+    ) -> CompletionReport:
         return report
 
     async def fake_load_roster() -> tuple[Employee, ...]:
