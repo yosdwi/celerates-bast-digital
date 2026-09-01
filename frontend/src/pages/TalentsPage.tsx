@@ -29,6 +29,12 @@ function accessLabel(link: TalentMobileLinkItem | undefined): string {
   return link.whatsapp_bound ? "Siap dibagikan" : "Siap dibagikan · WA belum terhubung";
 }
 
+function validityLabel(ttlSeconds: number | undefined): string {
+  if (!ttlSeconds) return "menunggu generate";
+  const days = Math.max(1, Math.round(ttlSeconds / (24 * 60 * 60)));
+  return `${days} hari`;
+}
+
 export default function TalentsPage({ session, data, onNavigate, onOpenTalent }: Props) {
   const [search, setSearch] = useState("");
   const [team, setTeam] = useState<TeamFilter>("all");
@@ -157,7 +163,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
 
           {tab === "links" ? (
             <div className="talent-url-note">
-              <strong>Link personal · berlaku {Math.round((links?.ttl_seconds ?? 1800) / 60)} menit.</strong>
+              <strong>Link personal · berlaku {validityLabel(links?.ttl_seconds)}.</strong>
               <span>URL tersedia untuk semua Talent pada hasil filter dan mengikuti periode aktif. Binding WhatsApp tidak diperlukan untuk link yang diterbitkan PMO.</span>
             </div>
           ) : null}
@@ -236,7 +242,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
                   return (
                     <article className="talent-url-mobile-card" key={talent.employee_id}>
                       <div className="talent-mobile-head"><div><strong>{talent.name}</strong><span>{talent.nrp} · {talent.role}</span></div><StatusBadge state={talent.overall_state} compact /></div>
-                      <div className="talent-url-mobile-access"><span>{accessLabel(link)}</span><small>{link?.url ? `Signed · ${Math.round((links?.ttl_seconds ?? 1800) / 60)} min` : "Link belum tersedia"}</small></div>
+                      <div className="talent-url-mobile-access"><span>{accessLabel(link)}</span><small>{link?.url ? `Signed · ${validityLabel(links?.ttl_seconds)}` : "Link belum tersedia"}</small></div>
                       <button className="secondary-button" type="button" disabled={!link?.url} onClick={() => void copyTalentLink(link)}>{copiedEmployee === talent.employee_id ? "Copied" : "Copy Talent URL"}</button>
                     </article>
                   );
