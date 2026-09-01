@@ -160,7 +160,7 @@ class TaskEvidenceSubmissionService:
             for row in rows
         )
 
-    def _stage(
+    def _stage(  # noqa: PLR0911 - explicit outcome exits keep upload policy auditable
         self,
         employee_id: str,
         task_key: str,
