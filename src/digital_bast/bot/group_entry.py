@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import calendar
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Final, Literal
@@ -22,6 +21,7 @@ Dimension = Literal["readiness", "task", "evidence", "attendance", "timesheet"]
 Scope = Literal["all", "developer", "iot"]
 
 _CLOSEOUT_GRACE_DAYS: Final = 7
+_MAX_PERIOD_DAYS: Final = 366
 _SCOPE_LABEL: Final[dict[Scope, str]] = {
     "all": "Semua Talent",
     "developer": "Developer",
@@ -100,12 +100,12 @@ def _previous_month(today: date) -> DateRange:
 
 
 def default_group_period(today: date) -> DateRange:
-    """PMO closeout default.
+    """Return the PMO operational period when a read-only query omits it.
 
-    During the first seven days of a month, PMO work is normally closing the
-    previous BAST month, so an omitted period resolves to that full month.
-    Afterwards it resolves month-to-date. Export/generate commands never use
-    this helper; those keep their explicit-period guard in the legacy CLI.
+    During the first seven days of a month, PMO normally closes the previous
+    BAST month. Afterwards the status context is month-to-date. Export and
+    Generate BAST never use this default; their legacy explicit-period guard
+    remains unchanged.
     """
     if today.day <= _CLOSEOUT_GRACE_DAYS:
         return _previous_month(today)
@@ -149,6 +149,8 @@ async def _interpret(text: str, today: date) -> GroupQuery | Literal["conversati
     elif draft.start_date is None or draft.end_date is None or draft.end_date < draft.start_date:
         return None
     else:
+        if (draft.end_date - draft.start_date).days + 1 > _MAX_PERIOD_DAYS:
+            return None
         period = DateRange(draft.start_date, draft.end_date)
     employee = draft.employee.strip() if draft.employee else None
     return GroupQuery(draft.dimension, draft.scope, period, employee or None)
@@ -232,15 +234,13 @@ def _format_follow_up(employee: EmployeeCompletion, dimension: Dimension) -> str
 
 
 async def _status_reply(query: GroupQuery) -> str:
-    report, roster = await anyio.gather(
-        completion_status(query.period, None),
-        load_roster(),
-    )
+    report = await completion_status(query.period, None)
+    roster = await load_roster()
     role = _SCOPE_ROLE[query.scope]
     allowed_ids = {
         str(employee.id)
         for employee in roster
-        if role is None or employee.role is role
+        if role is None or employee.role == role
     }
     employees = tuple(employee for employee in report.employees if employee.employee_id in allowed_ids)
     if query.employee:
@@ -270,7 +270,7 @@ async def _status_reply(query: GroupQuery) -> str:
     lines = [
         f"*{title} — {scope} — {query.period.label()}*",
         "",
-        f"Lengkap       : {len(complete)}/{len(employees)}",
+        f"Lengkap        : {len(complete)}/{len(employees)}",
         f"Perlu follow-up: {len(pending)}",
     ]
     if pending:
