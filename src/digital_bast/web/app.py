@@ -19,6 +19,7 @@ from digital_bast.web.errors import (
 from digital_bast.web.page_router import page_router
 from digital_bast.web.report_router import report_router
 from digital_bast.web.sync_router import router as sync_router
+from digital_bast.web.talent_mobile_links_router import talent_mobile_links_router
 from digital_bast.web.talent_mobile_page_router import talent_mobile_page_router
 from digital_bast.web.talent_mobile_router import talent_mobile_router
 from digital_bast.web.talentops_page_router import talentops_page_router
@@ -54,6 +55,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
     app.include_router(talentops_router(dependencies))
+    app.include_router(talent_mobile_links_router(dependencies))
     app.include_router(task_evidence_router(dependencies))
     app.include_router(talent_mobile_router())
     app.include_router(talent_mobile_page_router(talentops_dist))
