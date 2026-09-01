@@ -3,7 +3,7 @@ import type { EmployeeRole, PeriodView } from "./types";
 
 const BASE = "/api/talentops/v1";
 
-export type TalentMobileLinkStatus = "ready" | "unbound" | "not_configured";
+export type TalentMobileLinkStatus = "ready" | "not_configured";
 
 export interface TalentMobileLinkItem {
   employee_id: string;
