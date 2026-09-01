@@ -75,6 +75,12 @@ async def _claims(request: Request) -> tuple[TalentMobileClaims, str]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Link sudah tidak valid atau kedaluwarsa",
         )
+    if claims.access_mode == "pmo":
+        if claims.actor_tag is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Link tidak valid")
+        return claims, f"pmo-web:{claims.actor_tag}"
+    if claims.binding_tag is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Link tidak valid")
     current_jid = await create_rebind_onboarding_service().existing_jid(claims.employee_id)
     if current_jid is None or not talent_mobile_binding_matches(
         secret,
@@ -180,7 +186,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     router = APIRouter(prefix=_API_PREFIX)
 
     async def overview(request: Request) -> TalentMobileOverview:
-        claims, _current_jid = await _claims(request)
+        claims, _audit_actor = await _claims(request)
         period = _period(claims)
         report = await completion_status(period)
         mine = next(
@@ -273,7 +279,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         file: Annotated[UploadFile, File()],
         caption: Annotated[str, Form(max_length=500)] = "",
     ) -> TalentMobileMutationResponse:
-        claims, _current_jid = await _claims(request)
+        claims, _audit_actor = await _claims(request)
         period = _period(claims)
         service = create_task_evidence_submission_service()
         candidates = tuple(
@@ -319,7 +325,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         )
 
     async def submit_task_evidence(request: Request) -> TalentMobileMutationResponse:
-        claims, current_jid = await _claims(request)
+        claims, audit_actor = await _claims(request)
         period = _period(claims)
         service = create_task_evidence_submission_service()
         candidates = tuple(
@@ -332,7 +338,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Belum ada evidence baru yang siap diajukan ke PMO",
             )
-        submitted = await service.submit(claims.employee_id, period, current_jid)
+        submitted = await service.submit(claims.employee_id, period, audit_actor)
         if submitted <= 0:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -352,7 +358,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         check_out: Annotated[str | None, Form(max_length=8)] = None,
         caption: Annotated[str, Form(max_length=500)] = "",
     ) -> TalentMobileMutationResponse:
-        claims, current_jid = await _claims(request)
+        claims, audit_actor = await _claims(request)
         period = _period(claims)
         report = await completion_status(period)
         mine = next(
@@ -411,7 +417,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         submit = await create_attendance_resolution_service().submit(
             claims.employee_id,
             attendance_key,
-            current_jid,
+            audit_actor,
             resolution_type,
             proposed_check_in=proposed_in,
             proposed_check_out=proposed_out,

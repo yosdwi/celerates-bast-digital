@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 from digital_bast.application.talent_mobile_access import (
+    issue_pmo_talent_mobile_token,
     issue_talent_mobile_token,
     talent_mobile_binding_matches,
     verify_talent_mobile_token,
@@ -24,6 +25,9 @@ def test_talent_mobile_token_round_trip_keeps_exact_period_and_hides_jid() -> No
     assert claims is not None
     assert claims.employee_id == "employee-1"
     assert claims.period == period
+    assert claims.access_mode == "whatsapp"
+    assert claims.actor_tag is None
+    assert claims.binding_tag is not None
     assert talent_mobile_binding_matches(
         "x" * 48,
         "628123@s.whatsapp.net",
@@ -35,6 +39,30 @@ def test_talent_mobile_token_round_trip_keeps_exact_period_and_hides_jid() -> No
         claims.binding_tag,
     )
     assert "628123" not in token
+
+
+def test_pmo_talent_mobile_token_round_trip_hides_operator_identity() -> None:
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
+    period = DateRange(date(2026, 9, 1), date(2026, 9, 30))
+    issuer = "pmo.operator@celerates.co.id"
+    token = issue_pmo_talent_mobile_token(
+        "x" * 48,
+        "employee-unbound",
+        issuer,
+        period,
+        now=now,
+    )
+
+    claims = verify_talent_mobile_token("x" * 48, token, now=now + timedelta(minutes=5))
+
+    assert claims is not None
+    assert claims.employee_id == "employee-unbound"
+    assert claims.period == period
+    assert claims.access_mode == "pmo"
+    assert claims.binding_tag is None
+    assert claims.actor_tag is not None
+    assert issuer not in token
+    assert issuer.casefold() not in token.casefold()
 
 
 def test_talent_mobile_token_rejects_tampering_and_expiry() -> None:
