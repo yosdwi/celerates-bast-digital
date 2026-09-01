@@ -31,6 +31,7 @@ _GUIDELINE_NRP: Final = re.compile(
     re.IGNORECASE,
 )
 _CLOSEOUT_GRACE_DAYS: Final = 7
+_MASK_THRESHOLD: Final = 6
 
 
 def guideline_nrp(text: str) -> str | None:
@@ -48,19 +49,26 @@ def _default_period() -> DateRange:
 
 def _mask_jid(jid: str) -> str:
     number = jid.split("@", 1)[0]
-    if len(number) <= 6:
+    if len(number) <= _MASK_THRESHOLD:
         return number
     return f"{number[:3]}***{number[-3:]}"
 
 
-async def try_guideline_onboarding(text: str, jid: str) -> str | None:
+async def try_guideline_onboarding(  # noqa: PLR0911 - explicit identity guards
+    text: str,
+    jid: str,
+) -> str | None:
     nrp = guideline_nrp(text)
     if nrp is None:
         return None
 
     roster = await load_roster()
     needle = canonical_text(nrp)
-    matches = tuple(employee for employee in roster if canonical_text(employee.external_id) == needle)
+    matches = tuple(
+        employee
+        for employee in roster
+        if canonical_text(employee.external_id) == needle
+    )
     if len(matches) != 1:
         return (
             f'NRP "{nrp}" belum aku kenali. Pastikan formatnya benar, contoh: '
@@ -82,7 +90,10 @@ async def try_guideline_onboarding(text: str, jid: str) -> str | None:
         return interactive(
             "NRP ini sudah terhubung ke WhatsApp lain.\n"
             f"Binding aktif: {_mask_jid(existing_jid)}\n\n"
-            "Kalau ini nomor barumu, ajukan ganti nomor. Nomor lama tetap aktif sampai PMO approve.",
+            (
+                "Kalau ini nomor barumu, ajukan ganti nomor. "
+                "Nomor lama tetap aktif sampai PMO approve."
+            ),
             ("rebind:submit", "Ajukan Ganti Nomor"),
             ("rebind:cancel", "Batal"),
         )
