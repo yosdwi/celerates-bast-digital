@@ -122,11 +122,12 @@ async def test_pmo_link_directory_issues_seven_day_url_for_unbound_talent(
     ) -> tuple[str, str]:
         return "default", "pmo.operator@celerates.co.id"
 
+    policy_service = _PolicyServiceStub()
     monkeypatch.setattr(links_router_module, "_operator_context", _operator_context)
     monkeypatch.setattr(
         links_router_module,
         "_policy_service",
-        lambda: _PolicyServiceStub(),
+        lambda: policy_service,
     )
     monkeypatch.setattr(
         links_router_module,
