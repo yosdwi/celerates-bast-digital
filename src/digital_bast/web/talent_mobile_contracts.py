@@ -22,7 +22,7 @@ class TalentMobileTask(BaseModel):
     work_date: date
     task_source: str
     evidence_count: int
-    staged_count: int
+    staged_count: int = 0
     complete: bool
 
 
@@ -32,8 +32,8 @@ class TalentMobileTaskSummary(BaseModel):
     closed: int
     complete: int
     missing: int
-    staged: int
     items: tuple[TalentMobileTask, ...]
+    staged: int = 0
 
 
 class TalentMobileAttendanceItem(BaseModel):
