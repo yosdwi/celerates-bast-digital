@@ -96,7 +96,7 @@ def test_pmo_talent_mobile_token_rejects_ttl_over_seven_days() -> None:
     now = datetime(2026, 9, 1, 8, 0, tzinfo=UTC)
     period = DateRange(date(2026, 9, 1), date(2026, 9, 30))
 
-    with pytest.raises(ValueError, match="^$"):
+    with pytest.raises(ValueError, match=r"^$"):
         issue_pmo_talent_mobile_token(
             "x" * 48,
             "employee-unbound",
