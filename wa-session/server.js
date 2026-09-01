@@ -2,6 +2,10 @@
 
 // WhatsApp session holder for the Digital BAST bot. It owns transport only:
 // pairing/socket lifecycle, message receive/send, and delegation to bot-worker.
+//
+// Group policy is intentionally simple: every WhatsApp group is eligible.
+// The bot still only reacts when it is explicitly mentioned/triggered, so
+// ordinary group conversation is ignored.
 
 const http = require("node:http");
 const path = require("node:path");
@@ -30,7 +34,6 @@ const {
 const AUTH_DIR = process.env.BOT_AUTH_DIR || path.join(__dirname, "auth");
 const DATA_DIR = process.env.BOT_DATA_DIR || path.join(__dirname, "data");
 const EVIDENCE_DIR = path.join(DATA_DIR, "evidence-uploads");
-const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const PORT = Number(process.env.BOT_SETUP_PORT || 8090);
 const HOST = process.env.BOT_SETUP_HOST || "127.0.0.1";
 const BOT_WORKER_BASE_URL = process.env.BOT_WORKER_BASE_URL || "http://bot-worker:8091";
@@ -64,27 +67,6 @@ process.on("uncaughtException", (error) => {
 process.on("unhandledRejection", (reason) => {
   log(`unhandledRejection (bot stays up): ${reason && reason.stack ? reason.stack : reason}`);
 });
-
-function readConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-  } catch {
-    return { allowedGroups: [] };
-  }
-}
-
-function writeConfig(config) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-}
-
-function allowedGroups() {
-  const fromEnv = (process.env.BOT_ALLOWED_GROUPS || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return new Set([...fromEnv, ...readConfig().allowedGroups]);
-}
 
 async function callBotWorker(payload) {
   try {
@@ -162,8 +144,7 @@ async function sendFileReply(sock, jid, message, filePayload) {
 
 async function sendDmWorkerReply(sock, jid, message, result, errorContext) {
   // Any reply supersedes whatever menu was shown before it -- only a digit
-  // typed right after a fresh interactive menu should resolve as a
-  // selection (see resolveDigitReply in handleDirectMessage).
+  // typed right after a fresh interactive menu should resolve as a selection.
   forgetMenu(jid);
   if (!result.ok) {
     await sock.sendMessage(
@@ -277,20 +258,16 @@ async function handleGroupMessage(sock, message, jid) {
   const content = message.message || {};
   const media = content.imageMessage || content.documentMessage;
   const forUs = isForUs(message, text, ownUserIds(sock));
+
+  // All groups are eligible. Mention/trigger detection remains mandatory so
+  // the bot never reacts to unrelated conversation in a group.
   if (media && forUs) {
-    if (!allowedGroups().has(jid)) {
-      log(`ignored message from unlisted group ${jid}`);
-      return;
-    }
     log(`evidence-in-group redirect for ${jid}`);
     await sock.sendMessage(jid, { text: EVIDENCE_UPLOAD_IN_GROUP_REPLY }, { quoted: message });
     return;
   }
   if (!text || !forUs) return;
-  if (!allowedGroups().has(jid)) {
-    log(`ignored message from unlisted group ${jid}`);
-    return;
-  }
+
   log(`command from ${jid}: ${text.slice(0, 120)}`);
   const startedAt = Date.now();
   const operation = () => callBotWorker({ kind: "text", text });
@@ -381,7 +358,6 @@ function escapeHtml(value) {
 }
 
 function page() {
-  const allowed = allowedGroups();
   const refresh = state.connection === "connected" ? "" : '<meta http-equiv="refresh" content="5">';
   const qr = state.qrDataUrl
     ? `<img alt="WhatsApp QR" src="${state.qrDataUrl}" width="320" height="320">`
@@ -393,14 +369,10 @@ function page() {
     ? state.groups
         .map(
           (group) =>
-            `<tr><td><input type="checkbox" name="jid" value="${escapeHtml(group.jid)}" ${
-              allowed.has(group.jid) ? "checked" : ""
-            }></td><td>${escapeHtml(group.subject)}</td><td><code>${escapeHtml(
-              group.jid,
-            )}</code></td></tr>`,
+            `<tr><td>${escapeHtml(group.subject)}</td><td><code>${escapeHtml(group.jid)}</code></td></tr>`,
         )
         .join("")
-    : '<tr><td colspan="3">Belum ada grup terbaca. Pastikan bot sudah diundang ke grup.</td></tr>';
+    : '<tr><td colspan="2">Belum ada grup terbaca. Pastikan bot sudah diundang ke grup.</td></tr>';
   return `<!doctype html>
 <html lang="id"><head><meta charset="utf-8">${refresh}
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -417,14 +389,12 @@ function page() {
   }</p>
 <h2>1. Pairing WhatsApp</h2>
 ${state.connection === "connected" ? "<p>Sudah terhubung. Tidak perlu scan lagi.</p>" : `${qr}${pairingCode}`}
-<h2>2. Grup yang diizinkan</h2>
-<form method="post" action="/allow">
-<table><thead><tr><th>Aktif</th><th>Nama grup</th><th>JID</th></tr></thead><tbody>${groups}</tbody></table>
-<p><button type="submit">Simpan</button></p>
-</form>
+<h2>2. Grup WhatsApp</h2>
+<p>Semua grup aktif. Bot hanya merespons jika di-mention atau dipanggil dengan trigger yang didukung.</p>
+<table><thead><tr><th>Nama grup</th><th>JID</th></tr></thead><tbody>${groups}</tbody></table>
 <h2>3. Uji perintah</h2>
 <form method="post" action="/try">
-<p><input name="text" size="60" value="@BAST Bot system status"> <button type="submit">Jalankan</button></p>
+<p><input name="text" size="60" value="@conform cek status tasklist iot"> <button type="submit">Jalankan</button></p>
 </form>
 <h2>Log</h2>
 <pre>${escapeHtml(state.log.join("\n"))}</pre>
@@ -468,14 +438,6 @@ const server = http.createServer(async (request, response) => {
         pairingCode: state.pairingCode || null,
       }),
     );
-    return;
-  }
-  if (request.method === "POST" && url.pathname === "/allow") {
-    const body = await readBody(request);
-    writeConfig({ allowedGroups: body.getAll("jid") });
-    log(`allowlist updated (${body.getAll("jid").length} grup)`);
-    response.writeHead(303, { location: "/" });
-    response.end();
     return;
   }
   if (request.method === "POST" && url.pathname === "/try") {

@@ -46,10 +46,16 @@ test("cliArgsFor maps an evidence upload", () => {
   );
 });
 
-test("executionFor keeps group replies on the legacy digital-bast CLI", () => {
-  const execution = executionFor(["bot-reply", "--text", "status hari ini"]);
-  assert.equal(execution.command, "digital-bast");
-  assert.deepEqual(execution.args, ["bot-reply", "--text", "status hari ini"]);
+test("executionFor routes group replies through the PMO group entry wrapper", () => {
+  const execution = executionFor(["bot-reply", "--text", "cek status tasklist iot"]);
+  assert.equal(execution.command, "python");
+  assert.deepEqual(execution.args, [
+    "-m",
+    "digital_bast.bot.group_entry",
+    "reply",
+    "--text",
+    "cek status tasklist iot",
+  ]);
 });
 
 test("executionFor routes DM text through the mobile-aware Python entry wrapper", () => {
