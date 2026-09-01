@@ -16,7 +16,7 @@ type fakeLIDStore struct {
 }
 
 func (f *fakeLIDStore) PutManyLIDMappings(context.Context, []store.LIDMapping) error { return nil }
-func (f *fakeLIDStore) PutLIDMapping(context.Context, types.JID, types.JID) error     { return nil }
+func (f *fakeLIDStore) PutLIDMapping(context.Context, types.JID, types.JID) error    { return nil }
 func (f *fakeLIDStore) GetPNForLID(context.Context, types.JID) (types.JID, error) {
 	return f.pn, f.err
 }
