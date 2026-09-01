@@ -117,14 +117,11 @@ async def _task_mobile_reply(
     if url is None:
         lines.extend(("", "Talent Mobile sedang tidak tersedia. Coba lagi atau hubungi admin."))
     else:
-        lines.extend(
-            (
-                "",
-                "Buka Task & Evidence, lampirkan evidence pada task yang belum lengkap, "
-                "lalu tekan *Ajukan ke PMO*:",
-                url,
-            )
+        instruction = (
+            "Buka Task & Evidence, lampirkan evidence pada task yang belum lengkap, "
+            "lalu tekan *Ajukan ke PMO*:"
         )
+        lines.extend(("", instruction, url))
     return "\n".join(lines)
 
 
