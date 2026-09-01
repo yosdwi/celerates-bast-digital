@@ -27,6 +27,7 @@ from digital_bast.bot.evidence import (
     sniff_content_type,
 )
 from digital_bast.domain.completion import CLOSED_STATUS
+from digital_bast.domain.models import TaskSource
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
@@ -137,9 +138,10 @@ class TaskEvidenceSubmissionService:
                     FROM tasks t
                     WHERE t.employee_id = %s
                       AND lower(t.status) = %s
+                      AND t.task_source = %s
                     ORDER BY t.work_date, t.record_key
                     """,
-                    (employee_id, CLOSED_STATUS),
+                    (employee_id, CLOSED_STATUS, TaskSource.REDMINE.value),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
@@ -181,9 +183,10 @@ class TaskEvidenceSubmissionService:
                     SELECT id AS task_id, employee_id, status, work_date
                     FROM tasks
                     WHERE record_key = %s
+                      AND task_source = %s
                     FOR UPDATE
                     """,
-                    (task_key,),
+                    (task_key, TaskSource.REDMINE.value),
                 )
                 row = cursor.fetchone()
                 if row is None:
@@ -197,7 +200,14 @@ class TaskEvidenceSubmissionService:
                     INSERT INTO task_evidence_staged (
                         task_id, employee_id, work_date,
                         caption, content_type, byte_size, sha256, image
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    )
+                    SELECT %s, %s, %s, %s, %s, %s, %s, %s
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM task_evidence e
+                        WHERE e.task_id = %s AND e.sha256 = %s
+                    )
+                    ON CONFLICT (task_id, sha256) DO NOTHING
                     """,
                     (
                         row.task_id,
@@ -208,8 +218,12 @@ class TaskEvidenceSubmissionService:
                         len(image),
                         digest,
                         image,
+                        row.task_id,
+                        digest,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    return UploadResult(UploadOutcome.DUPLICATE)
                 return UploadResult(UploadOutcome.STORED)
         except psycopg.Error as error:
             raise InfrastructureError(
@@ -229,6 +243,7 @@ class TaskEvidenceSubmissionService:
                           AND s.work_date BETWEEN %s AND %s
                           AND t.employee_id = %s
                           AND lower(t.status) = %s
+                          AND t.task_source = %s
                         RETURNING
                             s.task_id,
                             s.employee_id,
@@ -249,6 +264,7 @@ class TaskEvidenceSubmissionService:
                         caption, content_type, byte_size, sha256, image,
                         now(), %s
                     FROM moved
+                    ON CONFLICT (task_id, sha256) DO NOTHING
                     """,
                     (
                         employee_id,
@@ -256,6 +272,7 @@ class TaskEvidenceSubmissionService:
                         period.end,
                         employee_id,
                         CLOSED_STATUS,
+                        TaskSource.REDMINE.value,
                         jid,
                     ),
                 )
