@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { getTalentMobileLinks } from "../api/talent-mobile-links";
+import type { TalentMobileLinkItem, TalentMobileLinksResponse } from "../api/talent-mobile-links";
 import { askCommandCenter } from "../api/talentops";
 import type { CommandCenterResponse, EmployeeRole, TalentOpsSession } from "../api/types";
 import { ChevronIcon, CloseIcon, SearchIcon, SparkleIcon } from "../components/Icons";
@@ -15,15 +17,28 @@ interface Props {
 
 type TeamFilter = "all" | EmployeeRole;
 type StateFilter = "all" | "attention" | "complete";
+type DirectoryTab = "directory" | "links";
 
 function percentage(value: number, total: number): string {
   return total === 0 ? "0%" : `${Math.round((value / total) * 100)}%`;
+}
+
+function accessLabel(link: TalentMobileLinkItem | undefined): string {
+  if (!link) return "Belum dimuat";
+  if (link.status === "unbound") return "WhatsApp belum terhubung";
+  if (link.status === "not_configured") return "Public URL belum dikonfigurasi";
+  return "Siap dibagikan";
 }
 
 export default function TalentsPage({ session, data, onNavigate, onOpenTalent }: Props) {
   const [search, setSearch] = useState("");
   const [team, setTeam] = useState<TeamFilter>("all");
   const [state, setState] = useState<StateFilter>("all");
+  const [tab, setTab] = useState<DirectoryTab>("directory");
+  const [links, setLinks] = useState<TalentMobileLinksResponse | null>(null);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksError, setLinksError] = useState(false);
+  const [copiedEmployee, setCopiedEmployee] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState("Which talents need PMO attention this period, and why?");
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
@@ -41,8 +56,47 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
     });
   }, [data.readiness, search, state, team]);
 
+  const linksByEmployee = useMemo(
+    () => new Map((links?.items ?? []).map((item) => [item.employee_id, item])),
+    [links],
+  );
+
   const developerCount = data.readiness.filter((item) => item.role === "Developer").length;
   const iotCount = data.readiness.filter((item) => item.role === "IoT Operations").length;
+
+  async function loadLinks() {
+    if (linksLoading) return;
+    setLinksLoading(true);
+    setLinksError(false);
+    setCopiedEmployee(null);
+    try {
+      setLinks(await getTalentMobileLinks(data.period));
+    } catch {
+      setLinks(null);
+      setLinksError(true);
+    } finally {
+      setLinksLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setLinks(null);
+    setCopiedEmployee(null);
+    if (tab === "links") void loadLinks();
+    // Period changes must invalidate previously issued signed links.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.period.year, data.period.month, tab]);
+
+  async function copyTalentLink(item: TalentMobileLinkItem | undefined) {
+    if (!item?.url) return;
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopiedEmployee(item.employee_id);
+      window.setTimeout(() => setCopiedEmployee((current) => current === item.employee_id ? null : current), 1800);
+    } catch {
+      setCopiedEmployee(null);
+    }
+  }
 
   async function submitAi(event?: FormEvent) {
     event?.preventDefault();
@@ -85,7 +139,30 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
         </div>
 
         <section className="panel talent-directory-panel">
-          <div className="panel-title-row"><div><h2>Talent directory</h2><span>{visible.length} of {data.readiness.length} talents</span></div></div>
+          <div className="talent-directory-tabs" role="tablist" aria-label="Talent views">
+            <button type="button" role="tab" aria-selected={tab === "directory"} className={tab === "directory" ? "active" : ""} onClick={() => setTab("directory")}>Directory</button>
+            <button type="button" role="tab" aria-selected={tab === "links"} className={tab === "links" ? "active" : ""} onClick={() => setTab("links")}>Talent URLs</button>
+          </div>
+
+          <div className="panel-title-row">
+            <div>
+              <h2>{tab === "directory" ? "Talent directory" : "Talent Mobile URLs"}</h2>
+              <span>{visible.length} of {data.readiness.length} talents · {data.period.label}</span>
+            </div>
+            {tab === "links" ? (
+              <button className="secondary-button" type="button" onClick={() => void loadLinks()} disabled={linksLoading}>
+                {linksLoading ? "Generating…" : "Refresh URLs"}
+              </button>
+            ) : null}
+          </div>
+
+          {tab === "links" ? (
+            <div className="talent-url-note">
+              <strong>Link personal · berlaku {Math.round((links?.ttl_seconds ?? 1800) / 60)} menit.</strong>
+              <span>URL mengikuti periode aktif dan hanya dapat dibuat untuk Talent yang sudah terhubung ke WhatsApp. PMO dapat copy lalu share manual ke Talent.</span>
+            </div>
+          ) : null}
+
           <div className="toolbar directory-toolbar">
             <div className="panel-search"><SearchIcon /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search talent or NRP" aria-label="Search talent directory" /></div>
             <select value={team} onChange={(event) => setTeam(event.target.value as TeamFilter)} aria-label="Filter by team">
@@ -97,37 +174,77 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
           </div>
 
           {visible.length === 0 ? <div className="empty-state">No talents match the current filters.</div> : null}
-          <div className="desktop-table-wrap">
-            <table className="data-table talent-directory-table">
-              <thead><tr><th>Talent</th><th>Team</th><th>Attendance</th><th>Timesheet</th><th>Task</th><th>Evidence</th><th>Overall</th><th aria-label="Open" /></tr></thead>
-              <tbody>{visible.map((talent) => (
-                <tr key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
-                  <td><div className="talent-name">{talent.name}</div><div className="cell-muted">{talent.nrp}</div></td>
-                  <td>{talent.role}</td>
-                  <td><StatusBadge state={talent.checks.attendance.state} compact /></td>
-                  <td><StatusBadge state={talent.checks.timesheet.state} compact /></td>
-                  <td><StatusBadge state={talent.checks.task.state} compact /></td>
-                  <td><StatusBadge state={talent.checks.evidence.state} compact /></td>
-                  <td><StatusBadge state={talent.overall_state} compact /></td>
-                  <td><button className="row-open" type="button" aria-label={`Open ${talent.name}`} onClick={(event) => { event.stopPropagation(); onOpenTalent(talent.nrp); }}><ChevronIcon /></button></td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
+          {tab === "links" && linksError ? <div className="empty-state">Talent URLs gagal dimuat. Coba Refresh URLs.</div> : null}
 
-          <div className="mobile-operational-list slice2-mobile-list">
-            {visible.map((talent) => (
-              <button className="talent-mobile-card" type="button" key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
-                <div className="talent-mobile-head"><div><strong>{talent.name}</strong><span>{talent.nrp} · {talent.role}</span></div><StatusBadge state={talent.overall_state} compact /></div>
-                <div className="talent-mobile-checks">
-                  {([['Attendance', talent.checks.attendance], ['Timesheet', talent.checks.timesheet], ['Task', talent.checks.task], ['Evidence', talent.checks.evidence]] as const).map(([label, check]) => (
-                    <div key={label}><span>{label}</span><strong className={`text-${check.state}`}>{statusLabel(check.state)}</strong></div>
-                  ))}
-                </div>
-                <ChevronIcon className="talent-mobile-chevron" />
-              </button>
-            ))}
-          </div>
+          {tab === "directory" ? (
+            <>
+              <div className="desktop-table-wrap">
+                <table className="data-table talent-directory-table">
+                  <thead><tr><th>Talent</th><th>Team</th><th>Attendance</th><th>Timesheet</th><th>Task</th><th>Evidence</th><th>Overall</th><th aria-label="Open" /></tr></thead>
+                  <tbody>{visible.map((talent) => (
+                    <tr key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
+                      <td><div className="talent-name">{talent.name}</div><div className="cell-muted">{talent.nrp}</div></td>
+                      <td>{talent.role}</td>
+                      <td><StatusBadge state={talent.checks.attendance.state} compact /></td>
+                      <td><StatusBadge state={talent.checks.timesheet.state} compact /></td>
+                      <td><StatusBadge state={talent.checks.task.state} compact /></td>
+                      <td><StatusBadge state={talent.checks.evidence.state} compact /></td>
+                      <td><StatusBadge state={talent.overall_state} compact /></td>
+                      <td><button className="row-open" type="button" aria-label={`Open ${talent.name}`} onClick={(event) => { event.stopPropagation(); onOpenTalent(talent.nrp); }}><ChevronIcon /></button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+
+              <div className="mobile-operational-list slice2-mobile-list">
+                {visible.map((talent) => (
+                  <button className="talent-mobile-card" type="button" key={talent.employee_id} onClick={() => onOpenTalent(talent.nrp)}>
+                    <div className="talent-mobile-head"><div><strong>{talent.name}</strong><span>{talent.nrp} · {talent.role}</span></div><StatusBadge state={talent.overall_state} compact /></div>
+                    <div className="talent-mobile-checks">
+                      {([['Attendance', talent.checks.attendance], ['Timesheet', talent.checks.timesheet], ['Task', talent.checks.task], ['Evidence', talent.checks.evidence]] as const).map(([label, check]) => (
+                        <div key={label}><span>{label}</span><strong className={`text-${check.state}`}>{statusLabel(check.state)}</strong></div>
+                      ))}
+                    </div>
+                    <ChevronIcon className="talent-mobile-chevron" />
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="desktop-table-wrap">
+                <table className="data-table talent-url-table">
+                  <thead><tr><th>Talent</th><th>Team</th><th>Readiness</th><th>Access</th><th>URL</th><th>Action</th></tr></thead>
+                  <tbody>{visible.map((talent) => {
+                    const link = linksByEmployee.get(talent.employee_id);
+                    return (
+                      <tr key={talent.employee_id}>
+                        <td><button type="button" className="talent-url-name" onClick={() => onOpenTalent(talent.nrp)}><strong>{talent.name}</strong><span>{talent.nrp}</span></button></td>
+                        <td>{talent.role}</td>
+                        <td><StatusBadge state={talent.overall_state} compact /></td>
+                        <td><span className={`talent-url-access ${link?.status ?? "loading"}`}>{accessLabel(link)}</span></td>
+                        <td><span className="talent-url-preview">{link?.url ? "Signed Talent Mobile URL" : "—"}</span></td>
+                        <td><button className="secondary-button talent-url-copy" type="button" disabled={!link?.url} onClick={() => void copyTalentLink(link)}>{copiedEmployee === talent.employee_id ? "Copied" : "Copy URL"}</button></td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+
+              <div className="mobile-operational-list slice2-mobile-list talent-url-mobile-list">
+                {visible.map((talent) => {
+                  const link = linksByEmployee.get(talent.employee_id);
+                  return (
+                    <article className="talent-url-mobile-card" key={talent.employee_id}>
+                      <div className="talent-mobile-head"><div><strong>{talent.name}</strong><span>{talent.nrp} · {talent.role}</span></div><StatusBadge state={talent.overall_state} compact /></div>
+                      <div className="talent-url-mobile-access"><span>{accessLabel(link)}</span><small>{link?.url ? `Signed · ${Math.round((links?.ttl_seconds ?? 1800) / 60)} min` : "Link belum tersedia"}</small></div>
+                      <button className="secondary-button" type="button" disabled={!link?.url} onClick={() => void copyTalentLink(link)}>{copiedEmployee === talent.employee_id ? "Copied" : "Copy Talent URL"}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
       </div>
 

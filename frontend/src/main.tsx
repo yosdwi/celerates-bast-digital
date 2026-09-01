@@ -14,6 +14,7 @@ import "./styles/period-control.css";
 import "./styles/workflow.css";
 import "./styles/task-evidence.css";
 import "./styles/talent-mobile.css";
+import "./styles/talent-urls.css";
 
 const root = document.getElementById("root");
 if (!root) {
