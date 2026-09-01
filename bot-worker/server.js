@@ -43,9 +43,10 @@ function optionValue(args, name) {
   return args[index + 1];
 }
 
-// Keep the public worker request -> legacy CLI mapping unchanged. Only the
-// executable chosen below differs for DM/evidence, so group behavior and the
-// wa-session<->bot-worker HTTP contract remain byte-for-byte compatible.
+// The transport contract stays unchanged; only the Python entrypoint differs
+// by channel. DM uses the Talent workspace-aware router, while group traffic
+// uses the PMO read-only natural-query router. Explicit export/generate/system
+// commands are delegated back to the legacy CLI by group_entry.py.
 function executionFor(args) {
   if (args[0] === "bot-evidence") {
     return {
@@ -60,6 +61,15 @@ function executionFor(args) {
       return {
         command: PYTHON,
         args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
+      };
+    }
+  }
+  if (args[0] === "bot-reply") {
+    const text = optionValue(args, "--text");
+    if (text !== null) {
+      return {
+        command: PYTHON,
+        args: ["-m", "digital_bast.bot.group_entry", "reply", "--text", text],
       };
     }
   }
