@@ -64,9 +64,8 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
 
   useEffect(() => { void refreshHealth(); }, []);
 
-  // WhatsApp pairing needs a live-updating QR while unpaired -- the only
-  // polling on this page, scoped to just this card, since the bridge's own
-  // setup page is loopback-only and unreachable from a phone.
+  // Meta hosts the WhatsApp connection. Poll only the gateway's configuration
+  // and readiness signal; there is no linked-device QR or pairing lifecycle.
   useEffect(() => {
     let cancelled = false;
     async function poll() {
@@ -74,11 +73,11 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
         const result = await getWhatsAppStatus();
         if (!cancelled) setWhatsapp(result);
       } catch {
-        if (!cancelled) setWhatsapp({ connection: "unavailable", me: "", qr_data_url: null, pairing_code: null });
+        if (!cancelled) setWhatsapp({ connection: "unavailable", me: "", provider: "meta_cloud_api" });
       }
     }
     void poll();
-    const interval = setInterval(() => void poll(), 5000);
+    const interval = setInterval(() => void poll(), 30000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
@@ -101,7 +100,7 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
 
           <section className="panel"><div className="panel-title-row"><div><h2>Source ingest</h2><span>Last successful server ingest</span></div></div><div className="system-source-list">{data.sources.map((source) => <div className="system-source-row" key={source.source_key}><span className={`system-dot ${source.last_success_at ? "healthy" : "unknown"}`} /><div><strong>{source.label}</strong><span>{source.last_success_at ? new Date(source.last_success_at).toLocaleString() : "No successful ingest observed"}</span></div><strong>{sourceAge(source)}</strong></div>)}</div><div className="system-note">A timestamp proves only that a successful ingest was observed. It is not automatically classified as stale without an explicit SLA.</div></section>
 
-          <section className="panel"><div className="panel-title-row"><div><h2>WhatsApp bot</h2><span>Bridge pairing status</span></div></div><div className="system-probe-row"><span className={`system-dot ${whatsapp?.connection === "connected" ? "healthy" : whatsapp ? "unhealthy" : "unknown"}`} /><div><strong>{whatsapp ? whatsapp.connection : "checking"}</strong><span>{whatsapp?.me || "Belum terpasang"}</span></div></div>{whatsapp && whatsapp.connection !== "connected" && (whatsapp.qr_data_url || whatsapp.pairing_code) ? <div className="system-note">{whatsapp.qr_data_url ? <img src={whatsapp.qr_data_url} alt="QR pairing WhatsApp" width={220} height={220} /> : null}{whatsapp.pairing_code ? <p>Atau masukkan kode ini di WhatsApp → Tautkan dengan nomor telepon: <strong>{whatsapp.pairing_code}</strong></p> : null}<p>Buka WhatsApp di HP nomor bot → Setelan → Perangkat Tertaut → Tautkan Perangkat, lalu scan QR atau masukkan kode di atas. Refresh otomatis tiap beberapa detik.</p></div> : null}</section>
+          <section className="panel"><div className="panel-title-row"><div><h2>WhatsApp Cloud API</h2><span>Official Meta gateway status</span></div></div><div className="system-probe-row"><span className={`system-dot ${whatsapp?.connection === "connected" ? "healthy" : whatsapp ? "unhealthy" : "unknown"}`} /><div><strong>{whatsapp ? whatsapp.connection : "checking"}</strong><span>{whatsapp?.me || "Phone Number ID belum dikonfigurasi"}</span></div><div>{whatsapp?.connection === "connected" ? "Meta configured" : "Needs attention"}</div></div><div className="system-note">Meta mengelola koneksi WhatsApp. Tidak ada QR, pairing code, linked device, atau session file di server Digital BAST.</div></section>
         </div>
 
         <section className="panel system-boundary-panel"><div className="panel-title-row"><div><h2>Operational boundaries</h2><span>What this page can and cannot claim</span></div></div><div className="system-boundaries"><div><SyncIcon /><strong>Observed</strong><span>FastAPI liveness/readiness and last successful ingest timestamps.</span></div><div><SyncIcon /><strong>Not inferred</strong><span>Database-specific health, queue depth, Ollama availability, ingest SLA, or source lag thresholds unless exposed by a real backend signal.</span></div></div></section>

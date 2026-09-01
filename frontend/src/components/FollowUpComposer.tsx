@@ -116,8 +116,9 @@ export default function FollowUpComposer({ session, nrp, name, period, onClose, 
             {draft.last_follow_up ? (
               <div className="followup-history">
                 <span>Last follow-up</span>
-                <strong>{draft.last_follow_up.status}</strong>
+                <strong>{draft.last_follow_up.read_at ? "read" : draft.last_follow_up.delivered_at ? "delivered" : draft.last_follow_up.failed_at ? "failed" : draft.last_follow_up.status}</strong>
                 <small>{new Date(draft.last_follow_up.sent_at ?? draft.last_follow_up.created_at).toLocaleString()} · {draft.last_follow_up.created_by}</small>
+                {draft.last_follow_up.delivery_error_code ? <small>Meta error: {draft.last_follow_up.delivery_error_code}</small> : null}
               </div>
             ) : null}
 

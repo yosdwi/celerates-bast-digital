@@ -1,11 +1,12 @@
 # BAST Bot V1
 
-WhatsApp group bot for Digital BAST. Hermes Agent parses the message, calls one
-allowlisted `digital-bast` command and posts the deterministic reply back to the
-group. Business rules live in the CLI, never in the agent.
+Official WhatsApp Cloud API assistant for Digital BAST. The Meta gateway
+normalizes inbound messages, calls the existing `digital-bast` workflow, and
+sends the deterministic response through Graph API. Business rules remain in
+the CLI and application services, never in the transport.
 
 ```text
-WhatsApp group -> Hermes Agent -> digital-bast CLI -> NocoDB / PostgreSQL
+WhatsApp DM -> Meta webhook -> meta-wa-gateway -> bot-worker -> digital-bast CLI
 ```
 
 ## Commands
@@ -73,88 +74,55 @@ Docker socket is not mounted into any container. Required services: `postgres`,
 `redis`, `prefect-server`, `prefect-services`, `worker`, `runner`,
 `reverse-proxy`, plus at least one healthy `web-blue` or `web-green` slot.
 
-## WhatsApp bridge
+## WhatsApp Cloud API integration
 
-What used to be a single `bot-bridge/` service is split into two, so that
-deploying an app/business-logic change never has to restart the process
-holding the live WhatsApp connection (repeated rapid reconnects get the
-session revoked by WhatsApp's own anti-abuse system):
+The integration is intentionally split at the existing stable business
+boundary:
 
-- **`wa-session/`** -- Baileys + the setup page on `127.0.0.1:8090`. Pairs
-  the bot number, keeps the group allowlist, and forwards each qualifying
-  message to bot-worker over HTTP. Not part of the normal blue/green deploy;
-  see `scripts/deploy-wa-session.sh`. Full instructions in
-  `wa-session/README.md`.
-- **`bot-worker/`** -- a stateless HTTP wrapper that shells out to
-  `digital-bast bot-reply` / `bot-evidence` exactly as the combined service
-  used to. Holds no WhatsApp state, so it rebuilds and redeploys on every
-  release like any other app change. Full instructions in
-  `bot-worker/README.md`.
+- **`meta-wa-gateway/`** verifies signed WABA webhooks, downloads/uploads
+  media, renders native Meta interactions, applies durable idempotency, and
+  sends through `/{PHONE_NUMBER_ID}/messages`.
+- **`bot-worker/`** remains the stateless wrapper around `digital-bast
+  bot-reply` and `bot-evidence`. It owns no provider connection or credentials.
 
-```bash
-cd wa-session && npm install && npm start   # needs bot-worker reachable at BOT_WORKER_BASE_URL
-cd bot-worker && npm install && BAST_CLI="uv run digital-bast" npm start   # local
-```
+The public callback is `GET/POST /webhooks/whatsapp`. All worker and outbound
+endpoints remain private on the Docker backend network. See
+`meta-wa-gateway/README.md` for required Meta assets, secrets, template
+contract, and callback setup.
 
-The setup page carries the QR code (and pairing code, if
-`BOT_PAIRING_NUMBER` is set), the group allowlist form, a "Uji perintah" box
-that round-trips through bot-worker, and the recent log. Session files are in
-`wa-session/`'s `BOT_AUTH_DIR`, the allowlist in `BOT_DATA_DIR/config.json`.
+Menus with one to three actions render as native reply buttons. Larger menus
+render as a list message, and Talent Mobile links render as CTA URL buttons.
+Typed menu numbers remain valid for compatibility with existing users.
+TalentOps follow-up history promotes Meta lifecycle events to `delivered`,
+`read`, or `failed` and retains the provider error code for operations.
 
-Hermes Agent can replace bot-worker's CLI call later: the contract
-(`digital-bast bot-reply`) is unchanged, so no business rule moves.
-
-## Hermes setup
-
-1. Deploy Hermes with a dedicated WhatsApp number (Baileys) on the host that
-   runs the compose project.
-2. Load `config/hermes/bast-bot.yaml` and replace `allowed_groups` with the real
-   group JID.
-3. Ensure `digital-bast` is on the agent `PATH` and the process can read the
-   application `.env` (NocoDB DSN, base id, app database DSN).
-4. Group mention only; direct messages stay disabled in V1.
+The runtime is DM-first. The standard WhatsApp Business Platform does not
+provide parity with consumer-group mention/listener behavior, so group-specific
+business commands remain available through the CLI/web surfaces instead of an
+unofficial linked-device transport.
 
 ## Automation
 
 The same services (`digital_bast.operations`) are importable by Prefect flows.
-No scheduled completion deployment ships in V1 because no delivery channel is
-approved yet, and the bot answers only when it is mentioned; adding one is a
-thin wrapper around `completion_status`, not a second rule set.
+Scheduled completion and PMO notifications use the approved utility template
+through the same durable application outboxes. Replies within the active
+customer-service window remain free-form; Meta error `131047` automatically
+falls back to the utility template.
 
-## Implementation status (2026-08-18)
+## Production activation
 
-Done and verified:
+1. Create the Meta Business Portfolio, app, WABA, production phone number, and
+   System User token.
+2. Approve the Indonesian utility template documented by the gateway.
+3. Populate the three Meta secret files and non-secret `.env` identifiers.
+4. Run `scripts/meta-wa-setup.sh check`, then `subscribe` to validate the
+   assets and subscribe the app to the WABA.
+5. Run Alembic migration `20260901_0018`, deploy, and register the HTTPS
+   callback with the configured verify token.
+6. Subscribe the callback field `messages`, send an inbound DM, upload evidence,
+   exercise all menus, then verify sent/delivered/read events.
 
-- Completion engine, CLI commands, docker status, WhatsApp formatting and
-  parsing, NocoDB completion source, BAST HTML rendering.
-- `ruff check src tests` clean; `basedpyright` reports no error in the new or
-  modified files (10 pre-existing errors remain in
-  `src/digital_bast/infrastructure/nocodb_repository.py`).
-- `pytest tests/unit tests/e2e/flows`: 151 passed, 1 failed. The failure is
-  `tests/unit/flows/test_pipelines.py::test_current_period_uses_jakarta_calendar_independent_of_source_offset`,
-  pre-existing since commit `bd8cdd9` (`lookback_months` 1 vs 0), unrelated to
-  the bot work.
-- Bridge run locally: QR rendered on the setup page, `system status` answered
-  through the bridge, container mutation refused, invalid settings reported as
-  one line with exit `2` instead of a traceback.
-
-Not done yet, in rough priority order:
-
-1. Pair a real WhatsApp number, invite it to the group, and run the four
-   commands from the group (the only step that needs a phone).
-2. Fill `NOCODB_ATTENDANCE_MAPPING` and `NOCODB_TASK_EVIDENCE_COLUMN` with the
-   real NocoDB names, then re-check that Log 1 PAMA and Evidence stop reporting
-   `needs_review`.
-3. Point `.env` at real DSNs (the local copy still has the container
-   `/run/secrets/*` paths) and run `completion-status` against real data.
-4. Decide whether the BAST document needs PDF output; today it renders HTML
-   through the existing Jinja2 templates and adds no dependency.
-5. Optional: a Prefect deployment wrapping `digital_bast.operations`, once a
-   delivery channel for scheduled reports is approved.
-
-Deliberately skipped, with the reason:
-
-- No new Prefect deployment (no approved push channel; bot answers on mention).
-- No PDF renderer dependency (no renderer existed; HTML path already there).
-- No web routes added (the CLI is the integration surface; the web route
-  inventory characterization test stays untouched).
+On a successful cutover the deploy script removes the retired `wa-session`
+container from this Compose project. If the previously shipped standalone
+systemd transport is still active, preflight stops before mutation and requires
+an operator to disable that unit explicitly.

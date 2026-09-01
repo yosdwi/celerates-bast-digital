@@ -13,7 +13,8 @@ from digital_bast.infrastructure.errors import InfrastructureError
 _SELECT_FIELDS = """
     id, idempotency_key, employee_id, period_start, period_end,
     channel, message, source, status, provider_message_id,
-    created_by, created_at, sent_at, error_code
+    created_by, created_at, sent_at, error_code,
+    delivered_at, read_at, failed_at, delivery_error_code
 """
 
 
@@ -62,6 +63,22 @@ class PostgresTalentOpsFollowUpRepository:
                 else PostgresTalentOpsFollowUpRepository._as_datetime(row[12])
             ),
             error_code=None if row[13] is None else str(row[13]),
+            delivered_at=(
+                None
+                if row[14] is None
+                else PostgresTalentOpsFollowUpRepository._as_datetime(row[14])
+            ),
+            read_at=(
+                None
+                if row[15] is None
+                else PostgresTalentOpsFollowUpRepository._as_datetime(row[15])
+            ),
+            failed_at=(
+                None
+                if row[16] is None
+                else PostgresTalentOpsFollowUpRepository._as_datetime(row[16])
+            ),
+            delivery_error_code=None if row[17] is None else str(row[17]),
         )
 
     def _by_idempotency(self, idempotency_key: str) -> FollowUpRecord | None:
@@ -120,7 +137,8 @@ class PostgresTalentOpsFollowUpRepository:
                     ON CONFLICT (idempotency_key) DO NOTHING
                     RETURNING id, idempotency_key, employee_id, period_start, period_end,
                               channel, message, source, status, provider_message_id,
-                              created_by, created_at, sent_at, error_code
+                              created_by, created_at, sent_at, error_code,
+                              delivered_at, read_at, failed_at, delivery_error_code
                     """,
                     (
                         record_id,

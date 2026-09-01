@@ -32,8 +32,7 @@ class TalentOpsSessionResponse(_FrozenModel):
 class WhatsAppStatusResponse(_FrozenModel):
     connection: str
     me: str
-    qr_data_url: str | None
-    pairing_code: str | None
+    provider: str
 
 
 class PeriodResponse(_FrozenModel):
@@ -381,6 +380,10 @@ class FollowUpRecordResponse(_FrozenModel):
     created_by: str
     created_at: datetime
     sent_at: datetime | None
+    delivered_at: datetime | None
+    read_at: datetime | None
+    failed_at: datetime | None
+    delivery_error_code: str | None
 
 
 class FollowUpDraftResponse(_FrozenModel):

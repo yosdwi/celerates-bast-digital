@@ -36,6 +36,10 @@ class FollowUpRecord:
     created_at: datetime
     sent_at: datetime | None
     error_code: str | None
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+    failed_at: datetime | None = None
+    delivery_error_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

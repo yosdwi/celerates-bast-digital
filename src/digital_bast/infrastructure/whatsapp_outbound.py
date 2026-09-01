@@ -5,7 +5,7 @@ from http import HTTPStatus
 from typing import Literal, final
 
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 
@@ -18,16 +18,14 @@ class _BridgeResponse(BaseModel):
 class _BridgeStatusResponse(BaseModel):
     connection: str
     me: str = ""
-    qr_data_url: str | None = Field(default=None, alias="qrDataUrl")
-    pairing_code: str | None = Field(default=None, alias="pairingCode")
+    provider: str = "meta_cloud_api"
 
 
 @dataclass(frozen=True, slots=True)
 class BotBridgeStatus:
     connection: str
     me: str = ""
-    qr_data_url: str | None = None
-    pairing_code: str | None = None
+    provider: str = "meta_cloud_api"
 
 
 @final
@@ -118,6 +116,5 @@ class BotBridgeWhatsAppOutboundGateway:
         return BotBridgeStatus(
             connection=parsed.connection,
             me=parsed.me,
-            qr_data_url=parsed.qr_data_url,
-            pairing_code=parsed.pairing_code,
+            provider=parsed.provider,
         )

@@ -236,7 +236,7 @@ class FollowUps:
 
 class BotBridge:
     async def get_status(self) -> BotBridgeStatus:
-        return BotBridgeStatus(connection="connected", me="62881080735871", qr_data_url=None)
+        return BotBridgeStatus(connection="connected", me="62881080735871")
 
 
 def make_client(authenticated: bool, *, bot_bridge_status: bool = True) -> TestClient:
@@ -284,8 +284,7 @@ def test_whatsapp_status_returns_bridge_status() -> None:
     payload = response.json()
     assert payload["connection"] == "connected"
     assert payload["me"] == "62881080735871"
-    assert payload["qr_data_url"] is None
-    assert payload["pairing_code"] is None
+    assert payload["provider"] == "meta_cloud_api"
 
 
 def test_whatsapp_status_is_503_when_bridge_not_configured() -> None:

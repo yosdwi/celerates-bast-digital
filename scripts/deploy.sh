@@ -75,11 +75,17 @@ switched=0
 
 app_image=${APP_IMAGE:-digital-bast:local}
 worker_image=${BOT_WORKER_IMAGE:-digital-bast-bot-worker:local}
+gateway_image=${META_WA_GATEWAY_IMAGE:-digital-bast-meta-wa-gateway:local}
 previous_worker_image=""
+previous_gateway_image=""
 if [ "$DRY_RUN" = "0" ]; then
     worker_container=$(compose ps -q bot-worker 2>/dev/null || true)
     if [ -n "$worker_container" ]; then
         previous_worker_image=$(docker inspect --format '{{.Image}}' "$worker_container" 2>/dev/null || true)
+    fi
+    gateway_container=$(compose ps -q meta-wa-gateway 2>/dev/null || true)
+    if [ -n "$gateway_container" ]; then
+        previous_gateway_image=$(docker inspect --format '{{.Image}}' "$gateway_container" 2>/dev/null || true)
     fi
 fi
 
@@ -90,12 +96,31 @@ else
     run compose pull "web-$target" worker runner postgres redis prefect-server prefect-services reverse-proxy
 fi
 
-# bot-worker extends the exact application image selected for this release
-# and holds no WhatsApp session state of its own (wa-session does, and is
-# deliberately never touched here -- see scripts/deploy-wa-session.sh).
-# Build it before recreating so an image-build failure can't take the
-# chatbot offline mid-deploy.
+# bot-worker extends the exact application image selected for this release.
+# The Meta gateway is published as its own digest-pinned image by Release;
+# local/manual deployments may still build it from this checkout.
 run compose build bot-worker
+if docker image inspect "$gateway_image" >/dev/null 2>&1; then
+    printf '%s\n' "using local Meta gateway image: $gateway_image"
+elif [ "${META_WA_GATEWAY_IMAGE:-}" ]; then
+    run compose pull meta-wa-gateway
+else
+    run compose build meta-wa-gateway
+fi
+
+# Upgrade an existing pre-Meta active config once, preserving the currently
+# active web slot. New installations already copy this template directly.
+if ! grep -q '/webhooks/whatsapp' "$active_config"; then
+    require_file config/nginx/active-slot.conf.template
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '%s\n' "DRY-RUN add Meta webhook route to active Nginx config"
+    else
+        sed "s/web-blue:8000/web-$current:8000/" config/nginx/active-slot.conf.template > "$active_config.next"
+        dd if="$active_config.next" of="$active_config" conv=notrunc status=none
+        truncate -s "$(wc -c < "$active_config.next")" "$active_config"
+        rm -f "$active_config.next"
+    fi
+fi
 run compose up -d postgres redis prefect-server prefect-services reverse-proxy
 run compose up -d --no-deps "web-$target"
 
@@ -104,6 +129,14 @@ rollback_worker() {
     docker image inspect "$previous_worker_image" >/dev/null 2>&1 || return 1
     docker tag "$previous_worker_image" "$worker_image" || return 1
     compose up -d --no-deps --force-recreate bot-worker || return 1
+    return 0
+}
+
+rollback_gateway() {
+    [ -n "$previous_gateway_image" ] || return 1
+    docker image inspect "$previous_gateway_image" >/dev/null 2>&1 || return 1
+    docker tag "$previous_gateway_image" "$gateway_image" || return 1
+    compose up -d --no-deps --force-recreate meta-wa-gateway || return 1
     return 0
 }
 
@@ -124,10 +157,7 @@ if [ "$DRY_RUN" = "0" ]; then
     compose run --rm --no-deps "web-$target" alembic upgrade head || die "migration gate failed; active slot preserved" 1
     compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
 
-    # Only replace bot-worker after the candidate web + schema passed. It
-    # holds no WhatsApp session state (wa-session does, and is untouched
-    # here) -- the HTTP health check just proves the new Node process and
-    # packaged CLI actually started.
+    # Only replace messaging services after the candidate web + schema passed.
     compose up -d --no-deps --force-recreate bot-worker
     elapsed=0
     while [ "$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q bot-worker)" 2>/dev/null || true)" != "healthy" ]; do
@@ -136,6 +166,20 @@ if [ "$DRY_RUN" = "0" ]; then
                 die "bot-worker failed health gate; previous image restored; active web slot preserved" 1
             fi
             die "bot-worker failed health gate and its rollback also failed; active web slot preserved" 1
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+
+    # Meta owns the connection; restarting this stateless gateway is safe.
+    # Durable inbound/outbound rows make webhook retry and redeploy idempotent.
+    compose up -d --no-deps --force-recreate meta-wa-gateway
+    elapsed=0
+    while [ "$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q meta-wa-gateway)" 2>/dev/null || true)" != "healthy" ]; do
+        if [ "$elapsed" -ge "$timeout_seconds" ]; then
+            rollback_gateway >/dev/null 2>&1 || true
+            rollback_worker >/dev/null 2>&1 || true
+            die "Meta WhatsApp gateway failed health gate; previous images restored; active web slot preserved" 1
         fi
         sleep 5
         elapsed=$((elapsed + 5))
@@ -150,8 +194,9 @@ if [ "$DRY_RUN" = "0" ]; then
         dd if="$active_config.next" of="$active_config" conv=notrunc status=none
         truncate -s "$(wc -c < "$active_config.next")" "$active_config"
         rm -f "$active_config.next"
+        rollback_gateway >/dev/null 2>&1 || true
         rollback_worker >/dev/null 2>&1 || true
-        die "proxy configuration gate failed; active slot and previous bot-worker image preserved" 1
+        die "proxy configuration gate failed; active slot and previous messaging images preserved" 1
     }
     compose exec -T reverse-proxy nginx -s reload
     switched=1
@@ -161,19 +206,36 @@ if [ "$DRY_RUN" = "0" ]; then
         truncate -s "$(wc -c < "$active_config.next")" "$active_config"
         rm -f "$active_config.next"
         compose exec -T reverse-proxy nginx -s reload
+        rollback_gateway >/dev/null 2>&1 || true
         rollback_worker >/dev/null 2>&1 || true
         switched=0
-        die "public health gate failed; proxy and bot-worker rolled back" 1
+        die "public health gate failed; proxy and messaging services rolled back" 1
     }
     compose up -d --no-deps worker runner
+
+    # A successful official cutover must not leave the previous Compose
+    # linked-device transport running as an orphan. Resolve only containers
+    # in this exact Compose project and remove only the retired service.
+    project_name=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$(compose ps -q bot-worker)" 2>/dev/null || true)
+    if [ -n "$project_name" ]; then
+        legacy_containers=$(docker ps -aq \
+            --filter "label=com.docker.compose.project=$project_name" \
+            --filter "label=com.docker.compose.service=wa-session")
+        for legacy_container in $legacy_containers; do
+            docker stop --time 30 "$legacy_container" >/dev/null
+            docker rm "$legacy_container" >/dev/null
+        done
+    fi
 else
     printf '%s\n' "DRY-RUN health web-$target"
     printf '%s\n' "DRY-RUN shadow web-$target"
     printf '%s\n' "DRY-RUN migration alembic upgrade head"
     printf '%s\n' "DRY-RUN restart + health bot-worker (restore previous image on failure)"
+    printf '%s\n' "DRY-RUN restart + health Meta WhatsApp gateway"
     printf '%s\n' "DRY-RUN switch $current to $target"
-    printf '%s\n' "DRY-RUN public health and rollback web + bot-worker on failure"
+    printf '%s\n' "DRY-RUN public health and rollback web + messaging services on failure"
     printf '%s\n' "DRY-RUN restart worker runner"
+    printf '%s\n' "DRY-RUN retire legacy wa-session container in this Compose project"
 fi
 
 trap - EXIT HUP INT TERM

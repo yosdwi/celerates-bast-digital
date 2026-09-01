@@ -142,16 +142,14 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="SYNC_INGEST_TOKEN_FILE",
     )
-    # Lets the web app proxy a narrow, read-only WhatsApp pairing status
-    # (connection + QR) from wa-session into TalentOps -- shares
-    # sync_ingest_token as the internal call's bearer token, same secret
-    # wa-session already checks incoming outbound-message requests against.
+    # Lets the web app proxy a narrow, read-only Meta gateway status into
+    # TalentOps. It shares sync_ingest_token as the internal bearer token.
     bot_bridge_base_url: AnyHttpUrl | None = Field(
         default=None,
         validation_alias="BOT_BRIDGE_BASE_URL",
     )
     # bot-worker (the CLI-shelling half of the former single bot-bridge
-    # process) writes export/BAST/status-matrix files here for wa-session to
+    # process) writes export/BAST/status-matrix files here for meta-wa-gateway to
     # attach and send -- unset everywhere else, where operations.py's
     # in-image default is correct since nothing outside that one process
     # needs to read the file back afterward.

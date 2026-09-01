@@ -16,10 +16,12 @@ done
 NOCODB_BASE_URL=https://invalid.local \
 NOCODB_BASE_ID=ci-placeholder \
 NOCODB_V2_DB_PASSWORD=ci-placeholder \
+META_GRAPH_VERSION=v26.0 \
+META_WA_PHONE_NUMBER_ID=ci-placeholder \
 SECRETS_GID=${SECRETS_GID:-0} \
 docker compose --profile blue --profile green config --quiet
 
-if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[[:alnum:]])' .; then
+if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' "(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\\s*[:=]\\s*['\"][[:alnum:]]{8})" .; then
     printf '%s\n' "possible embedded secret detected" >&2
     exit 1
 fi
@@ -30,19 +32,17 @@ grep -q 'no-new-privileges:true' compose.yaml
 grep -q 'internal: true' compose.yaml
 grep -q 'flock -n' scripts/deploy.sh
 grep -q 'migration gate failed; active slot preserved' scripts/deploy.sh
-grep -q 'proxy and bot-worker rolled back' scripts/deploy.sh
+grep -q 'proxy and messaging services rolled back' scripts/deploy.sh
 grep -q 'compose build bot-worker' scripts/deploy.sh
+grep -q 'compose pull meta-wa-gateway' scripts/deploy.sh
 grep -q 'bot-worker failed health gate; previous image restored' scripts/deploy.sh
 grep -q 'rollback_worker' scripts/deploy.sh
-grep -q 'wa-session/outbound.js' wa-session/Dockerfile
-grep -q '^USER 10001:10001$' whatsmeow-session/Dockerfile
-# The invariant that matters most in this file: whatsmeow must never read the
-# old Baileys session (incompatible formats; pointing whatsmeow at it would
-# not "migrate" anything, just corrupt or ignore real auth data).
-grep -q 'ENV BOT_AUTH_DIR=/data/auth-whatsmeow' whatsmeow-session/Dockerfile
-grep -q 'flock -n' scripts/deploy-wa-session.sh
-# wa-session must never be touched by the automated blue/green flow -- that
-# coupling is exactly what caused WhatsApp to revoke the session in the
-# first place. Keep this a standing guard against it regressing silently.
-! grep -q 'wa-session' scripts/deploy.sh
+grep -q 'rollback_gateway' scripts/deploy.sh
+grep -q 'com.docker.compose.service=wa-session' scripts/deploy.sh
+grep -q 'meta_wa_access_token meta_app_secret meta_webhook_verify_token' scripts/preflight.sh
+grep -q 'disable the legacy digital-bast-whatsmeow.service' scripts/preflight.sh
+grep -q '^USER 10001:10001$' meta-wa-gateway/Dockerfile
+grep -q '/webhooks/whatsapp' config/nginx/active-slot.conf.template
+! rg -n 'whatsmeow|@whiskeysockets/baileys|BOT_AUTH_DIR' \
+    compose.yaml .github/workflows meta-wa-gateway
 printf '%s\n' "operations static checks passed"

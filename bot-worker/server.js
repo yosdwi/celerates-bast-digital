@@ -1,9 +1,8 @@
 "use strict";
 
 // Stateless HTTP wrapper around the `digital-bast` CLI. Holds no WhatsApp
-// state at all -- wa-session is the only caller, over the internal Docker
-// network -- so rebuilding/recreating this on every deploy (same as the
-// combined bot-bridge did before the split) never touches the live session.
+// state at all -- meta-wa-gateway is the only caller over the internal Docker
+// network, so rebuilding/recreating it is safe on every release.
 
 const http = require("node:http");
 const path = require("node:path");
@@ -94,7 +93,7 @@ function runCli(args) {
   });
 }
 
-// Pure mapping from wa-session's request body to CLI arguments -- kept
+// Pure mapping from the Meta gateway's normalized request body to CLI arguments -- kept
 // separate from runCli so it's testable without spawning a subprocess.
 function cliArgsFor(payload) {
   if (payload && payload.kind === "evidence") {

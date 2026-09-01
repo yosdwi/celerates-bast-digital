@@ -57,10 +57,10 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
-    # web -> wa-session, internal Docker network only: lets TalentOps proxy a
-    # read-only WhatsApp pairing status/QR (see talentops_router.py's
-    # /system/whatsapp) without exposing wa-session's setup page publicly.
-    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://wa-session:8090}
+    # Web -> official Meta Cloud API gateway, internal Docker network only.
+    # TalentOps consumes a narrow provider/readiness status; there is no QR,
+    # pairing code, linked-device state, or WhatsApp Web session.
+    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://meta-wa-gateway:8090}
     # Bootstrap/backward-compatible fallback only. Admin can save the active
     # Talent Mobile public origin from TalentOps Settings without editing env.
     TALENTOPS_PUBLIC_URL: ${TALENTOPS_PUBLIC_URL:-}
@@ -329,54 +329,41 @@ services:
           cpus: "1.00"
           memory: 1G
 
-  # The WhatsApp bridge moves off the dev laptop. It shells out to the
-  # digital-bast CLI, so it runs from the app image with node added rather
-  # than reaching into a container from the host.
-  # WhatsApp session holder ONLY -- Baileys socket, auth persistence, setup
-  # page. Deliberately NOT built FROM the app image and NOT part of
-  # scripts/deploy.sh's blue/green flow: it must never rebuild/recreate just
-  # because the app changed, or WhatsApp's anti-abuse system revokes the
-  # session after the resulting rapid reconnects (see scripts/deploy-wa-session.sh
-  # for its own, separate, manually-run deploy path). All business/CLI logic
-  # lives in bot-worker below, reached over HTTP.
-  # whatsmeow transport (replaces the former Baileys/Node implementation --
-  # see whatsmeow-session/README.md). Same service name, same deploy
-  # discipline: excluded from scripts/deploy.sh's automated flow (guarded by
-  # scripts/check-ops.sh), redeployed only via scripts/deploy-wa-session.sh,
-  # which is name-agnostic to what's actually inside the container.
-  wa-session:
+  # Official WhatsApp Business Platform transport. Meta owns connection and
+  # delivery lifecycle; this service owns only authenticated webhooks, Graph
+  # API calls, media handoff, interactive rendering, and durable idempotency.
+  meta-wa-gateway:
     build:
       context: .
-      dockerfile: whatsmeow-session/Dockerfile
-    image: ${WA_SESSION_IMAGE:-digital-bast-whatsmeow-session:local}
+      dockerfile: meta-wa-gateway/Dockerfile
+    image: ${META_WA_GATEWAY_IMAGE:-digital-bast-meta-wa-gateway:local}
     restart: unless-stopped
     logging: *default-logging
     environment:
-      BOT_SETUP_HOST: 0.0.0.0
-      BOT_SETUP_PORT: "8090"
-      # A fresh, whatsmeow-only path -- never the old Baileys auth/ dir.
-      # Baileys credentials are incompatible with whatsmeow and are kept in
-      # place, untouched, as rollback data.
-      BOT_AUTH_DIR: /data/auth-whatsmeow
+      META_WA_GATEWAY_HOST: 0.0.0.0
+      META_WA_GATEWAY_PORT: "8090"
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:?META_GRAPH_VERSION is required}
+      META_WA_PHONE_NUMBER_ID: ${META_WA_PHONE_NUMBER_ID:?META_WA_PHONE_NUMBER_ID is required}
+      META_WA_DISPLAY_PHONE_NUMBER: ${META_WA_DISPLAY_PHONE_NUMBER:-}
+      META_WA_ACCESS_TOKEN_FILE: /run/secrets/meta_wa_access_token
+      META_APP_SECRET_FILE: /run/secrets/meta_app_secret
+      META_WEBHOOK_VERIFY_TOKEN_FILE: /run/secrets/meta_webhook_verify_token
+      META_DEFAULT_UTILITY_TEMPLATE: ${META_DEFAULT_UTILITY_TEMPLATE:-bast_action_required_v1}
+      META_TEMPLATE_LANGUAGE: ${META_TEMPLATE_LANGUAGE:-id}
+      APP_DATABASE_DSN_FILE: /run/secrets/app_database_dsn
+      BOT_BRIDGE_TOKEN_FILE: /run/secrets/sync_ingest_token
       BOT_DATA_DIR: /data
-      BOT_ALLOWED_GROUPS: ${BOT_ALLOWED_GROUPS:-}
       BOT_WORKER_BASE_URL: ${BOT_WORKER_BASE_URL:-http://bot-worker:8091}
-      SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
-      # Digits-only international format (e.g. 6281234567890) -- lets a
-      # phone-only user re-pair via WhatsApp's "Link with phone number"
-      # code entry instead of needing a second screen to scan a QR. Only
-      # takes effect while unregistered; a no-op once already paired.
-      BOT_PAIRING_NUMBER: ${BOT_PAIRING_NUMBER:-}
-      BOT_WHATSMEOW_LOG_LEVEL: ${BOT_WHATSMEOW_LOG_LEVEL:-INFO}
     secrets:
       - sync_ingest_token
+      - app_database_dsn
+      - meta_wa_access_token
+      - meta_app_secret
+      - meta_webhook_verify_token
     group_add:
       - "${SECRETS_GID:?SECRETS_GID is required}"
-    # Loopback-only: /allow and /try have no authentication of their own.
-    ports:
-      - "127.0.0.1:${BOT_SETUP_PORT:-8090}:8090"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/ready"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -414,9 +401,8 @@ services:
       BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
       BOT_WORKER_HOST: 0.0.0.0
       BOT_WORKER_PORT: "8091"
-      # wa-session hands off exported/BAST/status-matrix files and evidence
-      # uploads through the volume shared below -- see operations.py's
-      # _exports_directory() and wa-session's BOT_DATA_DIR=/data.
+      # The Meta gateway hands off exported BAST/status-matrix files and
+      # evidence uploads through the shared volume below.
       BAST_EXPORTS_DIR: /data/exports
     secrets: *app-secrets
     group_add:
@@ -491,6 +477,12 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/sync_ingest_token
   google_sheets_relay_credentials:
     file: ${SECRETS_DIR:-./secrets}/google_sheets_relay_credentials.json
+  meta_wa_access_token:
+    file: ${SECRETS_DIR:-./secrets}/meta_wa_access_token
+  meta_app_secret:
+    file: ${SECRETS_DIR:-./secrets}/meta_app_secret
+  meta_webhook_verify_token:
+    file: ${SECRETS_DIR:-./secrets}/meta_webhook_verify_token
 
 networks:
   edge:

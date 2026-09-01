@@ -1,19 +1,14 @@
-# Hermes Agent configuration for the Digital BAST WhatsApp group bot (V1).
-# Hermes only parses intent, calls an allowlisted command and posts the result.
-# All business rules live in `digital-bast`, never in the agent prompt.
+# Optional intent/runtime policy retained for the Digital BAST worker.
+# WhatsApp transport is owned exclusively by meta-wa-gateway.
 name: bast-bot
-description: Digital BAST WhatsApp group assistant
+description: Digital BAST WhatsApp Cloud API assistant
 channel:
-  transport: whatsapp-baileys
-  mode: group
-  respond_to: mention_only        # group messages: ignore anything that doesn't mention the bot
-  allowed_groups:                 # fill with the group JIDs that may use the bot
-    - "REPLACE_WITH_GROUP_JID@g.us"
-  allow_direct_messages: true     # DM = evidence upload only, scoped below -- not open reporting
+  transport: meta-cloud-api
+  mode: direct_message
+  allow_direct_messages: true
   # Command surface is scoped per channel (docs/bast-e2e-plan.md §3.3):
-  #   allowlisted group : resume / status / export / generate -- unchanged
-  #   DM, bound JID      : evidence listing and upload only
-  #   DM, unbound JID     : activation attempt only, rate-limited, nothing else
+  #   bound wa_id   : normal BAST/evidence workflow
+  #   unbound wa_id : activation attempt only, rate-limited
   # digital-bast enforces this scoping itself (cli.py::_dm_reply / bot_evidence);
   # this config only documents it, it isn't a separate access-control layer.
 runtime:
@@ -38,5 +33,5 @@ denied_intents:
   - restart / stop / start container
   - docker compose up / down / exec
   - arbitrary shell execution
-  - reporting or document generation from a direct message (group-only, see channel scoping above)
+  - arbitrary provider or credential administration
 reply_language: id-ID

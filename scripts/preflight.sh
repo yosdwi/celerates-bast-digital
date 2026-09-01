@@ -16,14 +16,21 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
+# A separately installed transport cannot be retired safely by Compose. Block
+# the official cutover until an operator has explicitly stopped and disabled
+# the one legacy unit this repository previously shipped.
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet digital-bast-whatsmeow.service; then
+    die "disable the legacy digital-bast-whatsmeow.service before Meta cutover" 78
+fi
+
 # Every deploy rebuilds bot-worker and pulls a fresh digest-pinned release
 # image, so old ones from prior deploys pile up unbounded -- this was
-# repeatedly hitting the disk gate below. wa-session is not part of this
-# flow (see scripts/deploy-wa-session.sh) so it never contributes to this.
+# repeatedly hitting the disk gate below. The official Meta gateway is a
+# small stateless image and ships through the same bounded release flow.
 # Blue/green always keeps the current and previous release images
 # referenced by running containers, so `-a` here only ever removes ones no
 # container still points to. Never volumes: those hold real data (Postgres,
-# NocoDB, WhatsApp auth session).
+# NocoDB, or application data).
 docker image prune -af >/dev/null 2>&1 || true
 docker builder prune -f >/dev/null 2>&1 || true
 
@@ -51,7 +58,7 @@ fi
 
 secrets_dir=${SECRETS_DIR:-./secrets}
 secrets_gid=${SECRETS_GID:?SECRETS_GID is required}
-for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string groq_api_key cloudflare_api_token; do
+for name in postgres_password app_database_password prefect_database_password session_secret app_database_dsn legacy_database_dsn prefect_database_dsn prefect_api_auth redis_url redis_acl nocodb_token nocodb_database_dsn sync_ingest_token google_service_account.json sqlserver_connection_string groq_api_key cloudflare_api_token meta_wa_access_token meta_app_secret meta_webhook_verify_token; do
     require_file "$secrets_dir/$name"
     mode=$(stat -c '%a' "$secrets_dir/$name")
     [ "$mode" = 640 ] || die "secret must have mode 0640: $secrets_dir/$name" 77

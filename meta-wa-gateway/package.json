@@ -1,14 +1,16 @@
 {
-  "name": "digital-bast-bot-worker",
+  "name": "digital-bast-meta-wa-gateway",
   "version": "1.0.0",
   "private": true,
-  "description": "Stateless HTTP wrapper around Digital BAST workflows for the official Meta Cloud API gateway.",
+  "description": "Official Meta WhatsApp Cloud API transport for Digital BAST",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test *.test.js"
   },
-  "dependencies": {},
+  "dependencies": {
+    "pg": "8.16.3"
+  },
   "engines": {
     "node": ">=20"
   }

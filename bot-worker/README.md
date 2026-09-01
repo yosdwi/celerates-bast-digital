@@ -1,12 +1,9 @@
 # bot-worker
 
-Stateless HTTP wrapper around the `digital-bast` CLI. Receives each WhatsApp
-message from **wa-session** (`../wa-session/`) over HTTP and shells out to
-`digital-bast bot-reply` / `digital-bast bot-evidence` exactly as the combined
-bridge did before the split -- the only thing that changed is which process
-does it. Holds no WhatsApp session state, so it rebuilds and recreates on
-every deploy (same as `scripts/deploy.sh` did for the combined service
-before), harmlessly: there's no live socket here to interrupt.
+Stateless HTTP wrapper around the `digital-bast` business entrypoints. It
+receives normalized inbound messages from `meta-wa-gateway` and invokes the
+existing Talent/PMO/evidence workflows. It contains no WhatsApp credential,
+webhook, Graph API, media-download, or delivery-state logic.
 
 ## Run
 
@@ -38,7 +35,7 @@ same line instead of a stack trace.
 | `BOT_WORKER_HOST` / `BOT_WORKER_PORT` | `0.0.0.0` / `8091` | Bind address. Only reachable internally -- no host port mapping in production. |
 | `BAST_CLI` | `digital-bast` | Command used to run the CLI. |
 | `BAST_CLI_TIMEOUT_MS` | `180000` | Hard timeout per command. |
-| `SYNC_INGEST_TOKEN_FILE` / `BOT_BRIDGE_TOKEN_FILE` | `/run/secrets/sync_ingest_token` | Shared bearer token wa-session must present as `X-Bridge-Token`. |
+| `SYNC_INGEST_TOKEN_FILE` / `BOT_BRIDGE_TOKEN_FILE` | `/run/secrets/sync_ingest_token` | Shared bearer token the Meta gateway must present as `X-Bridge-Token`. |
 
 ## API
 

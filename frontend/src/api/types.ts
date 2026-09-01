@@ -22,8 +22,7 @@ export interface TalentOpsSession {
 export interface WhatsAppStatus {
   connection: string;
   me: string;
-  qr_data_url: string | null;
-  pairing_code: string | null;
+  provider: string;
 }
 
 export interface PeriodView {
@@ -332,6 +331,10 @@ export interface FollowUpRecord {
   created_by: string;
   created_at: string;
   sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  delivery_error_code: string | null;
 }
 
 export interface FollowUpDraft {

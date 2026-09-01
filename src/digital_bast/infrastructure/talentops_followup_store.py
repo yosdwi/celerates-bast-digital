@@ -19,14 +19,18 @@ class _FollowUpRow:
         "channel",
         "created_at",
         "created_by",
+        "delivered_at",
+        "delivery_error_code",
         "employee_id",
         "error_code",
+        "failed_at",
         "id",
         "idempotency_key",
         "message",
         "period_end",
         "period_start",
         "provider_message_id",
+        "read_at",
         "sent_at",
         "source",
         "status",
@@ -48,6 +52,10 @@ class _FollowUpRow:
         created_at: datetime,
         sent_at: datetime | None,
         error_code: str | None,
+        delivered_at: datetime | None,
+        read_at: datetime | None,
+        failed_at: datetime | None,
+        delivery_error_code: str | None,
     ) -> None:
         self.id = id
         self.idempotency_key = idempotency_key
@@ -63,6 +71,10 @@ class _FollowUpRow:
         self.created_at = created_at
         self.sent_at = sent_at
         self.error_code = error_code
+        self.delivered_at = delivered_at
+        self.read_at = read_at
+        self.failed_at = failed_at
+        self.delivery_error_code = delivery_error_code
 
 
 def _record(row: _FollowUpRow) -> FollowUpRecord:
@@ -81,6 +93,10 @@ def _record(row: _FollowUpRow) -> FollowUpRecord:
         created_at=row.created_at,
         sent_at=row.sent_at,
         error_code=row.error_code,
+        delivered_at=row.delivered_at,
+        read_at=row.read_at,
+        failed_at=row.failed_at,
+        delivery_error_code=row.delivery_error_code,
     )
 
 
@@ -98,7 +114,11 @@ _SELECT = """
            created_by,
            created_at,
            sent_at,
-           error_code
+           error_code,
+           delivered_at,
+           read_at,
+           failed_at,
+           delivery_error_code
     FROM talentops_followups
 """
 
@@ -145,8 +165,7 @@ class PostgresTalentOpsFollowUpRepository:
                 connection.cursor(row_factory=class_row(_FollowUpRow)) as cursor,
             ):
                 _ = cursor.execute(
-                    _SELECT
-                    + " WHERE employee_id = %s ORDER BY created_at DESC LIMIT 1",
+                    _SELECT + " WHERE employee_id = %s ORDER BY created_at DESC LIMIT 1",
                     (employee_id,),
                 )
                 row = cursor.fetchone()
@@ -201,7 +220,11 @@ class PostgresTalentOpsFollowUpRepository:
                               created_by,
                               created_at,
                               sent_at,
-                              error_code
+                              error_code,
+                              delivered_at,
+                              read_at,
+                              failed_at,
+                              delivery_error_code
                     """,
                     (
                         delivery_id,
@@ -241,9 +264,12 @@ class PostgresWhatsAppIdentityResolver:
 
     def _jid_for_employee(self, employee_id: str) -> str | None:
         try:
-            with psycopg.connect(
-                self._dsn, connect_timeout=self._connect_timeout_seconds
-            ) as connection, connection.cursor() as cursor:
+            with (
+                psycopg.connect(
+                    self._dsn, connect_timeout=self._connect_timeout_seconds
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
                 _ = cursor.execute(
                     "SELECT wa_jid FROM wa_identity WHERE employee_id = %s",
                     (employee_id,),

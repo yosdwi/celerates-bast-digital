@@ -51,11 +51,11 @@ jobs:
       - name: Frontend production build
         working-directory: frontend
         run: npm run build
-      - name: Install wa-session
-        working-directory: wa-session
+      - name: Install Meta WhatsApp gateway
+        working-directory: meta-wa-gateway
         run: npm ci --no-audit --no-fund
-      - name: wa-session tests
-        working-directory: wa-session
+      - name: Meta WhatsApp gateway tests
+        working-directory: meta-wa-gateway
         run: npm test
       - name: Install bot-worker
         working-directory: bot-worker
@@ -90,18 +90,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: test "$(docker image inspect digital-bast:ci --format '{{.Config.User}}')" = "10001:10001"
-      - name: Build wa-session image
-        run: docker build -f wa-session/Dockerfile -t digital-bast-wa-session:ci .
-      - name: Verify wa-session runtime package
+      - name: Build Meta WhatsApp gateway image
+        run: docker build -f meta-wa-gateway/Dockerfile -t digital-bast-meta-wa-gateway:ci .
+      - name: Verify Meta WhatsApp gateway runtime package
         run: |
-          test "$(docker image inspect digital-bast-wa-session:ci --format '{{.Config.User}}')" = "10001:10001"
-          docker run --rm --entrypoint node digital-bast-wa-session:ci -e "require('/opt/wa-session/outbound.js'); require('/opt/wa-session/delayed-notice.js'); require('/opt/wa-session/interactive.js')"
-      - name: Build whatsmeow-session image
-        run: docker build -f whatsmeow-session/Dockerfile -t digital-bast-whatsmeow-session:ci .
-      - name: Verify whatsmeow-session runtime image
-        run: |
-          test "$(docker image inspect digital-bast-whatsmeow-session:ci --format '{{.Config.User}}')" = "10001:10001"
-          docker image inspect digital-bast-whatsmeow-session:ci --format '{{.Config.Env}}' | grep -q 'BOT_AUTH_DIR=/data/auth-whatsmeow'
+          test "$(docker image inspect digital-bast-meta-wa-gateway:ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint node digital-bast-meta-wa-gateway:ci -e "require('/opt/meta-wa-gateway/server.js'); require('/opt/meta-wa-gateway/meta-client.js')"
       - name: Build bot-worker image
         run: docker build -f bot-worker/Dockerfile --build-arg APP_IMAGE=digital-bast:ci -t digital-bast-bot-worker:ci .
       - name: Verify bot-worker runtime package
@@ -121,6 +115,15 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: digital-bast:ci
+          format: table
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Trivy Meta gateway vulnerability gate
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: digital-bast-meta-wa-gateway:ci
           format: table
           scanners: vuln
           severity: CRITICAL,HIGH

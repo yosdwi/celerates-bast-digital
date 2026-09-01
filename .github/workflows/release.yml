@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       digest: ${{ steps.build.outputs.digest }}
+      gateway_digest: ${{ steps.gateway.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +52,20 @@ jobs:
         with:
           subject-name: ghcr.io/${{ github.repository }}
           subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - uses: docker/build-push-action@v6
+        id: gateway
+        with:
+          context: .
+          file: meta-wa-gateway/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}-meta-wa-gateway:${{ env.RELEASE_SHA }}
+          provenance: true
+          sbom: true
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}-meta-wa-gateway
+          subject-digest: ${{ steps.gateway.outputs.digest }}
           push-to-registry: true
 
   production:
@@ -78,24 +93,28 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git archive --format=tar "$RELEASE_SHA" -- compose.yaml compose.production.yaml scripts config/nginx/nginx.conf wa-session whatsmeow-session bot-worker > release-assets.tar
+          git archive --format=tar "$RELEASE_SHA" -- compose.yaml compose.production.yaml scripts config/nginx meta-wa-gateway bot-worker > release-assets.tar
       - name: Blue-green production deployment
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
           RELEASE_IMAGE: ghcr.io/${{ github.repository }}@${{ needs.publish.outputs.digest }}
+          META_GATEWAY_IMAGE: ghcr.io/${{ github.repository }}-meta-wa-gateway@${{ needs.publish.outputs.gateway_digest }}
         run: |
           set -euo pipefail
           asset_name=".release-assets-${RELEASE_SHA}.tar"
           scp release-assets.tar "$DEPLOY_USER@$DEPLOY_HOST:${DEPLOY_PATH}/${asset_name}"
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") RELEASE_SHA=$(printf '%q' "$RELEASE_SHA") APP_IMAGE=$(printf '%q' "$RELEASE_IMAGE") ASSET_NAME=$(printf '%q' "$asset_name") sh -s" <<'REMOTE'
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") RELEASE_SHA=$(printf '%q' "$RELEASE_SHA") APP_IMAGE=$(printf '%q' "$RELEASE_IMAGE") META_WA_GATEWAY_IMAGE=$(printf '%q' "$META_GATEWAY_IMAGE") ASSET_NAME=$(printf '%q' "$asset_name") sh -s" <<'REMOTE'
           set -eu
           case "$RELEASE_SHA" in *[!0123456789abcdef]*|'') exit 64 ;; esac
           test "${#RELEASE_SHA}" -eq 40 || exit 64
           digest=${APP_IMAGE#*@sha256:}
           case "$digest" in *[!0123456789abcdef]*|'') exit 64 ;; esac
           test "${#digest}" -eq 64 || exit 64
+          gateway_digest=${META_WA_GATEWAY_IMAGE#*@sha256:}
+          case "$gateway_digest" in *[!0123456789abcdef]*|'') exit 64 ;; esac
+          test "${#gateway_digest}" -eq 64 || exit 64
           stage_dir=$(mktemp -d "$DEPLOY_PATH/.release-stage.XXXXXX")
           trap 'rm -rf "$stage_dir"' EXIT HUP INT TERM
           tar -xf "$DEPLOY_PATH/$ASSET_NAME" -C "$stage_dir"
@@ -104,8 +123,8 @@ jobs:
           test -f "$stage_dir/compose.yaml"
           test -f "$stage_dir/compose.production.yaml"
           test -f "$stage_dir/config/nginx/nginx.conf"
-          test -f "$stage_dir/wa-session/Dockerfile"
-          test -f "$stage_dir/whatsmeow-session/Dockerfile"
+          test -f "$stage_dir/config/nginx/active-slot.conf.template"
+          test -f "$stage_dir/meta-wa-gateway/Dockerfile"
           test -f "$stage_dir/bot-worker/Dockerfile"
           mkdir -p "$DEPLOY_PATH/releases"
           release_dir="$DEPLOY_PATH/releases/$RELEASE_SHA-$(date +%s)-$$"
@@ -121,6 +140,7 @@ jobs:
           # the stale local image instead of failing, so this has to be
           # gotten right, not just left to be caught by a health check.
           release_app_image=$APP_IMAGE
+          release_gateway_image=$META_WA_GATEWAY_IMAGE
           # preflight.sh/deploy.sh read SECRETS_GID (and other config) as plain
           # shell variables -- only `docker compose` subcommands auto-load
           # .env. The symlink above makes .env present in this directory, but
@@ -130,5 +150,5 @@ jobs:
           # DEPLOY_PATH itself, not this release directory -- override
           # unconditionally rather than with ${VAR:-default}, since sourcing
           # .env above already set it to that (now-wrong-here) relative value.
-          SECRETS_DIR="$DEPLOY_PATH/secrets" APP_IMAGE="$release_app_image" scripts/deploy.sh
+          SECRETS_DIR="$DEPLOY_PATH/secrets" APP_IMAGE="$release_app_image" META_WA_GATEWAY_IMAGE="$release_gateway_image" scripts/deploy.sh
           REMOTE

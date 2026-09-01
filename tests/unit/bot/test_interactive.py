@@ -19,7 +19,7 @@ def test_digit_shortcuts_defaults_to_true() -> None:
 def test_digit_shortcuts_can_be_disabled_for_screens_with_their_own_numbered_list() -> None:
     # dm_workflow._attendance_status_reply sets this False whenever its own
     # text already asks for a bare-number reply to pick an evidence
-    # candidate -- wa-session's digit-selects-a-button shortcut must not
+    # candidate -- the transport's digit-selects-a-button shortcut must not
     # shadow that more specific, pre-existing numbered flow.
     payload = _payload(
         interactive(

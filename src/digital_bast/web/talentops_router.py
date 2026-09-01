@@ -310,8 +310,7 @@ def talentops_router(  # noqa: C901, PLR0915
         return WhatsAppStatusResponse(
             connection=result.connection,
             me=result.me,
-            qr_data_url=result.qr_data_url,
-            pairing_code=result.pairing_code,
+            provider=result.provider,
         )
 
     async def command_center(
