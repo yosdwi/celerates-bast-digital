@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Final
 
 import anyio
@@ -58,13 +58,23 @@ _STATUS_COMMANDS: Final = frozenset({"status", "status saya", "lihat status", "c
 _REQUEST_COMMANDS: Final = frozenset(
     {"request", "requests", "request saya", "pengajuan", "pengajuan saya"}
 )
+_CLOSEOUT_GRACE_DAYS: Final = 7
 # dm_workflow intentionally waits before automated replies. Preserve the same
 # sending pattern for responses owned by this entrypoint.
 _REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
 
 
 def _period_now() -> DateRange:
+    """Default Talent BAST period used by the PMO operational guideline.
+
+    During the first seven days of a new month, the administration flow is
+    closing the previous BAST month. Explicit natural-language periods still
+    override this through TalentInterpretation.
+    """
     today = datetime.now(JAKARTA).date()
+    if today.day <= _CLOSEOUT_GRACE_DAYS:
+        last_previous = today.replace(day=1) - timedelta(days=1)
+        return DateRange(last_previous.replace(day=1), last_previous)
     return DateRange(today.replace(day=1), today)
 
 
@@ -88,12 +98,8 @@ def _latest_request_statuses(
         if not period.start <= item.work_date <= period.end:
             continue
         latest.setdefault(item.work_date, item)
-    pending = sum(
-        item.status is ResolutionStatus.PENDING for item in latest.values()
-    )
-    rejected = sum(
-        item.status is ResolutionStatus.REJECTED for item in latest.values()
-    )
+    pending = sum(item.status is ResolutionStatus.PENDING for item in latest.values())
+    rejected = sum(item.status is ResolutionStatus.REJECTED for item in latest.values())
     return pending, rejected
 
 
@@ -121,8 +127,14 @@ async def _task_mobile_reply(
     if url is None:
         lines.extend(("", "Talent Mobile sedang tidak tersedia. Coba lagi atau hubungi admin."))
     else:
-        lines.extend(("", "Upload Evidence langsung pada Task yang sesuai:", url))
-    lines.extend(("", "Task/Evidence tidak membutuhkan approval PMO."))
+        lines.extend(
+            (
+                "",
+                "Buka Task & Evidence, lampirkan evidence pada task yang belum lengkap, "
+                "lalu tekan *Ajukan ke PMO*:",
+                url,
+            )
+        )
     return "\n".join(lines)
 
 
@@ -241,7 +253,7 @@ async def _free_text_interpretation(
 
 async def _period_for_exact_action(jid: str) -> DateRange:
     # A controlled button never needs AI, but it should keep the period of the
-    # screen it came from. With no recent context, fall back to month-to-date.
+    # screen it came from. With no recent context, use the BAST closeout period.
     context = await create_talent_conversation_context_service().load(jid)
     return context.period if context is not None else _period_now()
 
