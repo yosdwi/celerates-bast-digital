@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 from typing import Final, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -10,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
 from digital_bast.application.workflow_control import WorkflowRole
 from digital_bast.domain.completion import DateRange
-from digital_bast.domain.time import JAKARTA, month_dates
+from digital_bast.domain.time import month_dates
 from digital_bast.operations import create_rebind_onboarding_service
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import require_session
@@ -130,7 +129,7 @@ async def _links(
 
 
 def talent_mobile_links_router(dependencies: WebDependencies) -> APIRouter:
-    router = APIRouter(prefix=_API_PREFIX)
+    router = APIRouter(prefix=_API_PREFIX, tags=["talentops"])
 
     async def links(
         request: Request,
