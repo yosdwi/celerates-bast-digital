@@ -118,7 +118,7 @@ def issue_pmo_talent_mobile_token(  # noqa: PLR0913
     """
     normalized_issuer = issuer.strip()
     if not normalized_issuer:
-        raise ValueError("PMO issuer is required")
+        raise ValueError
     issued_at = now or datetime.now(UTC)
     if issued_at.tzinfo is None:
         issued_at = issued_at.replace(tzinfo=UTC)
@@ -151,7 +151,7 @@ def _parse_period(start: object, end: object) -> DateRange | None:
     return period
 
 
-def verify_talent_mobile_token(  # noqa: C901, PLR0911
+def verify_talent_mobile_token(  # noqa: C901, PLR0911, PLR0912
     secret: str,
     token: str,
     *,
