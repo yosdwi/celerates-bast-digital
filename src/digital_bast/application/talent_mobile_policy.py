@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, final
+from typing import Final, cast, final
 
 import psycopg
 from anyio.to_thread import run_sync
@@ -63,8 +63,15 @@ class TalentMobileLinkPolicyService:
                 service="postgres",
                 operation="talent_mobile_link_policy",
             ) from error
-        ttl_days = DEFAULT_PMO_LINK_TTL_DAYS if row is None else int(row[0])
-        return TalentMobileLinkPolicy(scope_key=scope_key, ttl_days=ttl_days)
+        ttl_days = (
+            DEFAULT_PMO_LINK_TTL_DAYS
+            if row is None
+            else cast(int, row[0])
+        )
+        return TalentMobileLinkPolicy(
+            scope_key=scope_key,
+            ttl_days=_validate_ttl_days(ttl_days),
+        )
 
     def _save(
         self,
