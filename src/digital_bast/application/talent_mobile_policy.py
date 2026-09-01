@@ -66,7 +66,7 @@ class TalentMobileLinkPolicyService:
         ttl_days = (
             DEFAULT_PMO_LINK_TTL_DAYS
             if row is None
-            else cast(int, row[0])
+            else cast("int", row[0])
         )
         return TalentMobileLinkPolicy(
             scope_key=scope_key,
