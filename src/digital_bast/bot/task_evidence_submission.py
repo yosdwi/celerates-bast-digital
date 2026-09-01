@@ -1,9 +1,10 @@
 """Talent Mobile Task Evidence staging and final PMO submission.
 
 The PMO guideline separates two actions: attach evidence to Closed Redmine
-tasks, then explicitly "Ajukan ke PMO". A staged upload is intentionally not a
-readiness fact yet. Final submission timestamps every eligible staged row in
-the signed period; completion/BAST readers count only submitted rows.
+tasks, then explicitly "Ajukan ke PMO". Draft uploads are kept outside the
+final task_evidence table so every existing readiness/BAST projection remains
+blind to them. Final submission moves eligible drafts transactionally into the
+final evidence table.
 
 Legacy WhatsApp evidence continues through bot.evidence.EvidenceService and is
 not changed by this service.
@@ -118,13 +119,19 @@ class TaskEvidenceSubmissionService:
                            t.record_key AS task_key,
                            t.title,
                            t.work_date,
-                           COUNT(e.id) FILTER (WHERE e.submitted_at IS NOT NULL) AS evidence_count,
-                           COUNT(e.id) FILTER (WHERE e.submitted_at IS NULL) AS staged_count
+                           (
+                               SELECT COUNT(*)
+                               FROM task_evidence e
+                               WHERE e.task_id = t.id
+                           ) AS evidence_count,
+                           (
+                               SELECT COUNT(*)
+                               FROM task_evidence_staged s
+                               WHERE s.task_id = t.id
+                           ) AS staged_count
                     FROM tasks t
-                    LEFT JOIN task_evidence e ON e.task_id = t.id
                     WHERE t.employee_id = %s
                       AND lower(t.status) = %s
-                    GROUP BY t.id, t.task_source, t.record_key, t.title, t.work_date
                     ORDER BY t.work_date, t.record_key
                     """,
                     (employee_id, CLOSED_STATUS),
@@ -182,11 +189,10 @@ class TaskEvidenceSubmissionService:
                     return UploadResult(UploadOutcome.NOT_CLOSED)
                 _ = cursor.execute(
                     """
-                    INSERT INTO task_evidence (
+                    INSERT INTO task_evidence_staged (
                         task_id, employee_id, work_date,
-                        caption, content_type, byte_size, sha256, image,
-                        submitted_at, submitted_by_jid
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL)
+                        caption, content_type, byte_size, sha256, image
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         row.task_id,
@@ -208,23 +214,42 @@ class TaskEvidenceSubmissionService:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
                     """
-                    UPDATE task_evidence e
-                    SET submitted_at = now(), submitted_by_jid = %s
-                    FROM tasks t
-                    WHERE e.task_id = t.id
-                      AND e.employee_id = %s
-                      AND e.work_date BETWEEN %s AND %s
-                      AND e.submitted_at IS NULL
-                      AND t.employee_id = %s
-                      AND lower(t.status) = %s
+                    WITH moved AS (
+                        DELETE FROM task_evidence_staged s
+                        USING tasks t
+                        WHERE s.task_id = t.id
+                          AND s.employee_id = %s
+                          AND s.work_date BETWEEN %s AND %s
+                          AND t.employee_id = %s
+                          AND lower(t.status) = %s
+                        RETURNING
+                            s.task_id,
+                            s.employee_id,
+                            s.work_date,
+                            s.caption,
+                            s.content_type,
+                            s.byte_size,
+                            s.sha256,
+                            s.image
+                    )
+                    INSERT INTO task_evidence (
+                        task_id, employee_id, work_date,
+                        caption, content_type, byte_size, sha256, image,
+                        submitted_at, submitted_by_jid
+                    )
+                    SELECT
+                        task_id, employee_id, work_date,
+                        caption, content_type, byte_size, sha256, image,
+                        now(), %s
+                    FROM moved
                     """,
                     (
-                        jid,
                         employee_id,
                         period.start,
                         period.end,
                         employee_id,
                         CLOSED_STATUS,
+                        jid,
                     ),
                 )
                 return max(cursor.rowcount, 0)
