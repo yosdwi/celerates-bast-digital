@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
@@ -11,8 +11,10 @@ from digital_bast.application.workflow_control import WorkflowRole
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import month_dates
 from digital_bast.operations import create_rebind_onboarding_service
-from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import require_session
+
+if TYPE_CHECKING:
+    from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX: Final = "/api/talentops/v1"
 _ADMIN_ROLES: Final = frozenset({"owner", "admin"})
