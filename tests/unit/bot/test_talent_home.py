@@ -145,7 +145,11 @@ def _patch_home_services(
         "create_attendance_resolution_service",
         lambda: _ResolutionService(requests),
     )
-    monkeypatch.setattr(talent_home, "create_evidence_service", lambda: _EvidenceService(tasks))
+    monkeypatch.setattr(
+        talent_home,
+        "create_task_evidence_submission_service",
+        lambda: _EvidenceService(tasks),
+    )
 
 
 @pytest.fixture(autouse=True)
