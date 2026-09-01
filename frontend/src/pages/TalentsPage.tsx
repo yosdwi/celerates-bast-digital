@@ -44,6 +44,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
   const [linksLoading, setLinksLoading] = useState(false);
   const [linksError, setLinksError] = useState(false);
   const [copiedEmployee, setCopiedEmployee] = useState<string | null>(null);
+  const [copiedListCount, setCopiedListCount] = useState<number | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState("Which talents need PMO attention this period, and why?");
   const [aiAnswer, setAiAnswer] = useState<string | null>(null);
@@ -74,6 +75,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
     setLinksLoading(true);
     setLinksError(false);
     setCopiedEmployee(null);
+    setCopiedListCount(null);
     try {
       setLinks(await getTalentMobileLinks(data.period));
     } catch {
@@ -87,6 +89,7 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
   useEffect(() => {
     setLinks(null);
     setCopiedEmployee(null);
+    setCopiedListCount(null);
     if (tab === "links") void loadLinks();
     // Period changes must invalidate previously issued signed links.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +103,54 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
       window.setTimeout(() => setCopiedEmployee((current) => current === item.employee_id ? null : current), 1800);
     } catch {
       setCopiedEmployee(null);
+    }
+  }
+
+  async function copyVisibleTalentLinks() {
+    if (linksLoading || visible.length === 0) return;
+    setLinksError(false);
+    setCopiedListCount(null);
+
+    let currentLinks = links;
+    if (!currentLinks) {
+      setLinksLoading(true);
+      try {
+        currentLinks = await getTalentMobileLinks(data.period);
+        setLinks(currentLinks);
+      } catch {
+        setLinksError(true);
+        return;
+      } finally {
+        setLinksLoading(false);
+      }
+    }
+
+    const currentLinksByEmployee = new Map(currentLinks.items.map((item) => [item.employee_id, item]));
+    const rows = visible.flatMap((talent) => {
+      const url = currentLinksByEmployee.get(talent.employee_id)?.url;
+      return url ? [`${talent.name} — ${url}`] : [];
+    });
+    if (rows.length === 0) return;
+
+    const filters = [
+      team === "all" ? "Semua tim" : team,
+      state === "all" ? "Semua readiness" : state === "attention" ? "Need attention" : "Ready",
+    ];
+    if (search.trim()) filters.push(`Search: ${search.trim()}`);
+
+    const text = [
+      `Talent Mobile — ${data.period.label}`,
+      `Filter: ${filters.join(" · ")}`,
+      "",
+      ...rows,
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedListCount(rows.length);
+      window.setTimeout(() => setCopiedListCount(null), 2200);
+    } catch {
+      setCopiedListCount(null);
     }
   }
 
@@ -155,16 +206,21 @@ export default function TalentsPage({ session, data, onNavigate, onOpenTalent }:
               <span>{visible.length} of {data.readiness.length} talents · {data.period.label}</span>
             </div>
             {tab === "links" ? (
-              <button className="secondary-button" type="button" onClick={() => void loadLinks()} disabled={linksLoading}>
-                {linksLoading ? "Generating…" : "Refresh URLs"}
-              </button>
+              <div>
+                <button className="secondary-button" type="button" onClick={() => void copyVisibleTalentLinks()} disabled={linksLoading || visible.length === 0}>
+                  {copiedListCount === null ? "Copy All Talent Links" : `Copied ${copiedListCount} links`}
+                </button>{" "}
+                <button className="secondary-button" type="button" onClick={() => void loadLinks()} disabled={linksLoading}>
+                  {linksLoading ? "Generating…" : "Refresh URLs"}
+                </button>
+              </div>
             ) : null}
           </div>
 
           {tab === "links" ? (
             <div className="talent-url-note">
               <strong>Link personal · berlaku {validityLabel(links?.ttl_seconds)}.</strong>
-              <span>URL tersedia untuk semua Talent pada hasil filter dan mengikuti periode aktif. Binding WhatsApp tidak diperlukan untuk link yang diterbitkan PMO.</span>
+              <span>URL tersedia untuk semua Talent pada hasil filter dan mengikuti periode aktif. Copy All Talent Links menyalin nama + URL sesuai filter saat ini, siap ditempel ke grup.</span>
             </div>
           ) : null}
 
