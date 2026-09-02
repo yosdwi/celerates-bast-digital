@@ -1,10 +1,10 @@
 """Expose attendance evidence metadata safely to NocoDB V2.
 
-The raw attendance_evidence table contains the uploaded binary payload. NocoDB
+The raw attendance_evidence table contains the uploaded binary image. NocoDB
 only needs operational metadata and the linked PMO resolution state, so expose a
-read-only view that deliberately omits file_data. This keeps the existing
-attendance and approval business rules unchanged while making evidence rows
-usable from the V2 data workspace.
+read-only view that deliberately omits image. This keeps the existing attendance
+and approval business rules unchanged while making evidence rows usable from
+the V2 data workspace.
 """
 
 from collections.abc import Sequence
@@ -23,18 +23,15 @@ def upgrade() -> None:
         CREATE VIEW attendance_evidence_nocodb_v2 AS
         SELECT
             e.id,
-            e.attendance_record_key,
+            e.attendance_id,
+            a.record_key AS attendance_record_key,
             e.employee_id,
             e.work_date,
-            e.media_type,
-            e.file_name,
-            e.content_type,
-            octet_length(e.file_data) AS byte_size,
-            e.sha256,
             e.caption,
-            e.source,
-            e.whatsapp_message_id,
-            e.created_at,
+            e.content_type,
+            e.byte_size,
+            e.sha256,
+            e.uploaded_at,
             e.requires_resolution,
             r.id AS resolution_request_id,
             r.resolution_type,
@@ -47,6 +44,8 @@ def upgrade() -> None:
             r.reviewed_at,
             r.rejection_reason
         FROM attendance_evidence e
+        JOIN attendance a
+            ON a.id = e.attendance_id
         LEFT JOIN attendance_resolution_requests r
             ON r.evidence_id = e.id;
 
