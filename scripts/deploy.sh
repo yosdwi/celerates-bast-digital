@@ -129,12 +129,18 @@ else:
 wait_for_shadow_readiness() {
     shadow_url="http://web-$target:8000${SHADOW_PATH:-/health/ready}"
     elapsed=0
+    diagnosed=0
     while ! compose exec -T reverse-proxy wget -q -O /dev/null "$shadow_url"; do
+        # Emit component state on the first failure so a persistent dependency
+        # outage is visible immediately instead of only after the retry window.
+        # Keep retrying normally: this is diagnostic only and does not weaken
+        # the shadow readiness gate.
+        if [ "$diagnosed" = "0" ]; then
+            print_shadow_readiness_body
+            diagnosed=1
+        fi
         if [ "$elapsed" -ge "$timeout_seconds" ]; then
             printf '%s\n' "shadow readiness did not recover within ${timeout_seconds}s: $shadow_url" >&2
-            # BusyBox wget suppresses a 503 response body. Ask the candidate
-            # directly so component-level readiness status reaches CI logs.
-            # The endpoint contains status names only and never secret values.
             print_shadow_readiness_body
             compose exec -T reverse-proxy wget -S -O - "$shadow_url" 2>&1 || true
             die "target slot failed shadow gate" 1
