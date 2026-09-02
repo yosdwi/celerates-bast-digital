@@ -1,10 +1,11 @@
 """Talent Mobile Task Evidence staging and final PMO submission.
 
-The PMO guideline separates two actions: attach evidence to Closed Redmine
-tasks, then explicitly "Ajukan ke PMO". Draft uploads are kept outside the
-final task_evidence table so every existing readiness/BAST projection remains
-blind to them. Final submission moves eligible drafts transactionally into the
-final evidence table.
+The PMO guideline separates two actions: attach evidence to eligible Closed
+operational tasks, then explicitly "Ajukan ke PMO". Eligible tasks are the
+existing Redmine tasks plus Shifting/IoT support tickets ingested from the
+Google Sheet. Draft uploads are kept outside the final task_evidence table so
+every existing readiness/BAST projection remains blind to them. Final
+submission moves eligible drafts transactionally into the final evidence table.
 
 Legacy WhatsApp evidence continues through bot.evidence.EvidenceService and is
 not changed by this service.
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
     from datetime import date
 
     from digital_bast.domain.completion import DateRange
+
+
+TASK_EVIDENCE_SOURCES = (TaskSource.REDMINE.value, TaskSource.GOOGLE_SHEET.value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,10 +142,10 @@ class TaskEvidenceSubmissionService:
                     FROM tasks t
                     WHERE t.employee_id = %s
                       AND lower(t.status) = %s
-                      AND t.task_source = %s
+                      AND t.task_source IN (%s, %s)
                     ORDER BY t.work_date, t.record_key
                     """,
-                    (employee_id, CLOSED_STATUS, TaskSource.REDMINE.value),
+                    (employee_id, CLOSED_STATUS, *TASK_EVIDENCE_SOURCES),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
@@ -183,10 +187,10 @@ class TaskEvidenceSubmissionService:
                     SELECT id AS task_id, employee_id, status, work_date
                     FROM tasks
                     WHERE record_key = %s
-                      AND task_source = %s
+                      AND task_source IN (%s, %s)
                     FOR UPDATE
                     """,
-                    (task_key, TaskSource.REDMINE.value),
+                    (task_key, *TASK_EVIDENCE_SOURCES),
                 )
                 row = cursor.fetchone()
                 if row is None:
@@ -243,7 +247,7 @@ class TaskEvidenceSubmissionService:
                           AND s.work_date BETWEEN %s AND %s
                           AND t.employee_id = %s
                           AND lower(t.status) = %s
-                          AND t.task_source = %s
+                          AND t.task_source IN (%s, %s)
                         RETURNING
                             s.task_id,
                             s.employee_id,
@@ -272,7 +276,7 @@ class TaskEvidenceSubmissionService:
                         period.end,
                         employee_id,
                         CLOSED_STATUS,
-                        TaskSource.REDMINE.value,
+                        *TASK_EVIDENCE_SOURCES,
                         jid,
                     ),
                 )
