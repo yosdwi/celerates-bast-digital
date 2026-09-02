@@ -51,7 +51,7 @@ def upgrade() -> None:
             ON r.evidence_id = e.id;
 
         COMMENT ON VIEW attendance_evidence_nocodb_v2 IS
-            'Read-only NocoDB V2 attendance evidence metadata; binary file_data is intentionally excluded.';
+            'Read-only NocoDB V2 attendance evidence metadata; binary excluded.';
         """
     )
     op.execute(
