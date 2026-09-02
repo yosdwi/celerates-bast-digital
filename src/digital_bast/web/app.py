@@ -112,16 +112,22 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
         auth_ready = await dependencies.authenticator.ready()
         backend_ready = await dependencies.backend.ready()
         ready = session_ready and auth_ready and backend_ready
+        component_status = {
+            "session": "ready" if session_ready else "not_ready",
+            "authentication": "ready" if auth_ready else "not_ready",
+            "backend": "ready" if backend_ready else "not_ready",
+        }
         return JSONResponse(
             {
                 "status": "ready" if ready else "not_ready",
-                "components": {
-                    "session": "ready" if session_ready else "not_ready",
-                    "authentication": "ready" if auth_ready else "not_ready",
-                    "backend": "ready" if backend_ready else "not_ready",
-                },
+                "components": component_status,
             },
             status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={
+                "X-Readiness-Session": component_status["session"],
+                "X-Readiness-Authentication": component_status["authentication"],
+                "X-Readiness-Backend": component_status["backend"],
+            },
         )
 
     _ = app.middleware("http")(_security_headers)
