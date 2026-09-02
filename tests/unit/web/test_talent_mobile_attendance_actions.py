@@ -7,7 +7,7 @@ def test_missing_both_accepts_cuti_and_sakit_without_clock_values() -> None:
         ("cuti", AbsenceType.CUTI),
         ("sakit", AbsenceType.SAKIT),
     ):
-        resolution_type, check_in, check_out, absence = mobile_router._resolution_shape(  # noqa: SLF001
+        resolution_type, check_in, check_out, absence = mobile_router._resolution_shape(
             "missing_both",
             action,
             None,
