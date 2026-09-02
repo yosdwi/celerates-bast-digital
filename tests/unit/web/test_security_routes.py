@@ -151,7 +151,31 @@ def test_health_and_readiness_are_public() -> None:
     ready = client.get("/health/ready")
 
     assert live.status_code == 200
-    assert ready.json() == {"status": "ready"}
+    assert ready.json() == {
+        "status": "ready",
+        "components": {
+            "session": "ready",
+            "authentication": "ready",
+            "backend": "ready",
+        },
+    }
+
+
+def test_readiness_identifies_authentication_outage() -> None:
+    client, _, _, authenticator = make_client()
+    authenticator.outage = True
+
+    ready = client.get("/health/ready")
+
+    assert ready.status_code == 503
+    assert ready.json() == {
+        "status": "not_ready",
+        "components": {
+            "session": "ready",
+            "authentication": "not_ready",
+            "backend": "ready",
+        },
+    }
 
 
 def test_login_rotates_fixed_session_and_sets_secure_cookie() -> None:
