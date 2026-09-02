@@ -107,15 +107,35 @@ rollback_worker() {
     return 0
 }
 
+print_shadow_readiness_body() {
+    compose exec -T "web-$target" python -c '
+import sys
+import urllib.error
+import urllib.request
+url = "http://127.0.0.1:8000/health/ready"
+try:
+    response = urllib.request.urlopen(url, timeout=15)
+except urllib.error.HTTPError as error:
+    print(error.read().decode("utf-8", "replace"))
+    sys.exit(0)
+except Exception as error:
+    print(f"readiness diagnostic failed: {type(error).__name__}: {error}", file=sys.stderr)
+    sys.exit(0)
+else:
+    print(response.read().decode("utf-8", "replace"))
+' || true
+}
+
 wait_for_shadow_readiness() {
     shadow_url="http://web-$target:8000${SHADOW_PATH:-/health/ready}"
     elapsed=0
     while ! compose exec -T reverse-proxy wget -q -O /dev/null "$shadow_url"; do
         if [ "$elapsed" -ge "$timeout_seconds" ]; then
             printf '%s\n' "shadow readiness did not recover within ${timeout_seconds}s: $shadow_url" >&2
-            # Emit one final HTTP exchange for diagnosis without weakening the
-            # gate. This contains status/response only; application secrets are
-            # never printed by the readiness endpoint.
+            # BusyBox wget suppresses a 503 response body. Ask the candidate
+            # directly so component-level readiness status reaches CI logs.
+            # The endpoint contains status names only and never secret values.
+            print_shadow_readiness_body
             compose exec -T reverse-proxy wget -S -O - "$shadow_url" 2>&1 || true
             die "target slot failed shadow gate" 1
         fi
