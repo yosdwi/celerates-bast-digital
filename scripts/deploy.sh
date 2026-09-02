@@ -107,6 +107,23 @@ rollback_worker() {
     return 0
 }
 
+wait_for_shadow_readiness() {
+    shadow_url="http://web-$target:8000${SHADOW_PATH:-/health/ready}"
+    elapsed=0
+    while ! compose exec -T reverse-proxy wget -q -O /dev/null "$shadow_url"; do
+        if [ "$elapsed" -ge "$timeout_seconds" ]; then
+            printf '%s\n' "shadow readiness did not recover within ${timeout_seconds}s: $shadow_url" >&2
+            # Emit one final HTTP exchange for diagnosis without weakening the
+            # gate. This contains status/response only; application secrets are
+            # never printed by the readiness endpoint.
+            compose exec -T reverse-proxy wget -S -O - "$shadow_url" 2>&1 || true
+            die "target slot failed shadow gate" 1
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+}
+
 if [ "$DRY_RUN" = "0" ]; then
     timeout_seconds=${HEALTH_TIMEOUT_SECONDS:-180}
     elapsed=0
@@ -122,7 +139,12 @@ if [ "$DRY_RUN" = "0" ]; then
     # still run before any traffic moves: a failure here leaves the active
     # slot serving exactly as it was.
     compose run --rm --no-deps "web-$target" alembic upgrade head || die "migration gate failed; active slot preserved" 1
-    compose exec -T reverse-proxy wget -q -O /dev/null "http://web-$target:8000${SHADOW_PATH:-/health/ready}" || die "target slot failed shadow gate" 1
+    # Readiness depends on Postgres, Redis, and the NocoDB authentication DB.
+    # A single request immediately after a stack recreate can race a dependency
+    # reconnect even when the candidate itself is healthy. Poll the shadow slot
+    # for the same bounded health timeout; traffic is still on the current slot
+    # throughout this loop, and a persistent failure still aborts the rollout.
+    wait_for_shadow_readiness
 
     # Only replace bot-worker after the candidate web + schema passed. It
     # holds no WhatsApp session state (wa-session does, and is untouched
