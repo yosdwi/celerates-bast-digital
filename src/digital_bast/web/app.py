@@ -108,15 +108,19 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
         return JSONResponse({"status": "healthy", "service": "digital-bast-admin"})
 
     async def _readiness() -> JSONResponse:
-        ready = all(
-            (
-                await dependencies.sessions.ready(),
-                await dependencies.authenticator.ready(),
-                await dependencies.backend.ready(),
-            )
-        )
+        session_ready = await dependencies.sessions.ready()
+        auth_ready = await dependencies.authenticator.ready()
+        backend_ready = await dependencies.backend.ready()
+        ready = session_ready and auth_ready and backend_ready
         return JSONResponse(
-            {"status": "ready" if ready else "not_ready"},
+            {
+                "status": "ready" if ready else "not_ready",
+                "components": {
+                    "session": "ready" if session_ready else "not_ready",
+                    "authentication": "ready" if auth_ready else "not_ready",
+                    "backend": "ready" if backend_ready else "not_ready",
+                },
+            },
             status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
