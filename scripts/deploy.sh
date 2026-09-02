@@ -109,20 +109,132 @@ rollback_worker() {
 
 print_shadow_readiness_body() {
     compose exec -T "web-$target" python -c '
+import ipaddress
+import json
+import os
+import socket
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+import psycopg
+from psycopg.conninfo import conninfo_to_dict
+
 url = "http://127.0.0.1:8000/health/ready"
 try:
     response = urllib.request.urlopen(url, timeout=15)
 except urllib.error.HTTPError as error:
-    print(error.read().decode("utf-8", "replace"))
-    sys.exit(0)
+    body = error.read().decode("utf-8", "replace")
 except Exception as error:
-    print(f"readiness diagnostic failed: {type(error).__name__}: {error}", file=sys.stderr)
+    print(f"readiness diagnostic failed: {type(error).__name__}", file=sys.stderr)
     sys.exit(0)
 else:
-    print(response.read().decode("utf-8", "replace"))
+    body = response.read().decode("utf-8", "replace")
+
+print(body)
+try:
+    readiness = json.loads(body)
+except (TypeError, ValueError):
+    sys.exit(0)
+if readiness.get("components", {}).get("authentication") != "not_ready":
+    sys.exit(0)
+
+probe = {
+    "dsn_file": "unknown",
+    "host_scope": "unknown",
+    "port": None,
+    "dns": "not_checked",
+    "tcp": "not_checked",
+    "postgres": "not_checked",
+    "error_category": None,
+}
+try:
+    dsn_file = os.environ.get("NOCODB_DATABASE_DSN_FILE", "/run/secrets/nocodb_database_dsn")
+    dsn = Path(dsn_file).read_text(encoding="utf-8").strip()
+    probe["dsn_file"] = "present" if dsn else "empty"
+    if not dsn:
+        probe["error_category"] = "empty_dsn"
+        print(json.dumps({"authentication_probe": probe}, separators=(",", ":")))
+        sys.exit(0)
+    info = conninfo_to_dict(dsn)
+    host = info.get("host") or ""
+    port = int(info.get("port") or 5432)
+    probe["port"] = port
+    if not host:
+        probe["host_scope"] = "default_local_socket"
+    elif host.casefold() in {"localhost", "host.docker.internal"}:
+        probe["host_scope"] = "loopback" if host.casefold() == "localhost" else "docker_host_gateway"
+    else:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            probe["host_scope"] = "hostname"
+        else:
+            probe["host_scope"] = "private_ip" if address.is_private else "public_ip"
+
+    if host:
+        try:
+            addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except OSError:
+            probe["dns"] = "fail"
+            probe["error_category"] = "dns_failed"
+        else:
+            probe["dns"] = "ok"
+            target_address = addresses[0][4]
+            try:
+                connection = socket.create_connection(target_address, timeout=3)
+            except TimeoutError:
+                probe["tcp"] = "fail"
+                probe["error_category"] = "tcp_timeout"
+            except OSError as error:
+                probe["tcp"] = "fail"
+                if getattr(error, "errno", None) in {101, 113}:
+                    probe["error_category"] = "network_unreachable"
+                elif getattr(error, "errno", None) == 111:
+                    probe["error_category"] = "connection_refused"
+                else:
+                    probe["error_category"] = "tcp_failed"
+            else:
+                probe["tcp"] = "ok"
+                connection.close()
+
+    try:
+        with psycopg.connect(dsn, connect_timeout=5) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                row = cursor.fetchone()
+        probe["postgres"] = "ok" if row else "fail"
+        if row:
+            probe["error_category"] = None
+    except psycopg.Error as error:
+        probe["postgres"] = "fail"
+        message = str(error).casefold()
+        if "password authentication failed" in message:
+            category = "credential_rejected"
+        elif "database" in message and "does not exist" in message:
+            category = "database_missing"
+        elif "pg_hba.conf" in message or "no pg_hba.conf entry" in message:
+            category = "pg_hba_rejected"
+        elif "connection refused" in message:
+            category = "connection_refused"
+        elif "timeout" in message:
+            category = "connect_timeout"
+        elif "could not translate host name" in message or "name or service not known" in message:
+            category = "dns_failed"
+        elif "network is unreachable" in message or "no route to host" in message:
+            category = "network_unreachable"
+        elif "ssl" in message:
+            category = "ssl_error"
+        else:
+            category = "postgres_connection_error"
+        probe["error_category"] = category
+        if getattr(error, "sqlstate", None):
+            probe["sqlstate"] = error.sqlstate
+except Exception as error:
+    probe["error_category"] = f"probe_{type(error).__name__}"
+
+print(json.dumps({"authentication_probe": probe}, separators=(",", ":")))
 ' || true
 }
 
