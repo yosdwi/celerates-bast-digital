@@ -268,6 +268,27 @@ def make_client(authenticated: bool, *, bot_bridge_status: bool = True) -> TestC
     return client
 
 
+def test_attendance_gap_submit_route_has_no_slash_unsafe_path_params() -> None:
+    # employee_id (e.g. "MTG-TF/2024110292") and attendance_key (e.g.
+    # "attendance:2026-08-17:MTG-TF/2024110292") both contain literal "/" --
+    # every employee has one. As path params they don't route (404 for
+    # everyone); they must travel as form fields on a fixed path instead.
+    app = make_client(authenticated=True).app
+    included = [route for route in app.routes if hasattr(route, "original_router")]
+    routes = [
+        route
+        for router in included
+        for route in router.original_router.routes
+        if getattr(route, "path", "") == "/api/talentops/v1/attendance-gaps"
+        and "POST" in getattr(route, "methods", set())
+    ]
+    assert routes, "POST /api/talentops/v1/attendance-gaps route is not registered"
+    for route in routes:
+        assert "{" not in route.path, (
+            f"attendance-gaps POST route regressed to a path param: {route.path}"
+        )
+
+
 def test_talentops_api_requires_session() -> None:
     response = make_client(authenticated=False).get("/api/talentops/v1/command-center")
     assert response.status_code == 401

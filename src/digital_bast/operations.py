@@ -64,6 +64,10 @@ def _exports_directory() -> Path:
     return configured if configured is not None else _DEFAULT_EXPORTS_DIRECTORY
 
 
+def bast_artifact_path(report_type: str, year: int, month: int) -> Path:
+    return _exports_directory() / f"BAST_{report_type}_{year}-{month:02d}.pdf"
+
+
 def _outbound_gateway(
     settings: Settings,
 ) -> BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway:
@@ -326,9 +330,7 @@ async def generate_bast(
     report = await assemble(report_type, period.start.year, period.start.month, secret)
     pdf_bytes = await render_pdf(report.editor_html)
     _ = await PostgresBastArtifactStore(secret).save(report)
-    exports_directory = _exports_directory()
-    exports_directory.mkdir(parents=True, exist_ok=True)
-    filename = f"BAST_{report_type}_{report.year}-{report.month:02d}.pdf"
-    path = exports_directory / filename
+    path = bast_artifact_path(report_type, report.year, report.month)
+    path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_bytes(pdf_bytes)
     return path, report

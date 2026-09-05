@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 40px;
+            margin: 0;
             background-color: white;
         }
         .header {
@@ -29,19 +29,20 @@
             background-color: #9BB5D6;
             color: #000;
             font-weight: bold;
-            padding: 10px 8px;
+            font-size: 11px;
+            padding: 8px 4px;
             text-align: center;
             border: 1px solid #000;
             vertical-align: middle;
         }
         .dev-kualitas-section th:nth-child(1) { width: 5%; }  /* No */
-        .dev-kualitas-section th:nth-child(2) { width: 25%; } /* Task List */
-        .dev-kualitas-section th:nth-child(3) { width: 15%; } /* Requestor */
-        .dev-kualitas-section th:nth-child(4) { width: 15%; } /* PIC */
-        .dev-kualitas-section th:nth-child(5) { width: 10%; } /* Status */
-        .dev-kualitas-section th:nth-child(6) { width: 10%; } /* Start Date */
-        .dev-kualitas-section th:nth-child(7) { width: 10%; } /* End Date */
-        .dev-kualitas-section th:nth-child(8) { width: 10%; } /* Pencapaian */
+        .dev-kualitas-section th:nth-child(2) { width: 39%; } /* Task List -- widest column gets the room, fewer wrapped lines */
+        .dev-kualitas-section th:nth-child(3) { width: 11%; } /* Requestor */
+        .dev-kualitas-section th:nth-child(4) { width: 11%; } /* PIC */
+        .dev-kualitas-section th:nth-child(5) { width: 9%; } /* Status */
+        .dev-kualitas-section th:nth-child(6) { width: 8%; } /* Start Date */
+        .dev-kualitas-section th:nth-child(7) { width: 8%; } /* End Date */
+        .dev-kualitas-section th:nth-child(8) { width: 9%; } /* Pencapaian */
         .dev-kualitas-section td {
             padding: 8px;
             border: 1px solid #000;
@@ -56,33 +57,26 @@
             text-align: center;
         }
         td.task-col {
-            width: 25%;
+            width: 39%;
         }
         td.requestor-col {
-            width: 15%;
+            width: 11%;
         }
         td.pic-col {
-            width: 15%;
+            width: 11%;
         }
         td.status-col {
-            width: 10%;
+            width: 9%;
         }
         td.date-col {
-            width: 10%;
+            width: 8%;
         }
         td.pencapaian-col {
-            width: 10%;
+            width: 9%;
         }
         .summary-row {
             background-color: #9BB5D6;
             font-weight: bold;
-        }
-
-        /* Scale down to fit A4 better */
-        .dev-kualitas-section {
-            transform: scale(0.85);
-            transform-origin: top left;
-            width: 118%;
         }
     </style>
 </head>

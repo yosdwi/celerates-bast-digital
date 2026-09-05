@@ -18,14 +18,14 @@
             margin-bottom: 40px;
         }
         .evidence-item {
-            margin-bottom: 60px;
+            margin-bottom: 24px;
             page-break-inside: avoid;
             padding: 20px;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
             background: #fafafa;
         }
-        /* .evidence-title {
+        .evidence-title {
             font-size: 18px;
             font-weight: 900;
             margin-bottom: 25px;
@@ -36,7 +36,7 @@
             border-bottom: 3px solid #000;
             padding-bottom: 12px;
             font-family: 'Arial Black', Arial, sans-serif;
-        } */
+        }
         .evidence-image {
             max-width: calc(100% - 40px) !important;
             max-height: 400px !important;
@@ -59,7 +59,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        /* .evidence-description {
+        .evidence-description {
             font-size: 14px;
             color: #555;
             margin-top: 25px;
@@ -69,7 +69,7 @@
             border-left: 4px solid #007bff;
             border-radius: 4px;
             line-height: 1.6;
-        } */
+        }
 
         /* Force all images to be responsive */
         img {
@@ -87,7 +87,7 @@
 <body>
     {% for item in evidence_data %}
     <div class="evidence-item">
-        <!-- <div class="evidence-title">3.{{ item.number }}. {{ item.title }}</div> -->
+        <div class="evidence-title">{{ item.number }}. {{ item.title }}</div>
 
         {% if item.image_path %}
         <div class="image-container">
@@ -99,11 +99,11 @@
         </div>
         {% endif %}
 
-        <!-- {% if item.description %} -->
-        <!-- <div class="evidence-description">
+        {% if item.description %}
+        <div class="evidence-description">
             <strong>Deskripsi:</strong> {{ item.description }}
-        </div> -->
-        <!-- {% endif %} -->
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </body>

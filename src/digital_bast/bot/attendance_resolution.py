@@ -36,6 +36,7 @@ class AbsenceType(StrEnum):
     CUTI = "cuti"
     IZIN = "izin"
     SAKIT = "sakit"
+    LIBUR = "libur"
 
 
 class ResolutionStatus(StrEnum):
@@ -208,11 +209,9 @@ def _valid_request_shape(
             and absence_type is None
         )
     if resolution_type is ResolutionType.ABSENCE:
-        return (
-            proposed_check_in is None
-            and proposed_check_out is None
-            and absence_type is not None
-        )
+        # Clock in/out are optional (not mandatory) on an absence day -- a
+        # talent on Cuti/Izin/Sakit may still have a partial punch.
+        return absence_type is not None
     return False
 
 

@@ -351,3 +351,24 @@ export interface FollowUpSendResponse {
   error_code: string | null;
   duplicate: boolean;
 }
+
+export interface AttendanceGapItem {
+  employee_id: string;
+  name: string;
+  attendance_key: string;
+  work_date: string;
+  check_in: string | null;
+  check_out: string | null;
+  gap: "missing_clock_in" | "missing_clock_out" | "missing_both";
+  evidence_count: number;
+}
+
+export interface AttendanceGapsResponse {
+  period: PeriodView;
+  items: AttendanceGapItem[];
+}
+
+export interface AttendanceGapMutationResponse {
+  status: "applied" | "already_open";
+  message: string;
+}

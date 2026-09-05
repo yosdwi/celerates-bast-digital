@@ -6,6 +6,7 @@ import { monthInputValue, parseMonthInput } from "../app/period";
 import {
   AlertIcon,
   CheckDocIcon,
+  ClockIcon,
   ExternalIcon,
   GridIcon,
   MenuIcon,
@@ -19,7 +20,16 @@ import {
 
 interface Props {
   session: TalentOpsSession;
-  active: "command-center" | "talents" | "actions" | "bast" | "delivery" | "evidence" | "system" | "settings";
+  active:
+    | "command-center"
+    | "talents"
+    | "actions"
+    | "attendance-gaps"
+    | "bast"
+    | "delivery"
+    | "evidence"
+    | "system"
+    | "settings";
   attentionCount: number;
   search: string;
   onSearch: (value: string) => void;
@@ -35,6 +45,7 @@ const NAV_ITEMS = [
   { key: "evidence", label: "Task Evidence", icon: CheckDocIcon, path: "/admin/talentops/evidence" },
   { key: "bast", label: "BAST readiness", icon: CheckDocIcon, path: "/admin/talentops/bast-readiness" },
   { key: "actions", label: "Actions", icon: AlertIcon, path: "/admin/talentops/actions" },
+  { key: "attendance-gaps", label: "Attendance gaps", icon: ClockIcon, path: "/admin/talentops/attendance-gaps" },
 ] as const;
 
 function initials(name: string): string {

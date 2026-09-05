@@ -10,7 +10,7 @@
     <style>
         :root {
             --timesheet-scale: 0.75;
-            --tasklist-scale: 0.7;
+            --tasklist-scale: 1;
             --evidence-scale: 1.0;
             --attendance-scale: 1.0;
 
@@ -185,6 +185,25 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
+        /* Tasklist tables were fighting the timesheet/evidence/attendance
+           pages' 40px side padding for width (2026-09-04) -- narrower here,
+           scoped to .tasklist-page only, so the table gets more columns to
+           work with without touching any other section's margins. Header
+           padding trimmed to match so the divider line/logos stay flush
+           with the table below it instead of drifting out of alignment. */
+        .page.portrait.tasklist-page {
+            padding: 40px 10px;
+        }
+        .tasklist-page .page-header {
+            padding: 20px 10px;
+            /* page-header has no box-sizing of its own (content-box default),
+               so width:100% + this padding was rendering wider than .page's
+               content box -- the divider line didn't line up with the table
+               below it. border-box makes the padding come out of the 100%
+               instead of adding to it, so both edges match exactly. */
+            box-sizing: border-box;
+        }
+
         /* Remove page labels for clean view like all_report_template.html */
 
         /* Page header styling from all_report_template.html */
@@ -218,6 +237,18 @@
 
         .timesheet-container {
             transform: scale(var(--timesheet-scale));
+        }
+
+        /* top center (not the base .section-container's top left, 2026-09-04):
+           when autoFitPage/_attendance_scale shrinks a page below 100%, this
+           keeps the empty space split evenly left/right instead of all of it
+           landing on the right edge -- timesheet is untouched, it keeps top
+           left, see report_editor.html's own note on its bespoke nested
+           transform. */
+        .tasklist-container,
+        .evidence-container,
+        .attendance-container {
+            transform-origin: top center;
         }
 
         .tasklist-container {
@@ -394,7 +425,7 @@
             :root, html, body {
                 /* Ensure CSS variables survive print media */
                 --timesheet-scale: var(--timesheet-scale, 0.75) !important;
-                --tasklist-scale: var(--tasklist-scale, 0.7) !important;
+                --tasklist-scale: var(--tasklist-scale, 1) !important;
                 --evidence-scale: var(--evidence-scale, 1.0) !important;
                 --attendance-scale: var(--attendance-scale, 1.0) !important;
             }
@@ -406,18 +437,18 @@
             }
 
             .page .tasklist-container {
-                transform: scale(var(--tasklist-scale, 0.7)) !important;
-                transform-origin: top left !important;
+                transform: scale(var(--tasklist-scale, 1)) !important;
+                transform-origin: top center !important;
             }
 
             /* Evidence and attendance use individual transforms - no global CSS variables */
             .page .evidence-container {
-                transform-origin: top left !important;
+                transform-origin: top center !important;
                 /* Individual transform will be preserved from inline styles */
             }
 
             .page .attendance-container {
-                transform-origin: top left !important;
+                transform-origin: top center !important;
                 /* Individual transform will be preserved from inline styles */
             }
 
@@ -689,9 +720,9 @@
                     <label for="tasklist-scale-{{ loop.index }}">Scale</label>
                     <input type="range" class="range-input"
                            id="tasklist-scale-{{ loop.index }}"
-                           min="0.4" max="1.0" step="0.05" value="0.7"
+                           min="0.4" max="1.0" step="0.05" value="1.0"
                            onchange="updateSectionScale({{ loop.index }}, this.value)">
-                    <div class="range-value" id="tasklist-scale-value-{{ loop.index }}">70%</div>
+                    <div class="range-value" id="tasklist-scale-value-{{ loop.index }}">100%</div>
                 </div>
 
             {% elif section.title.startswith('3.') and 'evidence' in section.title.lower() %}
@@ -849,7 +880,7 @@
 
                 {% elif section.type == 'tasklist' or section.type == 'tasklist_header' or 'tasklist' in (section.title | lower) or 'sla' in (section.title | lower) or 'task list' in (section.title | lower) %}
                     <!-- Tasklist pages - Portrait -->
-                    <div class="page portrait" data-section-index="{{ loop.index }}">
+                    <div class="page portrait tasklist-page" data-section-index="{{ loop.index }}">
                         <!-- Page Header with Logos -->
                         <div class="page-header">
                             <div class="logo-left">
@@ -921,7 +952,9 @@
                             </div>
                         </div>
 
-                        <div class="section-container attendance-container" data-section="attendance">
+                        <div class="section-container attendance-container"
+                             data-section="attendance"
+                             {% if section.scale is defined and section.scale < 1 %}style="transform: scale({{ section.scale }}); transform-origin: top center;"{% endif %}>
                             {{ section.content | safe }}
                         </div>
                     </div>
@@ -1056,7 +1089,7 @@
                     if (contentElement.classList.contains('timesheet-container')) {
                         defaultScale = 0.75;
                     } else if (contentElement.classList.contains('tasklist-container')) {
-                        defaultScale = 0.7;
+                        defaultScale = 1.0;
                     } else if (contentElement.classList.contains('evidence-container')) {
                         defaultScale = 1.0;
                     } else if (contentElement.classList.contains('attendance-container')) {
@@ -1080,7 +1113,7 @@
                 if (scaleSlider.id.includes('timesheet')) {
                     defaultValue = 0.75;
                 } else if (scaleSlider.id.includes('tasklist')) {
-                    defaultValue = 0.7;
+                    defaultValue = 1.0;
                 } else if (scaleSlider.id.includes('evidence')) {
                     defaultValue = 1.0;
                 } else if (scaleSlider.id.includes('attendance')) {
@@ -1094,7 +1127,7 @@
         function resetSection(sectionType) {
             const defaults = {
                 'timesheet': 0.75,
-                'tasklist': 0.7,
+                'tasklist': 1.0,
                 'evidence': 1.0,
                 'attendance': 1.0
             };
@@ -1255,6 +1288,82 @@
             setTimeout(() => processNextPage(), 1000);
         }
 
+        // Fit-to-page: the fixed --tasklist-scale/--timesheet-scale defaults
+        // above are a single guess applied to every page regardless of how
+        // much content that particular page holds -- a short table fits
+        // fine at 100%, but a page with several multi-line-wrapped rows
+        // (long task descriptions) overflows the fixed 794x1123px .page box.
+        // html2canvas only captures the element's own box, not content that
+        // spills past it via overflow:visible, so any overflow is silently
+        // cropped in the exported image (2026-09-04: task list row 70 lost
+        // its bottom half this way). computeFitScale() measures the
+        // section's real, unscaled content box (transform doesn't affect
+        // scrollWidth/scrollHeight, so this works regardless of the
+        // currently applied scale) and picks a scale that makes THAT page's
+        // content fit -- same idea as spreadsheet "fit to page" scaling,
+        // computed per page instead of once globally.
+        function computeFitScale(page) {
+            const container = page.querySelector('.section-container');
+            if (!container) return null;
+
+            const naturalWidth = container.scrollWidth;
+            const naturalHeight = container.scrollHeight;
+            if (!naturalWidth || !naturalHeight) return null;
+
+            const pageStyle = getComputedStyle(page);
+            const paddingLeft = parseFloat(pageStyle.paddingLeft) || 0;
+            const paddingRight = parseFloat(pageStyle.paddingRight) || 0;
+            const paddingBottom = parseFloat(pageStyle.paddingBottom) || 0;
+            const availableWidth = page.clientWidth - paddingLeft - paddingRight;
+
+            const header = page.querySelector('.page-header');
+            let contentTop = 0;
+            if (header) {
+                const headerStyle = getComputedStyle(header);
+                contentTop = header.offsetTop + header.offsetHeight + (parseFloat(headerStyle.marginBottom) || 0);
+            }
+            const availableHeight = page.clientHeight - contentTop - paddingBottom;
+
+            if (availableWidth <= 0 || availableHeight <= 0) return null;
+
+            const SAFETY_MARGIN = 0.94; // keep content off the very edge of the page
+            const widthScale = (availableWidth / naturalWidth) * SAFETY_MARGIN;
+            const heightScale = (availableHeight / naturalHeight) * SAFETY_MARGIN;
+
+            // Never blow content up past its current scale, and stop
+            // shrinking once text would become unreadable rather than
+            // silently vanishing.
+            const currentScale = parseFloat((container.style.transform.match(/scale\(([\d.]+)\)/) || [])[1]) || 1;
+            return Math.max(0.25, Math.min(currentScale, widthScale, heightScale));
+        }
+
+        // Only tasklist/evidence pages get dynamic fit-to-page. Timesheet
+        // (2026-09-04) has its own hand-tuned nested transform (0.58 inner x
+        // 0.75 outer, baked into timesheet_report_template.html for its
+        // Google-Sheets-export markup) -- scrollHeight on the outer
+        // container reads that inner box's pre-transform layout size (~1930px
+        // wide), nowhere near what's actually painted, so computeFitScale
+        // wildly over-shrinks it. Attendance already computes its own scale
+        // in Python (_attendance_scale, row-count-driven) before the page is
+        // ever rendered. Re-measuring either here fights an already-correct
+        // answer with a wrong one.
+        const _AUTOFIT_CONTAINER_CLASSES = ['tasklist-container', 'evidence-container'];
+
+        async function autoFitPage(page) {
+            const sectionIndex = page.getAttribute('data-section-index');
+            if (!sectionIndex) return;
+            const container = page.querySelector('.section-container');
+            if (!container || !_AUTOFIT_CONTAINER_CLASSES.some(cls => container.classList.contains(cls))) return;
+            // Web fonts (Bootstrap Icons/Inter, loaded from CDN) can still be
+            // swapping in when this runs -- that changes row heights/text
+            // wrapping after the fact, so measuring first avoids under-
+            // scaling. Resolves immediately once fonts are already settled.
+            await document.fonts.ready;
+            const fitScale = computeFitScale(page);
+            if (fitScale === null) return;
+            updateSectionScale(sectionIndex, Math.round(fitScale * 100) / 100);
+        }
+
         // v2 addition (docs/bast-e2e-plan.md WP4/§3.8): headless PDF export hook for
         // Playwright. Same html2canvas + jsPDF pipeline as printReport() above (same
         // scale, same JPEG quality, same A4 sizing) so the bytes match what a human
@@ -1267,6 +1376,7 @@
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             let hasAddedPage = false;
             for (const page of pages) {
+                await autoFitPage(page);
                 const canvas = await html2canvas(page, {
                     scale: 1.5,
                     useCORS: true,
@@ -1285,6 +1395,39 @@
                 doc.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
             }
             return doc.output('datauristring');
+        };
+
+        // Per-page capture hook for the headless PDF export path (pdf_export.py).
+        // __bastExportPdf above accumulates every page into one growing jsPDF
+        // document in-browser before returning a single giant data URI --
+        // for a report with 100+ pages that in-memory jsPDF object gets
+        // progressively slower to append to (worse than linear), and the
+        // final multi-hundred-MB base64 payload is one huge round trip back
+        // to Python. This does only the html2canvas + JPEG-encode part (byte-
+        // for-byte identical to what __bastExportPdf's loop body already
+        // produces -- same scale, same quality, same options) and returns
+        // just that one page's image; pdf_export.py assembles the final PDF
+        // itself, one page at a time, so no per-call payload ever exceeds one
+        // page's JPEG and nothing accumulates browser-side across pages.
+        window.__bastPageCount = function () {
+            return document.querySelectorAll('.page').length;
+        };
+        window.__bastCapturePage = async function (index) {
+            const pages = document.querySelectorAll('.page');
+            await autoFitPage(pages[index]);
+            const canvas = await html2canvas(pages[index], {
+                scale: 1.5,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+                removeContainer: true,
+            });
+            return {
+                dataUrl: canvas.toDataURL('image/jpeg', 0.85),
+                width: canvas.width,
+                height: canvas.height,
+            };
         };
 
         function backToAdmin() {
@@ -1362,7 +1505,7 @@
 
             // Then set initial values if nothing was restored
             updateScale('timesheet', 0.75);
-            updateScale('tasklist', 0.7);
+            updateScale('tasklist', 1.0);
             updateScale('evidence', 1.0);
             updateScale('attendance', 1.0);
             updateFontSize('timesheet', 8);

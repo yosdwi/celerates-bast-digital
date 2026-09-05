@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { getCommandCenter, getSession, getTalentDetail } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
 import ActionCenterPage from "../pages/ActionCenterPage";
+import AttendanceGapsPage from "../pages/AttendanceGapsPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import DeliveryPage from "../pages/DeliveryPage";
@@ -19,6 +20,7 @@ type Route =
   | { page: "command-center" }
   | { page: "talents" }
   | { page: "actions" }
+  | { page: "attendance-gaps" }
   | { page: "bast" }
   | { page: "delivery" }
   | { page: "evidence" }
@@ -38,6 +40,7 @@ function parseRoute(pathname: string): Route {
   }
   if (clean === "/admin/talentops/talents") return { page: "talents" };
   if (clean === "/admin/talentops/actions") return { page: "actions" };
+  if (clean === "/admin/talentops/attendance-gaps") return { page: "attendance-gaps" };
   if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
   if (clean === "/admin/talentops/delivery") return { page: "delivery" };
   if (clean === "/admin/talentops/evidence") return { page: "evidence" };
@@ -255,6 +258,8 @@ export default function App() {
         onOpenTalent={openTalent}
       />
     );
+  } else if (route.page === "attendance-gaps") {
+    page = <AttendanceGapsPage session={session} data={data} onNavigate={navigate} />;
   } else if (route.page === "bast") {
     page = (
       <BastReadinessPage

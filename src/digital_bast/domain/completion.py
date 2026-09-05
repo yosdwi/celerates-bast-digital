@@ -6,12 +6,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final, override
 
 from digital_bast.domain.errors import DomainError
+from digital_bast.domain.models import EmployeeRole
 from digital_bast.domain.timesheets import day_status
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from digital_bast.domain.models import EmployeeRole, Holiday, Schedule
+    from digital_bast.domain.models import Holiday, Schedule, Timesheet
 
 MONTH_NAMES: Final = (
     "Januari",
@@ -149,11 +150,10 @@ class EmployeeCompletion:
     # row at all" case, which a photo upload can't fix. Feeds the WhatsApp DM
     # attendance-evidence flow (bot/attendance_evidence.py).
     log_1_pama_evidence_days: tuple[date, ...] = ()
-    # The other log_1_pama failure case: no attendance row synced for this
-    # work day at all. Not upload-able (nothing to attach a photo to) -- a
-    # pipeline/data-sync gap, surfaced read-only in the DM summary
-    # (cli.py::_attendance_list_reply) so it isn't mistaken for "no issues
-    # here" just because it's missing from log_1_pama_evidence_days.
+    # Work days with no attendance row synced at all. Not treated as an issue
+    # (doesn't affect `state`/`issues`) since the sync pipeline usually
+    # catches up -- but surfaced so a talent can file Sakit/Izin/Cuti for the
+    # day themselves instead of waiting on sync.
     log_1_pama_missing_data_days: tuple[date, ...] = ()
     # Work days actually evaluated in the period (off-days excluded) --
     # mirrors total_tasks' role for the Task List summary, letting the
@@ -196,14 +196,27 @@ def resolve_off_days(
     period: DateRange,
     holidays: Mapping[date, Holiday],
     schedules: Mapping[date, Schedule],
+    timesheets: Mapping[date, Timesheet] | None = None,
 ) -> frozenset[date]:
-    return frozenset(
-        work_date
-        for work_date in period.days()
-        if day_status(role, work_date.weekday(), holidays.get(work_date), schedules.get(work_date))[
-            0
-        ]
-    )
+    off_days: set[date] = set()
+    for work_date in period.days():
+        schedule = schedules.get(work_date)
+        # IoT Operations schedule sync can fail to backfill a date entirely
+        # (no row at all, distinct from a row saying "Libur") while the
+        # timesheet/attendance sync for that same date succeeds -- day_status
+        # would then default to treating the day as OFF and hide a genuine
+        # attendance gap. The timesheet row's own is_holiday, computed from
+        # the schedule PAMA actually had *at ingest time*, is the more
+        # reliable signal in that specific case.
+        if role is EmployeeRole.IOT_OPERATIONS and schedule is None and timesheets is not None:
+            timesheet = timesheets.get(work_date)
+            if timesheet is not None:
+                if timesheet.is_holiday:
+                    off_days.add(work_date)
+                continue
+        if day_status(role, work_date.weekday(), holidays.get(work_date), schedule)[0]:
+            off_days.add(work_date)
+    return frozenset(off_days)
 
 
 def _missing_clock_label(record: AttendanceFact) -> str:
@@ -227,18 +240,19 @@ def _log_1_pama(
     invalid: set[date] = set()
     # Subset of `invalid` where an attendance row actually exists -- the only
     # case a WhatsApp evidence-photo upload can fix (there's a row to attach
-    # it to). "no row at all" (missing_data below) is a pipeline/data-sync
-    # gap, not something a talent's photo resolves, so it's tracked
-    # separately -- surfaced read-only, never offered as an upload target.
+    # it to).
     needs_evidence: set[date] = set()
+    # Days with no attendance row at all. Not added to `issues`/`invalid` --
+    # the sync pipeline usually catches up on its own, so this never blocks
+    # timesheet/task completion. Still returned so a talent can self-serve a
+    # Sakit/Izin/Cuti request for the day instead of waiting on sync (see
+    # AttendanceEvidenceService.list_missing / ensure_manual).
     missing_data: set[date] = set()
     for work_date in period.days():
         if work_date in facts.off_days:
             continue
         record = by_day.get(work_date)
         if record is None:
-            issues.append(f"{format_day(work_date)} — Data attendance belum tersedia.")
-            invalid.add(work_date)
             missing_data.add(work_date)
             continue
         if record.has_clock_in and record.has_clock_out:

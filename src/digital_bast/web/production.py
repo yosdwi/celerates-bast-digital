@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from redis.asyncio import Redis
 
 from digital_bast.application.attendance_review import AttendanceReviewService
+from digital_bast.application.bast_generation_jobs import BastGenerationJobService
 from digital_bast.application.bast_workflow import BastWorkflowService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
@@ -176,6 +177,7 @@ def production_dependencies() -> WebDependencies:
     workflow_control: WorkflowControlService | None = None
     identity_rebinds: IdentityRebindService | None = None
     bast_workflow: BastWorkflowService | None = None
+    bast_generation_jobs: BastGenerationJobService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
 
     if app_dsn is not None:
@@ -201,6 +203,7 @@ def production_dependencies() -> WebDependencies:
             source_sync_state,
         )
         bast_workflow = BastWorkflowService(app_dsn, talentops)
+        bast_generation_jobs = BastGenerationJobService(app_dsn)
 
         if (
             settings.llm_provider == "cloudflare"
@@ -257,6 +260,7 @@ def production_dependencies() -> WebDependencies:
         workflow_control=workflow_control,
         identity_rebinds=identity_rebinds,
         bast_workflow=bast_workflow,
+        bast_generation_jobs=bast_generation_jobs,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
     )

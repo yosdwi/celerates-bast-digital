@@ -12,7 +12,8 @@
             background-color: #f4f4f4;
         }
         .report-container {
-            width: 670px;
+            width: 100%;
+            box-sizing: border-box;
             margin: auto;
             margin-bottom: 20px;
             padding: 20px;
@@ -84,16 +85,11 @@
 <body>
     {% for report in reports %}
     <div class="report-container">
-        <div class="header">
-            <div class="logo-container">
-                <img src="{{ logo_url }}" alt="PAMA Logo" width="45" height="45" style="width: 45px; height: auto;">
-            </div>
-            <div class="company-info">
-                <h1>REPORT ATTENDANCE HISTORY</h1>
-                <p>PT Pamapersada Nusantara</p>
-                <p class="address">Jl. Rawagelam I No. 9, Kawasan Industri Pulogadung, Jakarta 13930 | Telp. (021) 460 215</p>
-            </div>
-        </div>
+        <!-- No header here on purpose: this template is only ever embedded inside
+             report_editor.html's page wrapper (bast_assembler.py's _attendance_section,
+             via _body_only), which already renders its own page-header (PAMA + Celerates
+             logos, section title) above section.content -- this used to duplicate that
+             with a second logo + "REPORT ATTENDANCE HISTORY" title of its own. -->
 
         <div class="employee-info">
             <table>

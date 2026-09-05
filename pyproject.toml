@@ -22,6 +22,7 @@ dependencies = [
     "python-multipart>=0.0.20,<1",
     "redis>=6.4,<7",
     "uvicorn[standard]>=0.35,<1",
+    "pillow>=12.3.0",
 ]
 
 [project.scripts]
@@ -87,6 +88,7 @@ unfixable = []
 "src/digital_bast/bot/pmo_workflow.py" = ["E501", "PERF401", "PLR0911", "PLR0912", "PLR2004", "RUF100", "TC003"]
 "src/digital_bast/bot/rebind.py" = ["E501", "F401", "TC003"]
 "src/digital_bast/bot/rebind_onboarding.py" = ["E501"]
+"src/digital_bast/application/bast_generation_jobs.py" = ["E501"]
 "src/digital_bast/infrastructure/talentops_followup_store.py" = ["TC003"]
 "src/digital_bast/web/production.py" = ["E501"]
 "src/digital_bast/web/talentops_router.py" = ["E501", "PLR0913", "PLR0917", "PLR2004"]

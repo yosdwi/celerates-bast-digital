@@ -5,8 +5,25 @@ from urllib.parse import urlsplit
 from uuid import UUID  # noqa: TC003 - FastAPI runtime metadata
 
 from anyio.to_thread import run_sync
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
+from digital_bast.application.bast_generation_jobs import (
+    display_status as bast_job_display_status,
+)
+from digital_bast.application.bast_generation_jobs import (
+    execute as execute_bast_generation_job,
+)
 from digital_bast.application.bast_workflow import BastGenerationMode
 from digital_bast.application.operational_signals import (
     command_center_signals,
@@ -14,19 +31,29 @@ from digital_bast.application.operational_signals import (
 )
 from digital_bast.application.talentops_followups import FollowUpSendCommand
 from digital_bast.application.workflow_control import WorkflowRole
-from digital_bast.bot.attendance_resolution import DecisionOutcome, ResolutionStatus
+from digital_bast.bot.attendance_resolution import DecisionOutcome, ResolutionStatus, SubmitOutcome
+from digital_bast.bot.evidence import UploadOutcome
 from digital_bast.bot.rebind import RebindDecisionOutcome, RebindStatus
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
-from digital_bast.operations import generate_bast as generate_bast_artifact
+from digital_bast.operations import (
+    bast_artifact_path,
+    completion_status,
+    create_attendance_evidence_service,
+)
+from digital_bast.web.attendance_forms import clock_label, gap_for, read_upload, resolution_shape
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 from digital_bast.web.talentops_contracts import (
     AiCommandCenterInput,
     AiCommandCenterResponse,
     AiInvestigationResponse,
+    AttendanceGapItemResponse,
+    AttendanceGapMutationResponse,
+    AttendanceGapsResponse,
     AttendanceResolutionDecisionResponse,
     AttendanceResolutionRejectInput,
     AttendanceResolutionResponse,
+    BastGenerationJobResponse,
     BastReadinessResponse,
     CommandCenterResponse,
     FollowUpDraftInput,
@@ -39,6 +66,7 @@ from digital_bast.web.talentops_contracts import (
     NotificationSettingsInput,
     NotificationSettingsResponse,
     OperationalSignalResponse,
+    PeriodResponse,
     SessionUserResponse,
     TalentDetailResponse,
     TalentMobileSettingsInput,
@@ -55,6 +83,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from digital_bast.application.attendance_review import AttendanceReviewService
+    from digital_bast.application.bast_generation_jobs import (
+        BastGenerationJob,
+        BastGenerationJobService,
+    )
     from digital_bast.application.bast_workflow import BastWorkflowService
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
@@ -62,7 +94,7 @@ if TYPE_CHECKING:
         WorkflowControlService,
         WorkflowOperator,
     )
-    from digital_bast.bot.attendance_resolution import AttendanceResolutionService
+    from digital_bast.bot.attendance_resolution import AttendanceResolutionService, SubmitResult
     from digital_bast.bot.rebind import IdentityRebindService
     from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.contracts import SessionRecord
@@ -118,6 +150,32 @@ def _attendance_resolutions(deps: WebDependencies) -> AttendanceResolutionServic
     return deps.attendance_resolutions
 
 
+async def _apply_submitted_gap(
+    resolutions: AttendanceResolutionService, submit: SubmitResult, reviewer: str
+) -> AttendanceGapMutationResponse:
+    if submit.outcome is SubmitOutcome.CREATED:
+        # PMO is the approver, and PMO is the one filling this form in -- there's
+        # no separate reviewer to hand a pending request to, so apply it
+        # immediately instead of leaving it stuck in the queue.
+        if submit.request_id is not None:
+            _ = await resolutions.decide(submit.request_id, reviewer, approve=True)
+        return AttendanceGapMutationResponse(status="applied", message="Attendance sudah diperbarui")
+    if submit.outcome is SubmitOutcome.ALREADY_OPEN:
+        return AttendanceGapMutationResponse(
+            status="already_open",
+            message="Pengajuan attendance ini sudah menunggu review",
+        )
+    if submit.outcome is SubmitOutcome.EVIDENCE_REQUIRED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Evidence belum terhubung. Coba upload ulang.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Attendance sudah berubah dan pengajuan tidak dapat dibuat",
+    )
+
+
 def _attendance_review(deps: WebDependencies) -> AttendanceReviewService:
     if deps.attendance_review is None:
         raise HTTPException(
@@ -152,6 +210,38 @@ def _bast_workflow(deps: WebDependencies) -> BastWorkflowService:
             detail="BAST workflow service is unavailable",
         )
     return deps.bast_workflow
+
+
+def _bast_jobs(deps: WebDependencies) -> BastGenerationJobService:
+    if deps.bast_generation_jobs is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="BAST generation job service is unavailable",
+        )
+    return deps.bast_generation_jobs
+
+
+def _bast_job_response(job: BastGenerationJob, *, now: datetime) -> BastGenerationJobResponse:
+    result = job.result or {}
+    return BastGenerationJobResponse.model_validate({
+        "id": str(job.id),
+        "status": job.status,
+        "display_status": bast_job_display_status(job, now=now),
+        "report_type": job.parameters["report_type"],
+        "year": job.parameters["year"],
+        "month": job.parameters["month"],
+        "mode": job.parameters["mode"],
+        "forced": job.parameters["force"],
+        "force_reason": job.parameters.get("force_reason"),
+        "requested_by": job.parameters["requested_by"],
+        "artifact_name": result.get("artifact_name"),
+        "fingerprint": result.get("fingerprint"),
+        "error_code": job.error_code,
+        "error_message": result.get("error_message"),
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+    })
 
 
 def _bot_bridge(deps: WebDependencies) -> BotBridgeWhatsAppOutboundGateway:
@@ -593,6 +683,7 @@ def talentops_router(  # noqa: C901, PLR0915
 
     async def generate_bast_document(
         request: Request,
+        background_tasks: BackgroundTasks,
         year: Annotated[int, Query(ge=2020, le=2100)],
         month: Annotated[int, Query(ge=1, le=12)],
         report_type: Annotated[str, Query(pattern="^(developer|iotoperation)$")],
@@ -600,7 +691,7 @@ def talentops_router(  # noqa: C901, PLR0915
         force: bool = False,
         force_reason: Annotated[str | None, Query(max_length=500)] = None,
         csrf_token: HeaderCsrf = None,
-    ) -> Response:
+    ) -> BastGenerationJobResponse:
         _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
         verify_csrf(record, csrf_token)
         _ = await _authorized_operator(deps, record, "generate")
@@ -631,18 +722,66 @@ def talentops_router(  # noqa: C901, PLR0915
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="force_reason is required when force=true",
             )
-        path, report = await generate_bast_artifact(selected_period, report_type)
-        _ = await _bast_workflow(deps).record_generation(
+        job = await _bast_jobs(deps).create(
             report_type=report_type,
-            period=selected_period,
-            mode=generation_mode,
+            year=selected_period.start.year,
+            month=selected_period.start.month,
+            mode=generation_mode.value,
             forced=force,
             force_reason=normalized_reason or None,
+            requested_by=record.user.email,
+        )
+        background_tasks.add_task(
+            execute_bast_generation_job,
+            job.id,
+            _bast_jobs(deps),
+            _bast_workflow(deps),
+            selected_period=selected_period,
+            report_type=report_type,
+            generation_mode=generation_mode,
+            forced=force,
+            normalized_reason=normalized_reason or None,
             readiness=readiness,
             generated_by=record.user.email,
-            artifact_name=path.name,
-            fingerprint=report.fingerprint,
         )
+        return _bast_job_response(job, now=deps.now())
+
+    async def get_bast_generation_job(
+        request: Request,
+        job_id: UUID,
+    ) -> BastGenerationJobResponse:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _ = await _authorized_operator(deps, record, "generate")
+        job = await _bast_jobs(deps).get(job_id)
+        if job is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation job not found")
+        return _bast_job_response(job, now=deps.now())
+
+    async def list_bast_generation_jobs(
+        request: Request,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> tuple[BastGenerationJobResponse, ...]:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _ = await _authorized_operator(deps, record, "generate")
+        jobs = await _bast_jobs(deps).list_recent(limit=limit)
+        now = deps.now()
+        return tuple(_bast_job_response(job, now=now) for job in jobs)
+
+    async def download_bast_document(
+        request: Request,
+        year: Annotated[int, Query(ge=2020, le=2100)],
+        month: Annotated[int, Query(ge=1, le=12)],
+        report_type: Annotated[str, Query(pattern="^(developer|iotoperation)$")],
+    ) -> Response:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _ = await _authorized_operator(deps, record, "generate")
+        selected_period = _period(year, month, deps.now())
+        path = bast_artifact_path(report_type, selected_period.start.year, selected_period.start.month)
+        if not await run_sync(path.exists):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="BAST document not generated yet for this period",
+            )
         pdf_bytes = await run_sync(path.read_bytes)
         return Response(
             content=pdf_bytes,
@@ -650,10 +789,6 @@ def talentops_router(  # noqa: C901, PLR0915
             headers={
                 "Cache-Control": "no-store",
                 "Content-Disposition": f'attachment; filename="{path.name}"',
-                "X-BAST-Fingerprint": report.fingerprint,
-                "X-BAST-Mode": generation_mode.value,
-                "X-BAST-Readiness": "ready" if readiness.ready else "blocked",
-                "X-BAST-Forced": "true" if force else "false",
             },
         )
 
@@ -740,6 +875,149 @@ def talentops_router(  # noqa: C901, PLR0915
         if result is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
         return FollowUpSendResponse.model_validate(result)
+
+    async def attendance_gaps(
+        request: Request,
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    ) -> AttendanceGapsResponse:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _ = await _authorized_operator(deps, record, "attendance")
+        selected_period = _period(year, month, deps.now())
+        report = await completion_status(selected_period)
+        evidence_service = create_attendance_evidence_service()
+        items: list[AttendanceGapItemResponse] = []
+        for employee in report.employees:
+            candidates = (
+                await evidence_service.list_candidates(
+                    employee.employee_id,
+                    frozenset(employee.log_1_pama_evidence_days),
+                )
+            ) + (
+                await evidence_service.list_missing(
+                    employee.employee_id,
+                    frozenset(employee.log_1_pama_missing_data_days),
+                )
+            )
+            items.extend(
+                AttendanceGapItemResponse(
+                    employee_id=employee.employee_id,
+                    name=employee.name,
+                    attendance_key=item.attendance_key,
+                    work_date=item.work_date,
+                    check_in=clock_label(item.check_in),
+                    check_out=clock_label(item.check_out),
+                    gap=gap_for(item.check_in, item.check_out),
+                    evidence_count=item.evidence_count,
+                )
+                for item in candidates
+            )
+        items.sort(key=lambda item: (item.work_date, item.name))
+        return AttendanceGapsResponse(
+            period=PeriodResponse(
+                year=selected_period.start.year,
+                month=selected_period.start.month,
+                start=selected_period.start.isoformat(),
+                end=selected_period.end.isoformat(),
+                label=selected_period.label(),
+            ),
+            items=tuple(items),
+        )
+
+    async def submit_attendance_gap(
+        request: Request,
+        # employee_id (e.g. "MTG-TF/2024110292") and attendance_key (e.g.
+        # "attendance:2026-08-17:MTG-TF/2024110292") both contain literal "/"
+        # characters -- unroutable as path segments (splits into extra
+        # segments/404s for every employee), so they travel as form fields
+        # instead, same as the rest of this multipart POST body.
+        employee_id: Annotated[str, Form(max_length=200)],
+        attendance_key: Annotated[str, Form(max_length=200)],
+        action: Annotated[str, Form(max_length=32)],
+        file: Annotated[UploadFile, File()],
+        check_in: Annotated[str | None, Form(max_length=8)] = None,
+        check_out: Annotated[str | None, Form(max_length=8)] = None,
+        caption: Annotated[str, Form(max_length=500)] = "",
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+        csrf_token: HeaderCsrf = None,
+    ) -> AttendanceGapMutationResponse:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        verify_csrf(record, csrf_token)
+        _ = await _authorized_operator(deps, record, "attendance")
+        selected_period = _period(year, month, deps.now())
+        report = await completion_status(selected_period)
+        employee = next(
+            (item for item in report.employees if item.employee_id == employee_id),
+            None,
+        )
+        if employee is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Talent not found")
+
+        evidence_service = create_attendance_evidence_service()
+        candidates = await evidence_service.list_candidates(
+            employee_id,
+            frozenset(employee.log_1_pama_evidence_days),
+        )
+        missing_candidates = await evidence_service.list_missing(
+            employee_id,
+            frozenset(employee.log_1_pama_missing_data_days),
+        )
+        target = next(
+            (
+                item
+                for item in candidates + missing_candidates
+                if item.attendance_key == attendance_key
+            ),
+            None,
+        )
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Attendance gap sudah berubah, refresh dan coba lagi",
+            )
+        if target in missing_candidates:
+            await evidence_service.ensure_manual(employee_id, target.work_date)
+
+        resolution_type, proposed_in, proposed_out, absence_type = resolution_shape(
+            gap_for(target.check_in, target.check_out),
+            action,
+            check_in,
+            check_out,
+        )
+        upload_result = await evidence_service.upload(
+            employee_id,
+            attendance_key,
+            await read_upload(file),
+            caption.strip(),
+        )
+        if upload_result.outcome not in {UploadOutcome.STORED, UploadOutcome.DUPLICATE}:
+            if upload_result.outcome is UploadOutcome.TOO_LARGE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Ukuran evidence maksimal 5 MB",
+                )
+            if upload_result.outcome is UploadOutcome.UNSUPPORTED_TYPE:
+                raise HTTPException(
+                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    detail="Gunakan gambar JPG, PNG, atau WebP",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Evidence attendance tidak dapat disimpan",
+            )
+
+        resolutions = _attendance_resolutions(deps)
+        submit = await resolutions.submit(
+            employee_id,
+            attendance_key,
+            f"pmo-web:{record.user.email}",
+            resolution_type,
+            proposed_check_in=proposed_in,
+            proposed_check_out=proposed_out,
+            absence_type=absence_type,
+        )
+        return await _apply_submitted_gap(resolutions, submit, record.user.email)
 
     router.add_api_route(
         "/session", session, methods=["GET"], response_model=TalentOpsSessionResponse
@@ -850,7 +1128,29 @@ def talentops_router(  # noqa: C901, PLR0915
         response_model=BastReadinessResponse,
     )
     router.add_api_route(
-        "/bast/generate", generate_bast_document, methods=["POST"], response_class=Response
+        "/bast/generate",
+        generate_bast_document,
+        methods=["POST"],
+        response_model=BastGenerationJobResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    router.add_api_route(
+        "/bast/generate/jobs/{job_id}",
+        get_bast_generation_job,
+        methods=["GET"],
+        response_model=BastGenerationJobResponse,
+    )
+    router.add_api_route(
+        "/bast/generate/jobs",
+        list_bast_generation_jobs,
+        methods=["GET"],
+        response_model=tuple[BastGenerationJobResponse, ...],
+    )
+    router.add_api_route(
+        "/bast/generate/download",
+        download_bast_document,
+        methods=["GET"],
+        response_class=Response,
     )
     router.add_api_route(
         "/ai/command-center",
@@ -875,5 +1175,17 @@ def talentops_router(  # noqa: C901, PLR0915
         send_follow_up,
         methods=["POST"],
         response_model=FollowUpSendResponse,
+    )
+    router.add_api_route(
+        "/attendance-gaps",
+        attendance_gaps,
+        methods=["GET"],
+        response_model=AttendanceGapsResponse,
+    )
+    router.add_api_route(
+        "/attendance-gaps",
+        submit_attendance_gap,
+        methods=["POST"],
+        response_model=AttendanceGapMutationResponse,
     )
     return router

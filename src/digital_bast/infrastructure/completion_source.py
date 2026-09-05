@@ -91,6 +91,11 @@ class CompletionSource:
                         for record in schedules
                         if record.employee_id == person.id
                     },
+                    {
+                        record.work_date: record
+                        for record in timesheets
+                        if record.employee_id == person.id
+                    },
                 ),
                 attendance=tuple(
                     fact

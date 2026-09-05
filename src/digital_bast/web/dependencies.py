@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from digital_bast.application.attendance_review import AttendanceReviewService
+    from digital_bast.application.bast_generation_jobs import BastGenerationJobService
     from digital_bast.application.bast_workflow import BastWorkflowService
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_ai import TalentOpsAiService
@@ -38,6 +39,7 @@ class WebDependencies:
     workflow_control: WorkflowControlService | None = None
     identity_rebinds: IdentityRebindService | None = None
     bast_workflow: BastWorkflowService | None = None
+    bast_generation_jobs: BastGenerationJobService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
     bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
     now: Callable[[], datetime] = lambda: datetime.now(UTC)

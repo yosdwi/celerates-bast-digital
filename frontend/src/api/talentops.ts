@@ -1,6 +1,8 @@
-import { apiFetch, apiFetchResponse } from "./client";
+import { ApiError, apiFetch, apiFetchResponse } from "./client";
 import type {
   AiResponse,
+  AttendanceGapMutationResponse,
+  AttendanceGapsResponse,
   AttendanceResolution,
   BastReadiness,
   CommandCenterResponse,
@@ -28,9 +30,29 @@ export type BastGenerationMode = "preview" | "final";
 export interface GeneratedBastFile {
   blob: Blob;
   filename: string;
+}
+
+export type BastJobStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+export type BastJobDisplayStatus = BastJobStatus | "stale";
+
+export interface BastGenerationJob {
+  id: string;
+  status: BastJobStatus;
+  display_status: BastJobDisplayStatus;
+  report_type: BastReportType;
+  year: number;
+  month: number;
   mode: BastGenerationMode;
-  readiness: "ready" | "blocked";
   forced: boolean;
+  force_reason: string | null;
+  requested_by: string;
+  artifact_name: string | null;
+  fingerprint: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export function getSession(): Promise<TalentOpsSession> {
@@ -227,14 +249,14 @@ export function askTalent(
   });
 }
 
-export async function generateBast(
+export function createBastGenerationJob(
   csrfToken: string,
   period: Pick<PeriodView, "year" | "month">,
   reportType: BastReportType,
   mode: BastGenerationMode = "final",
   force = false,
   forceReason = "",
-): Promise<GeneratedBastFile> {
+): Promise<BastGenerationJob> {
   const query = new URLSearchParams({
     year: String(period.year),
     month: String(period.month),
@@ -243,12 +265,31 @@ export async function generateBast(
     force: String(force),
   });
   if (forceReason.trim()) query.set("force_reason", forceReason.trim());
-  const response = await apiFetchResponse(`${BASE}/bast/generate?${query.toString()}`, {
+  return apiFetch<BastGenerationJob>(`${BASE}/bast/generate?${query.toString()}`, {
     method: "POST",
-    headers: {
-      Accept: "application/pdf",
-      "X-CSRF-Token": csrfToken,
-    },
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+}
+
+export function getBastGenerationJob(jobId: string): Promise<BastGenerationJob> {
+  return apiFetch<BastGenerationJob>(`${BASE}/bast/generate/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function listBastGenerationJobs(limit = 20): Promise<BastGenerationJob[]> {
+  return apiFetch<BastGenerationJob[]>(`${BASE}/bast/generate/jobs?limit=${limit}`);
+}
+
+export async function downloadBastDocument(
+  period: Pick<PeriodView, "year" | "month">,
+  reportType: BastReportType,
+): Promise<GeneratedBastFile> {
+  const query = new URLSearchParams({
+    year: String(period.year),
+    month: String(period.month),
+    report_type: reportType,
+  });
+  const response = await apiFetchResponse(`${BASE}/bast/generate/download?${query.toString()}`, {
+    headers: { Accept: "application/pdf" },
   });
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
@@ -256,9 +297,6 @@ export async function generateBast(
   return {
     blob: await response.blob(),
     filename: filenameMatch?.[1] || fallback,
-    mode: (response.headers.get("X-BAST-Mode") as BastGenerationMode | null) ?? mode,
-    readiness: response.headers.get("X-BAST-Readiness") === "blocked" ? "blocked" : "ready",
-    forced: response.headers.get("X-BAST-Forced") === "true",
   };
 }
 
@@ -293,4 +331,59 @@ export function sendFollowUp(
       idempotency_key: idempotencyKey,
     }),
   });
+}
+
+export function getAttendanceGaps(year?: number, month?: number): Promise<AttendanceGapsResponse> {
+  const query = year !== undefined && month !== undefined ? `?year=${year}&month=${month}` : "";
+  return apiFetch<AttendanceGapsResponse>(`${BASE}/attendance-gaps${query}`);
+}
+
+export interface AttendanceGapSubmitInput {
+  action: "worked" | "sakit" | "izin" | "cuti" | "libur";
+  checkIn?: string;
+  checkOut?: string;
+  file: File;
+}
+
+export async function submitAttendanceGap(
+  csrfToken: string,
+  employeeId: string,
+  attendanceKey: string,
+  period: Pick<PeriodView, "year" | "month">,
+  input: AttendanceGapSubmitInput,
+): Promise<AttendanceGapMutationResponse> {
+  const body = new FormData();
+  // employee_id and attendance_key both contain literal "/" (e.g.
+  // "MTG-TF/2024110292"), which breaks path-segment routing -- they travel
+  // as form fields instead of URL path params.
+  body.set("employee_id", employeeId);
+  body.set("attendance_key", attendanceKey);
+  body.set("action", input.action);
+  if (input.checkIn) body.set("check_in", input.checkIn);
+  if (input.checkOut) body.set("check_out", input.checkOut);
+  body.set("file", input.file);
+  const query = new URLSearchParams({ year: String(period.year), month: String(period.month) });
+  // FormData bodies must set their own multipart Content-Type (with boundary);
+  // apiFetch always forces application/json, so this goes through fetch directly.
+  const response = await fetch(
+    `${BASE}/attendance-gaps?${query.toString()}`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+      body,
+    },
+  );
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string" && payload.detail.trim()) message = payload.detail;
+    } catch {
+      // Preserve the status-based message when the response is not JSON.
+    }
+    throw new ApiError(response.status, message);
+  }
+  return (await response.json()) as AttendanceGapMutationResponse;
 }

@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { askCommandCenter, askTalent, generateBast, getBastReadiness } from "../api/talentops";
-import type { BastGenerationMode, BastReportType } from "../api/talentops";
+import {
+  askCommandCenter,
+  askTalent,
+  createBastGenerationJob,
+  downloadBastDocument,
+  getBastGenerationJob,
+  getBastReadiness,
+  listBastGenerationJobs,
+} from "../api/talentops";
+import type { BastGenerationJob, BastGenerationMode, BastReportType } from "../api/talentops";
 import type {
   AiInvestigation,
   AttentionItem,
@@ -50,6 +58,35 @@ function firstIssue(row: ReadinessRow): string | null {
   return null;
 }
 
+function historyStatusLabel(status: BastGenerationJob["display_status"]): string {
+  if (status === "succeeded") return "Ready";
+  if (status === "failed") return "Failed";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "stale") return "Stale";
+  return "Running";
+}
+
+function bastFmtElapsed(sec: number): string {
+  const mm = Math.floor(sec / 60);
+  const ss = sec % 60;
+  return `${mm}:${String(ss).padStart(2, "0")}`;
+}
+
+function bastNotify(title: string, body: string) {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      new Notification(title, { body });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") new Notification(title, { body });
+      }).catch(() => {});
+    }
+  } catch {
+    // Notification API unavailable (unsupported browser, insecure context) -- silently skip.
+  }
+}
+
 function signalMeta(signal: OperationalSignal): string | null {
   const parts: string[] = [];
   if (signal.dates.length) parts.push(signal.dates.join(", "));
@@ -81,6 +118,21 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
   const [forceReason, setForceReason] = useState("");
   const [generationState, setGenerationState] = useState<GenerationState>("idle");
   const [generationMessage, setGenerationMessage] = useState("");
+  const [jobs, setJobs] = useState<BastGenerationJob[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [genStartedAt, setGenStartedAt] = useState<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (generationState !== "generating") {
+      setElapsedSec(0);
+      return;
+    }
+    const tickId = window.setInterval(() => {
+      setElapsedSec(genStartedAt ? Math.floor((Date.now() - genStartedAt) / 1000) : 0);
+    }, 1000);
+    return () => window.clearInterval(tickId);
+  }, [generationState, genStartedAt]);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiTarget, setAiTarget] = useState<ReadinessRow | null>(null);
   const [aiQuestion, setAiQuestion] = useState(
@@ -147,6 +199,40 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
     void refreshBastGate(bastReportType);
   }, [bastReportType, data.period.year, data.period.month]);
 
+  async function refreshJobs() {
+    try {
+      setJobs(await listBastGenerationJobs(10));
+    } catch {
+      // History is a convenience view alongside the gate card -- a failed
+      // fetch here shouldn't block Preview/Final Generate.
+    } finally {
+      setJobsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshJobs();
+    const intervalId = window.setInterval(() => void refreshJobs(), 15_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  async function pollJob(jobId: string): Promise<BastGenerationJob> {
+    let job = await getBastGenerationJob(jobId);
+    while (job.display_status === "pending" || job.display_status === "running") {
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      job = await getBastGenerationJob(jobId);
+    }
+    if (job.display_status !== "succeeded") {
+      throw new Error(
+        job.error_message
+          || (job.display_status === "stale"
+            ? "BAST generation appears to have stalled — try again."
+            : "BAST generation failed."),
+      );
+    }
+    return job;
+  }
+
   async function submitAi(event?: FormEvent) {
     event?.preventDefault();
     const question = aiQuestion.trim();
@@ -178,8 +264,14 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
     }
     setGenerationState("generating");
     setGenerationMessage("");
+    setGenStartedAt(Date.now());
     try {
-      const generated = await generateBast(
+      if (Notification.permission === "default") Notification.requestPermission().catch(() => {});
+    } catch {
+      // Notification API unavailable (unsupported browser, insecure context) -- silently skip.
+    }
+    try {
+      const created = await createBastGenerationJob(
         session.csrf_token,
         data.period,
         bastReportType,
@@ -187,18 +279,27 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
         force,
         forceReason,
       );
+      const finished = await pollJob(created.id);
+      const generated = await downloadBastDocument(
+        { year: finished.year, month: finished.month },
+        finished.report_type,
+      );
       triggerDownload(generated.blob, generated.filename);
       setGenerationState("success");
-      setGenerationMessage(
-        `${generated.filename} generated as ${generated.mode}${generated.forced ? " · forced with audit" : ""}.`,
-      );
+      const message = `${generated.filename} generated as ${finished.mode}${finished.forced ? " · forced with audit" : ""}.`;
+      setGenerationMessage(message);
+      bastNotify("BAST generation complete", `${generated.filename} is ready and downloading.`);
       setForceOpen(false);
       setForceReason("");
       await refreshBastGate();
+      await refreshJobs();
     } catch (error) {
+      const message = error instanceof Error ? error.message : "BAST generation failed.";
       setGenerationState("error");
-      setGenerationMessage(error instanceof Error ? error.message : "BAST generation failed.");
+      setGenerationMessage(message);
+      bastNotify("BAST generation failed", message);
       await refreshBastGate();
+      await refreshJobs();
     }
   }
 
@@ -248,6 +349,16 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
               <button className="secondary-button" type="button" disabled={generationState === "generating" || gateLoading} onClick={() => void submitBastGeneration("preview")}>Preview PDF</button>
               <button className="primary-button" type="button" disabled={generationState === "generating" || gateLoading || !bastGate?.ready} onClick={() => void submitBastGeneration("final")}>{generationState === "generating" ? "Generating…" : "Final Generate"}</button>
             </div>
+            {generationState === "generating" ? (
+              <div className="bast-generation-status generating" role="status">
+                <strong>Sedang memproses… {bastFmtElapsed(elapsedSec)}</strong>
+                <p>
+                  Laporan besar (mis. IoT Operations) bisa memakan waktu hingga ~15 menit. Anda boleh
+                  meninggalkan halaman ini — hasil akan otomatis terunduh, dan tetap muncul di Riwayat
+                  Generate di bawah untuk diunduh ulang kapan saja.
+                </p>
+              </div>
+            ) : null}
             {generationState === "success" ? <div className="bast-generation-status success" role="status">{generationMessage}</div> : null}
             {generationState === "error" ? <div className="bast-generation-status error" role="alert">{generationMessage}</div> : null}
           </div>
@@ -268,6 +379,38 @@ export default function BastReadinessPage({ session, data, onNavigate, onOpenTal
             </div> : null}
           </> : <strong>BAST readiness gate unavailable.</strong>}
         </div>
+
+        <section className="panel bast-history-panel">
+          <div className="panel-title-row"><div><h2>Generation history</h2><span>Last {jobs.length} run{jobs.length === 1 ? "" : "s"}</span></div></div>
+          {jobsLoading ? <div className="empty-state">Memuat…</div> : null}
+          {!jobsLoading && jobs.length === 0 ? <div className="empty-state">Belum ada riwayat generate.</div> : null}
+          <div className="bast-history-list">
+            {jobs.map((job) => (
+              <div className="bast-history-item" key={job.id}>
+                <div className="bast-history-item-main">
+                  <strong>{job.report_type}</strong>
+                  <span className="cell-muted">
+                    {job.year}-{String(job.month).padStart(2, "0")} · {job.mode}{job.forced ? " · forced" : ""}
+                  </span>
+                </div>
+                <div className={`bast-history-status ${job.display_status}`}>
+                  <span className="bast-history-status-dot" aria-hidden="true" />
+                  {historyStatusLabel(job.display_status)}
+                </div>
+                <div className="cell-muted">{new Date(job.created_at).toLocaleString("id-ID")}</div>
+                {job.display_status === "succeeded" ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void downloadBastDocument({ year: job.year, month: job.month }, job.report_type).then((file) => triggerDownload(file.blob, file.filename))}
+                  >
+                    Download
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
 
         <div className="summary-strip bast-summary" aria-label="BAST readiness summary">
           <div className="summary-item"><div className="summary-label">Ready</div><div className="summary-value">{readyCount} / {rows.length}</div><div className="summary-meta">{readinessPercent(readyCount, rows.length)}</div></div>

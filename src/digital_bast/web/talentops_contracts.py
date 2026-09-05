@@ -204,7 +204,7 @@ class AttendanceResolutionResponse(_FrozenModel):
         "missing_both_worked",
         "absence",
     ]
-    absence_type: Literal["cuti", "izin", "sakit"] | None
+    absence_type: Literal["cuti", "izin", "sakit", "libur"] | None
     proposed_check_in: time | None
     proposed_check_out: time | None
     status: Literal["pending", "approved", "rejected"]
@@ -335,6 +335,26 @@ class BastReadinessResponse(_FrozenModel):
     blockers: tuple[BastBlockerResponse, ...]
 
 
+class BastGenerationJobResponse(_FrozenModel):
+    id: str
+    status: Literal["pending", "running", "succeeded", "failed", "cancelled"]
+    display_status: Literal["pending", "running", "succeeded", "failed", "cancelled", "stale"]
+    report_type: Literal["developer", "iotoperation"]
+    year: int
+    month: int
+    mode: Literal["preview", "final"]
+    forced: bool
+    force_reason: str | None
+    requested_by: str
+    artifact_name: str | None
+    fingerprint: str | None
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
 class AiCommandCenterInput(_FrozenModel):
     year: int | None = Field(default=None, ge=2020, le=2100)
     month: int | None = Field(default=None, ge=1, le=12)
@@ -416,3 +436,24 @@ class FollowUpSendResponse(_FrozenModel):
     sent_at: datetime | None
     error_code: str | None
     duplicate: bool = False
+
+
+class AttendanceGapItemResponse(_FrozenModel):
+    employee_id: str
+    name: str
+    attendance_key: str
+    work_date: date
+    check_in: str | None
+    check_out: str | None
+    gap: Literal["missing_clock_in", "missing_clock_out", "missing_both"]
+    evidence_count: int
+
+
+class AttendanceGapsResponse(_FrozenModel):
+    period: PeriodResponse
+    items: tuple[AttendanceGapItemResponse, ...]
+
+
+class AttendanceGapMutationResponse(_FrozenModel):
+    status: Literal["applied", "already_open"]
+    message: str

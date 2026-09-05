@@ -47,6 +47,10 @@
   text-align: right;
 }
 
+.bast-generation-status.generating {
+  color: var(--text-muted, #667085);
+}
+
 .bast-generation-status.success {
   color: var(--green);
 }

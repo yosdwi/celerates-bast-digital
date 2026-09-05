@@ -24,6 +24,7 @@ from digital_bast.bot.evidence import (
     sniff_content_type,
 )
 from digital_bast.domain.completion import format_day
+from digital_bast.domain.identity import daily_key
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
@@ -84,6 +85,14 @@ class AttendanceEvidenceService:
         self, employee_id: str, dates: frozenset[date]
     ) -> tuple[AttendanceEvidenceCandidate, ...]:
         return await run_sync(self._list_candidates, employee_id, dates)
+
+    async def list_missing(
+        self, employee_id: str, dates: frozenset[date]
+    ) -> tuple[AttendanceEvidenceCandidate, ...]:
+        return await run_sync(self._list_missing, employee_id, dates)
+
+    async def ensure_manual(self, employee_id: str, work_date: date) -> None:
+        await run_sync(self._ensure_manual, employee_id, work_date)
 
     async def pending_attendance(self, wa_jid: str) -> str | None:
         return await run_sync(self._pending_attendance, wa_jid)
@@ -150,6 +159,62 @@ class AttendanceEvidenceService:
             )
             for row in rows
         )
+
+    def _list_missing(
+        self, employee_id: str, dates: frozenset[date]
+    ) -> tuple[AttendanceEvidenceCandidate, ...]:
+        """Days in `dates` with no attendance row at all yet.
+
+        Synthesized in Python -- no row exists to SELECT. The record_key uses
+        the same `daily_key` the pipeline sync would assign that row, so a
+        submission against it (`ensure_manual`) lands on the row sync would
+        later reconcile with, instead of creating a duplicate.
+        """
+        if not dates:
+            return ()
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    "SELECT work_date FROM attendance WHERE employee_id = %s AND work_date = ANY(%s)",
+                    (employee_id, list(dates)),
+                )
+                existing = {row[0] for row in cursor.fetchall()}
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="list_missing_attendance_days"
+            ) from error
+        return tuple(
+            AttendanceEvidenceCandidate(
+                str(daily_key("attendance", work_date, employee_id)),
+                work_date,
+                _candidate_title(work_date),
+                0,
+            )
+            for work_date in sorted(dates - existing)
+        )
+
+    def _ensure_manual(self, employee_id: str, work_date: date) -> None:
+        """Create a stub attendance row (no punches) for a day sync never populated.
+
+        `origin = 'manual'` matches the guard every pipeline upsert already
+        carries (`WHERE origin <> 'manual'`, see scripts/load_pama_attendance.py
+        and web/sync_router.py) -- if PAMA sync catches up on this day later,
+        it will not overwrite this row.
+        """
+        try:
+            with self._connect() as connection, connection.cursor() as cursor:
+                _ = cursor.execute(
+                    """
+                    INSERT INTO attendance (record_key, employee_id, work_date, origin)
+                    VALUES (%s, %s, %s, 'manual')
+                    ON CONFLICT (record_key) DO NOTHING
+                    """,
+                    (str(daily_key("attendance", work_date, employee_id)), employee_id, work_date),
+                )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="ensure_manual_attendance"
+            ) from error
 
     def _pending_attendance(self, wa_jid: str) -> str | None:
         try:
