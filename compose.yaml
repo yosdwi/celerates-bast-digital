@@ -17,11 +17,12 @@ x-app: &app
     target: runtime
   restart: unless-stopped
   read_only: true
+  shm_size: "2gb"
   user: "10001:10001"
   group_add:
     - "${SECRETS_GID:?SECRETS_GID is required}"
   tmpfs:
-    - /tmp:size=64m,mode=1777
+    - /tmp:size=512m,mode=1777
   cap_drop:
     - ALL
   security_opt:
@@ -33,7 +34,14 @@ x-app: &app
   # which predates web-blue/web-green needing it for TalentOps AI.
   extra_hosts:
     - "host.docker.internal:host-gateway"
+  # wa-session/whatsapp-web-session hand off exported/BAST/status-matrix
+  # files and evidence uploads through the volume shared below -- see
+  # operations.py's _exports_directory() and the WhatsApp transport's
+  # BOT_DATA_DIR=/data.
+  volumes:
+    - bot-bridge-data:/data
   environment: &app-environment
+    BAST_EXPORTS_DIR: /data/exports
     APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
     APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
     APP_TIMEZONE: Asia/Jakarta
@@ -57,10 +65,12 @@ x-app: &app
     GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_service_account
     SQLSERVER_CONNECTION_STRING_FILE: /run/secrets/sqlserver_connection_string
     SYNC_INGEST_TOKEN_FILE: /run/secrets/sync_ingest_token
-    # web -> wa-session, internal Docker network only: lets TalentOps proxy a
-    # read-only WhatsApp pairing status/QR (see talentops_router.py's
-    # /system/whatsapp) without exposing wa-session's setup page publicly.
-    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://wa-session:8090}
+    # web -> wa-session (or whatsapp-web-session post-cutover), internal
+    # Docker network only: lets TalentOps proxy a read-only WhatsApp pairing
+    # status/QR (see talentops_router.py's /system/whatsapp) without
+    # exposing the transport's own setup page publicly. Also the target for
+    # backend-initiated outbound WhatsApp messages (POST /internal/v1/messages).
+    BOT_BRIDGE_BASE_URL: ${BOT_BRIDGE_BASE_URL:-http://whatsapp-web-session:8090}
     # Bootstrap/backward-compatible fallback only. Admin can save the active
     # Talent Mobile public origin from TalentOps Settings without editing env.
     TALENTOPS_PUBLIC_URL: ${TALENTOPS_PUBLIC_URL:-}
@@ -115,7 +125,7 @@ x-app: &app
     resources:
       limits:
         cpus: "1.00"
-        memory: 768M
+        memory: 5G
       reservations:
         memory: 192M
 
@@ -229,6 +239,15 @@ services:
   web-blue:
     <<: *app
     profiles: ["blue"]
+    environment:
+      <<: *app-environment
+      # See bast-renderer below and infrastructure/pdf_export.py's render_pdf/
+      # render_png -- routes Chromium rendering to its own container/process
+      # instead of this one, so a 10+ minute render can't share this
+      # process's event loop/thread pool/memory cgroup with unrelated API
+      # traffic the way it did on 2026-09-03 (readiness checks and other
+      # BAST generations failed/timed out while a heavy render ran here).
+      BAST_RENDERER_URL: http://bast-renderer:8001
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
@@ -239,12 +258,55 @@ services:
   web-green:
     <<: *app
     profiles: ["green"]
+    environment:
+      <<: *app-environment
+      BAST_RENDERER_URL: http://bast-renderer:8001
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  bast-renderer:
+    # Headless-Chromium PDF/PNG rendering, isolated in its own container so
+    # it can never starve the API-serving process's event loop, thread pool,
+    # or memory cgroup (see BAST_RENDERER_URL above). Deliberately NOT built
+    # on the *app anchor -- no database/secrets/external-API access needed
+    # at all (stateless: HTML in, bytes out over render_worker_asgi.py), so
+    # it doesn't depend on postgres/redis/prefect-server and can't
+    # crash-loop if those are briefly unavailable.
+    image: ${APP_IMAGE:-digital-bast:local}
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    shm_size: "2gb"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    command: ["uvicorn", "digital_bast.render_worker_asgi:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      TZ: Asia/Jakarta
+      HOME: /tmp
+    networks:
+      - digital-bast-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 5G
+        reservations:
+          memory: 256M
 
   worker:
     <<: *app
@@ -287,34 +349,26 @@ services:
           cpus: "0.50"
           memory: 128M
 
-  # Was port 8083 (avoiding 8082, which a pre-existing cloudflared ingress
-  # rule maps adminpanel.celeratesapps.com to -- binding that here would have
+  # Port 8083, NOT 8082: a pre-existing cloudflared ingress rule on this host
+  # maps adminpanel.celeratesapps.com -> localhost:8082. Binding 8082 here
   # silently published this database editor to the public internet, where
-  # NocoDB's first-boot flow lets any visitor claim the admin account).
-  #
-  # Now on 8081: the pre-existing nocodb_bast application container (the one
-  # that previously held that port, and the app's admin login backend --
-  # web/nocodb_postgres_auth.py -- authenticates against its Postgres
-  # database, NOT its own container) has been retired as unused. Confirmed
-  # via `docker port` that 8081, not 8082, was its actual bound port before
-  # removal, so this move does not touch the 8082 exposure risk described
-  # above. Its database (a separate host, unrelated to this compose project)
-  # and its own data volume are both untouched -- only the NocoDB
-  # application container was removed.
+  # NocoDB's first-boot flow lets any visitor claim the admin account.
   #
   # NocoDB-v2: a second, independent instance whose data source is this
   # stack's own Postgres, so the grids people edit ARE the rows the pipeline
-  # writes -- no sync, no second copy.
+  # writes -- no sync, no second copy. The pre-existing nocodb_bast instance
+  # is untouched and stays on the old schema as history plus the admin login
+  # backend.
   nocodb-v2:
     image: nocodb/nocodb:0.301.2
     restart: unless-stopped
     logging: *default-logging
     environment:
       NC_DB: "pg://postgres:5432?u=${NOCODB_V2_DB_USER:-digital_bast_app}&p=${NOCODB_V2_DB_PASSWORD:?NOCODB_V2_DB_PASSWORD is required}&d=nocodb_v2_meta"
-      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8081}
+      NC_PUBLIC_URL: ${NOCODB_V2_PUBLIC_URL:-http://127.0.0.1:8083}
       NC_DISABLE_TELE: "true"
     ports:
-      - "127.0.0.1:${NOCODB_V2_PORT:-8081}:8080"
+      - "127.0.0.1:${NOCODB_V2_PORT:-8083}:8080"
     networks:
       - edge
       - backend
@@ -329,21 +383,17 @@ services:
           cpus: "1.00"
           memory: 1G
 
-  # The WhatsApp bridge moves off the dev laptop. It shells out to the
-  # digital-bast CLI, so it runs from the app image with node added rather
-  # than reaching into a container from the host.
-  # WhatsApp session holder ONLY -- Baileys socket, auth persistence, setup
+  # WhatsApp session holder ONLY -- whatsmeow socket, auth persistence, setup
   # page. Deliberately NOT built FROM the app image and NOT part of
   # scripts/deploy.sh's blue/green flow: it must never rebuild/recreate just
   # because the app changed, or WhatsApp's anti-abuse system revokes the
-  # session after the resulting rapid reconnects (see scripts/deploy-wa-session.sh
-  # for its own, separate, manually-run deploy path). All business/CLI logic
-  # lives in bot-worker below, reached over HTTP.
-  # whatsmeow transport (replaces the former Baileys/Node implementation --
-  # see whatsmeow-session/README.md). Same service name, same deploy
-  # discipline: excluded from scripts/deploy.sh's automated flow (guarded by
-  # scripts/check-ops.sh), redeployed only via scripts/deploy-wa-session.sh,
-  # which is name-agnostic to what's actually inside the container.
+  # session after the resulting rapid reconnects (see
+  # scripts/deploy-wa-session.sh for its own, separate, manually-run deploy
+  # path). All business/CLI logic lives in bot-worker below, reached over
+  # HTTP. Same deploy discipline applies to whatsapp-web-session below --
+  # see docs/wa-session-whatsapp-web-js-migration-plan.md for why both run
+  # side by side during validation, and scripts/deploy-whatsapp-web-session.sh
+  # for its equivalent manual deploy path.
   wa-session:
     build:
       context: .
@@ -393,11 +443,83 @@ services:
           cpus: "0.50"
           memory: 384M
 
+  # Candidate replacement for wa-session (whatsapp-web.js instead of
+  # whatsmeow) -- see docs/wa-session-whatsapp-web-js-migration-plan.md and
+  # whatsapp-web-session/README.md for the full validation history (real
+  # account, real bot-worker, real BAST/Attendance/Task data, all confirmed
+  # working end-to-end before this was added here). Runs SIDE BY SIDE with
+  # wa-session during validation -- deliberately a different host port
+  # (WWJS_SETUP_PORT) and a distinct auth subpath on the same bot-bridge-data
+  # volume, so recreating this one never touches whatsmeow's live session.
+  # Same deploy discipline as wa-session: NOT part of scripts/deploy.sh's
+  # blue/green flow, redeployed only via
+  # scripts/deploy-whatsapp-web-session.sh. Do not point BOT_BRIDGE_BASE_URL
+  # here until the Phase B observation window in that migration doc is done
+  # and cutover is explicitly approved (Phase C).
+  whatsapp-web-session:
+    build:
+      context: .
+      dockerfile: whatsapp-web-session/Dockerfile
+    image: ${WWJS_SESSION_IMAGE:-digital-bast-whatsapp-web-session:local}
+    restart: unless-stopped
+    logging: *default-logging
+    read_only: true
+    shm_size: "512m"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BOT_SETUP_HOST: 0.0.0.0
+      BOT_SETUP_PORT: "8090"
+      BOT_DATA_DIR: /data
+      # A dedicated subpath on the SAME bot-bridge-data volume wa-session
+      # uses -- never wa-session's own auth-whatsmeow dir. Whatsmeow and
+      # whatsapp-web.js auth formats are incompatible; this transport needs
+      # its own pairing regardless of which one is "active".
+      BOT_AUTH_DIR: /data/auth-whatsapp-web-js
+      BOT_WORKER_BASE_URL: ${BOT_WORKER_BASE_URL:-http://bot-worker:8091}
+      BOT_PAIRING_NUMBER: ${BOT_PAIRING_NUMBER:-}
+    secrets:
+      - sync_ingest_token
+    group_add:
+      - "${SECRETS_GID:?SECRETS_GID is required}"
+    # Loopback-only, distinct port from wa-session's 8090 so both run
+    # side by side without colliding.
+    ports:
+      - "127.0.0.1:${WWJS_SETUP_PORT:-8092}:8090"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - backend
+      - egress
+      - digital-bast-network
+    volumes:
+      - bot-bridge-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          # Observed steady-state during live validation: ~650-900MB with
+          # Chromium running continuously. Not yet a multi-day-observed
+          # number -- see docs/wa-session-whatsapp-web-js-migration-plan.md
+          # Phase B before trusting this ceiling long-term.
+          memory: 1.5G
+        reservations:
+          memory: 384M
+
   # Stateless HTTP wrapper around the `digital-bast` CLI -- the business/LLM
   # logic half of the former single bot-bridge process. Holds no WhatsApp
   # state, so scripts/deploy.sh rebuilds and recreates it on every deploy
   # exactly like the combined service used to, harmlessly: there is no live
-  # session here to interrupt.
+  # session here to interrupt. Shared by both WhatsApp transports above.
   bot-worker:
     build:
       context: .
@@ -414,10 +536,6 @@ services:
       BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
       BOT_WORKER_HOST: 0.0.0.0
       BOT_WORKER_PORT: "8091"
-      # wa-session hands off exported/BAST/status-matrix files and evidence
-      # uploads through the volume shared below -- see operations.py's
-      # _exports_directory() and wa-session's BOT_DATA_DIR=/data.
-      BAST_EXPORTS_DIR: /data/exports
     secrets: *app-secrets
     group_add:
       - "${SECRETS_GID:?SECRETS_GID is required}"

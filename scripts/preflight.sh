@@ -16,30 +16,13 @@ done
 require_command docker
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required" 69
 
-# Every deploy rebuilds bot-worker and pulls a fresh digest-pinned release
-# image, so old ones from prior deploys pile up unbounded -- this was
-# repeatedly hitting the disk gate below. wa-session is not part of this
-# flow (see scripts/deploy-wa-session.sh) so it never contributes to this.
-# Blue/green always keeps the current and previous release images
-# referenced by running containers, so `-a` here only ever removes ones no
-# container still points to. Never volumes: those hold real data (Postgres,
-# NocoDB, WhatsApp auth session).
-docker image prune -af >/dev/null 2>&1 || true
-docker builder prune -f >/dev/null 2>&1 || true
-
-# Was 8GB. Ollama (~2GB of that headroom) is no longer part of this box at
-# all -- removed once the bot's own interpreter moved to Cloudflare, same as
-# TalentOps AI earlier -- and every container's logs are now bounded
-# (compose.yaml's x-logging, 10m/3 files each) instead of growing unbounded,
-# which was the actual, repeated cause of 8GB being hard to hold onto: one
-# container alone had accumulated 2.7GB of stdout/stderr. Real per-deploy
-# need is roughly 2.5GB (nocodb-v2 ~1.5, bot-worker ~1); 3GB keeps a margin
-# above that. Lowered from 8 to 3 at the user's explicit request after
-# flagging the risk (a mid-build disk-full condition can corrupt Postgres,
-# both this app's and the unrelated legacy stack's, which this deploy does
-# not own and will not stop to free space for) -- not a margin either box
-# can grow into further without the same conversation happening again.
-available_min_gb=${AVAILABLE_MIN_GB:-3}
+# 8GB, not 10: the box also carries an unrelated legacy V1 stack (its own
+# postgres, pgadmin) that this deploy does not own and will not stop to free
+# space, so 10GB stopped being reachable even right after a full prune. A
+# deploy needs roughly 4.5GB (nocodb-v2 ~1.5, Ollama llama3.2:3b ~2,
+# bot-bridge ~1); 8GB keeps a margin above that without requiring space this
+# box does not have spare.
+available_min_gb=${AVAILABLE_MIN_GB:-8}
 root_available_kb=$(df -Pk / | awk 'NR == 2 {print $4}')
 [ "$root_available_kb" -ge "$((available_min_gb * 1024 * 1024))" ] || die "root disk has less than ${available_min_gb}GB available" 70
 

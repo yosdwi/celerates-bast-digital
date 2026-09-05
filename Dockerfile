@@ -6,11 +6,7 @@ RUN npm install --no-audit --no-fund
 COPY frontend ./
 RUN npm run build
 
-# Keep builder and runtime on the same Python security release so the copied
-# virtualenv ABI and stdlib match exactly. 3.12.14 is the current 3.12
-# security release and includes fixes released after the previous 3.12.11
-# base without forcing a major-version migration.
-FROM python:3.12.14-slim-bookworm AS builder
+FROM python:3.12.11-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
 ENV UV_FROZEN=1 UV_NO_DEV=1 UV_NO_EDITABLE=1 UV_PYTHON_DOWNLOADS=0 UV_PROJECT_ENVIRONMENT=/opt/digital-bast/.venv
@@ -20,7 +16,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync
 
-FROM python:3.12.14-slim-bookworm AS runtime
+FROM python:3.12.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH=/opt/digital-bast/bin:/opt/digital-bast/.venv/bin:$PATH PYTHONPATH=/opt/digital-bast/src TZ=Asia/Jakarta
 

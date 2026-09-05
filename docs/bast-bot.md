@@ -75,34 +75,24 @@ Docker socket is not mounted into any container. Required services: `postgres`,
 
 ## WhatsApp bridge
 
-What used to be a single `bot-bridge/` service is split into two, so that
-deploying an app/business-logic change never has to restart the process
-holding the live WhatsApp connection (repeated rapid reconnects get the
-session revoked by WhatsApp's own anti-abuse system):
-
-- **`wa-session/`** -- Baileys + the setup page on `127.0.0.1:8090`. Pairs
-  the bot number, keeps the group allowlist, and forwards each qualifying
-  message to bot-worker over HTTP. Not part of the normal blue/green deploy;
-  see `scripts/deploy-wa-session.sh`. Full instructions in
-  `wa-session/README.md`.
-- **`bot-worker/`** -- a stateless HTTP wrapper that shells out to
-  `digital-bast bot-reply` / `bot-evidence` exactly as the combined service
-  used to. Holds no WhatsApp state, so it rebuilds and redeploys on every
-  release like any other app change. Full instructions in
-  `bot-worker/README.md`.
+`bot-bridge/` is a small Node service (Baileys + a setup page on
+`127.0.0.1:8090`) that pairs the bot number, keeps the allowlist of groups and
+forwards each mention to `digital-bast bot-reply`. It runs on the host, never in
+a container, because `system-status` shells out to `docker compose ps`. Full
+instructions live in `bot-bridge/README.md`.
 
 ```bash
-cd wa-session && npm install && npm start   # needs bot-worker reachable at BOT_WORKER_BASE_URL
-cd bot-worker && npm install && BAST_CLI="uv run digital-bast" npm start   # local
+cd bot-bridge && npm install
+BAST_CLI="uv run digital-bast" npm start     # local
+BAST_CLI="digital-bast" npm start            # production
 ```
 
-The setup page carries the QR code (and pairing code, if
-`BOT_PAIRING_NUMBER` is set), the group allowlist form, a "Uji perintah" box
-that round-trips through bot-worker, and the recent log. Session files are in
-`wa-session/`'s `BOT_AUTH_DIR`, the allowlist in `BOT_DATA_DIR/config.json`.
+The setup page carries the QR code, the group allowlist form, a "Uji perintah"
+box that runs a command without WhatsApp, and the recent log. Session files are
+in `bot-bridge/auth/`, the allowlist in `bot-bridge/data/config.json`.
 
-Hermes Agent can replace bot-worker's CLI call later: the contract
-(`digital-bast bot-reply`) is unchanged, so no business rule moves.
+Hermes Agent can replace the bridge's command call later: the contract is the
+same allowlisted `digital-bast` invocation, so no business rule moves.
 
 ## Hermes setup
 
