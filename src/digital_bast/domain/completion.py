@@ -115,6 +115,7 @@ class TaskFact:
     title: str
     status: str
     evidence_count: int = 0
+    record_key: str = ""
 
 
 @dataclass(frozen=True, slots=True)

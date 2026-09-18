@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from digital_bast.application.workflow_control import WorkflowControlService
     from digital_bast.bot.attendance_resolution import AttendanceResolutionService
     from digital_bast.bot.rebind import IdentityRebindService
+    from digital_bast.infrastructure.repositories import PostgresTaskStatusHistoryReader
     from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
     from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.contracts import OwnerAuthenticator, SessionStore, WebBackend
@@ -41,6 +42,7 @@ class WebDependencies:
     bast_workflow: BastWorkflowService | None = None
     bast_generation_jobs: BastGenerationJobService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
+    task_status_history: PostgresTaskStatusHistoryReader | None = None
     bot_bridge_status: BotBridgeWhatsAppOutboundGateway | None = None
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     session_id: Callable[[], str] = lambda: secrets.token_urlsafe(32)

@@ -163,12 +163,19 @@ class TimesheetDayResponse(_FrozenModel):
 
 
 class TalentTaskResponse(_FrozenModel):
+    record_key: str
     work_date: date
     title: str
     status: str
     evidence_count: int
     is_closed: bool
     evidence_ready: bool | None
+
+
+class TaskStatusEventResponse(_FrozenModel):
+    old_status: str | None
+    new_status: str
+    changed_at: datetime
 
 
 class TalentDataAvailabilityResponse(_FrozenModel):

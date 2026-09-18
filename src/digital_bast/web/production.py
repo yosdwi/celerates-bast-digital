@@ -26,7 +26,10 @@ from digital_bast.infrastructure.local_completion_source import (
 from digital_bast.infrastructure.ollama_chat import OllamaChatClient
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.redis_url import parse_redis_url
-from digital_bast.infrastructure.repositories import PostgresDomainRepository
+from digital_bast.infrastructure.repositories import (
+    PostgresDomainRepository,
+    PostgresTaskStatusHistoryReader,
+)
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
 from digital_bast.infrastructure.talentops_followup_store import (
     PostgresTalentOpsFollowUpRepository,
@@ -179,6 +182,7 @@ def production_dependencies() -> WebDependencies:
     bast_workflow: BastWorkflowService | None = None
     bast_generation_jobs: BastGenerationJobService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
+    task_status_history: PostgresTaskStatusHistoryReader | None = None
 
     if app_dsn is not None:
         backend = PostgresWebBackend(app_dsn)
@@ -191,6 +195,7 @@ def production_dependencies() -> WebDependencies:
             PostgresTaskEvidenceReader(app_dsn),
         )
         source_sync_state = PostgresSourceSyncStateStore(app_dsn)
+        task_status_history = PostgresTaskStatusHistoryReader(app_dsn)
         attendance_resolutions = AttendanceResolutionService(app_dsn)
         attendance_review = AttendanceReviewService(app_dsn)
         task_evidence_review = TaskEvidenceReviewService(app_dsn)
@@ -263,6 +268,7 @@ def production_dependencies() -> WebDependencies:
         bast_generation_jobs=bast_generation_jobs,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
+        task_status_history=task_status_history,
     )
 
 

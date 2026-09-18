@@ -113,6 +113,7 @@ class CompletionSource:
                         record.title,
                         record.status,
                         evidence.get(str(record.key), 0),
+                        record_key=str(record.key),
                     )
                     for record in tasks
                     if record.employee_id == person.id

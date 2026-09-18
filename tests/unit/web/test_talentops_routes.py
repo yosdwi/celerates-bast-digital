@@ -144,6 +144,7 @@ def talent_detail_view() -> TalentDetailView:
         ),
         tasks=(
             TalentTask(
+                record_key="task:2026-08-01:EMP-1:abc123",
                 work_date=date(2026, 8, 1),
                 title="Task",
                 status="Closed",

@@ -177,12 +177,19 @@ export interface TimesheetDay {
 }
 
 export interface TalentTask {
+  record_key: string;
   work_date: string;
   title: string;
   status: string;
   evidence_count: number;
   is_closed: boolean;
   evidence_ready: boolean | null;
+}
+
+export interface TaskStatusEvent {
+  old_status: string | null;
+  new_status: string;
+  changed_at: string;
 }
 
 export interface TalentDataAvailability {

@@ -16,6 +16,7 @@ import type {
   TalentMobileSettings,
   TalentOpsSession,
   TaskEvidencePage,
+  TaskStatusEvent,
   WhatsAppInvite,
   WhatsAppStatus,
   WorkflowOperator,
@@ -85,6 +86,11 @@ export function getTaskEvidence(
   });
   if (options.nrp?.trim()) query.set("nrp", options.nrp.trim());
   return apiFetch<TaskEvidencePage>(`${BASE}/task-evidence?${query.toString()}`);
+}
+
+export function getTaskStatusHistory(recordKey: string): Promise<TaskStatusEvent[]> {
+  const query = new URLSearchParams({ record_key: recordKey });
+  return apiFetch<TaskStatusEvent[]>(`${BASE}/tasks/status-history?${query.toString()}`);
 }
 
 export function getAttendanceResolutions(): Promise<AttendanceResolution[]> {

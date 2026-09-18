@@ -35,6 +35,7 @@ from digital_bast.bot.attendance_resolution import DecisionOutcome, ResolutionSt
 from digital_bast.bot.evidence import UploadOutcome
 from digital_bast.bot.rebind import RebindDecisionOutcome, RebindStatus
 from digital_bast.domain.completion import DateRange
+from digital_bast.domain.models import RecordKey
 from digital_bast.domain.time import JAKARTA, month_dates
 from digital_bast.operations import (
     bast_artifact_path,
@@ -69,6 +70,7 @@ from digital_bast.web.talentops_contracts import (
     PeriodResponse,
     SessionUserResponse,
     TalentDetailResponse,
+    TaskStatusEventResponse,
     TalentMobileSettingsInput,
     TalentMobileSettingsResponse,
     TalentOpsSessionResponse,
@@ -96,6 +98,7 @@ if TYPE_CHECKING:
     )
     from digital_bast.bot.attendance_resolution import AttendanceResolutionService, SubmitResult
     from digital_bast.bot.rebind import IdentityRebindService
+    from digital_bast.infrastructure.repositories import PostgresTaskStatusHistoryReader
     from digital_bast.infrastructure.whatsapp_outbound import BotBridgeWhatsAppOutboundGateway
     from digital_bast.web.contracts import SessionRecord
     from digital_bast.web.dependencies import WebDependencies
@@ -130,6 +133,15 @@ def _service(deps: WebDependencies) -> TalentOpsService:
             detail="TalentOps service is unavailable",
         )
     return deps.talentops
+
+
+def _task_status_history(deps: WebDependencies) -> PostgresTaskStatusHistoryReader:
+    if deps.task_status_history is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task status history is unavailable",
+        )
+    return deps.task_status_history
 
 
 def _followups(deps: WebDependencies) -> TalentOpsFollowUpService:
@@ -443,6 +455,15 @@ def talentops_router(  # noqa: C901, PLR0915
             )
         )
         return response.model_copy(update={"signals": signals})
+
+    async def task_status_history(
+        request: Request,
+        record_key: Annotated[str, Query(min_length=1, max_length=200)],
+    ) -> tuple[TaskStatusEventResponse, ...]:
+        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _ = await _authorized_operator(deps, record)
+        events = await _task_status_history(deps).for_task(RecordKey(record_key))
+        return tuple(TaskStatusEventResponse.model_validate(event) for event in events)
 
     async def attendance_resolution_queue(
         request: Request,
@@ -1030,6 +1051,12 @@ def talentops_router(  # noqa: C901, PLR0915
     )
     router.add_api_route(
         "/talents/{nrp}", talent_detail, methods=["GET"], response_model=TalentDetailResponse
+    )
+    router.add_api_route(
+        "/tasks/status-history",
+        task_status_history,
+        methods=["GET"],
+        response_model=tuple[TaskStatusEventResponse, ...],
     )
     router.add_api_route(
         "/attendance-resolutions",
