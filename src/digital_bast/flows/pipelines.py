@@ -77,7 +77,17 @@ async def _run_tasks(
     return RunSummary(flow=name, period=period, steps=steps)
 
 
-@flow(name="operational-import", validate_parameters=False, persist_result=False)
+@flow(
+    name="operational-import",
+    validate_parameters=False,
+    persist_result=False,
+    # Runs every 15 minutes with concurrency_limit=1 (deployments.py) -- a run
+    # that hangs forever (e.g. a stalled upstream connection) would otherwise
+    # occupy that one slot permanently and every later scheduled run piles up
+    # behind it unexecuted. 10 minutes is generous next to the ~35-40s a
+    # normal run takes, but still well inside the 15-minute cadence.
+    timeout_seconds=600,
+)
 async def operational_import_flow(
     period: str | None = None,
 ) -> RunSummary:
@@ -86,7 +96,7 @@ async def operational_import_flow(
     return await _run_tasks("operational-import", _OPERATIONAL, target, active)
 
 
-@flow(name="nightly-reconciliation", validate_parameters=False, persist_result=False)
+@flow(name="nightly-reconciliation", validate_parameters=False, persist_result=False, timeout_seconds=1800)
 async def nightly_reconciliation_flow(
     period: str | None = None,
 ) -> RunSummary:
@@ -95,7 +105,7 @@ async def nightly_reconciliation_flow(
     return await _run_tasks("nightly-reconciliation", (Operation.RECONCILIATION,), target, active)
 
 
-@flow(name="reference-data", validate_parameters=False, persist_result=False)
+@flow(name="reference-data", validate_parameters=False, persist_result=False, timeout_seconds=1800)
 async def reference_data_flow(
     period: str | None = None,
 ) -> RunSummary:
@@ -104,7 +114,7 @@ async def reference_data_flow(
     return await _run_tasks("reference-data", _REFERENCES, target, active)
 
 
-@flow(name="monthly-timesheets", validate_parameters=False, persist_result=False)
+@flow(name="monthly-timesheets", validate_parameters=False, persist_result=False, timeout_seconds=1800)
 async def monthly_timesheets_flow(
     period: str | None = None,
 ) -> RunSummary:
@@ -113,7 +123,7 @@ async def monthly_timesheets_flow(
     return await _run_tasks("monthly-timesheets", (Operation.TIMESHEET_GENERATION,), target, active)
 
 
-@flow(name="iot-pic-update", validate_parameters=False, persist_result=False)
+@flow(name="iot-pic-update", validate_parameters=False, persist_result=False, timeout_seconds=1800)
 async def iot_pic_update_flow() -> RunSummary:
     active = get_run_context()
     target = current_period(active)
