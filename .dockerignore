@@ -26,3 +26,4 @@ secrets
 docs
 tests
 compose*.yaml
+frontend/node_modules

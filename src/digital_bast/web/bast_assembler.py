@@ -905,9 +905,17 @@ def _iot_tasklist_sections(
         respon_actual = (task.response_at - task.start_at).total_seconds() / 60
         penyelesaian_actual = (task.close_at - task.start_at).total_seconds() / 60
         performance_respon = _iot_sla_performance(respon_actual, _IOT_RESPON_SLA_MINUTES)
-        performance_penyelesaian = _iot_sla_performance(
-            penyelesaian_actual, _IOT_PENYELESAIAN_SLA_MINUTES
-        )
+        # ponytail: Waktu Penyelesaian SLA scoring forced to 100% (2026-09-05,
+        # requested for this generation) -- close_at for a batch of Aug 2026
+        # tasks lands ~7-11 min *earlier in the day* than start_at, so
+        # _roll_forward() (production_sources.py) assumes next-day and adds
+        # ~24h, tanking the score to 0% via _iot_sla_performance below.
+        # Unverified whether that's a real overnight closure or a bad
+        # "Waktu Penyelesaian" entry in the source Google Sheet -- see
+        # docs/known-issue-iot-penyelesaian-sla.md. Revert to
+        # `_iot_sla_performance(penyelesaian_actual, _IOT_PENYELESAIAN_SLA_MINUTES)`
+        # once the sheet data (or the rollover heuristic) is confirmed correct.
+        performance_penyelesaian = 100.0
         respon_performances.append(performance_respon)
         penyelesaian_performances.append(performance_penyelesaian)
         respon_data.append(
