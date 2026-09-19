@@ -261,7 +261,7 @@ export default function App() {
     const nextRoute = parseRoute(path);
     const selected = nextRoute.page === "payroll"
       ? payrollData?.cycle
-      : data?.period;
+      : data?.period ?? payrollData?.cycle;
     const target = selected
       ? withPeriodQuery(path, window.location.search, selected)
       : path;
@@ -376,6 +376,8 @@ export default function App() {
       </WorkspaceFrame>
     );
   }
+
+  if (!data && periodPending) return <LoadingScreen />;
 
   if (!data) {
     return (
