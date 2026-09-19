@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Protocol
+from datetime import datetime  # noqa: TC003 - Pydantic resolves this type at runtime
+from typing import TYPE_CHECKING, Annotated, Protocol
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -18,8 +18,10 @@ from digital_bast.infrastructure.whatsapp_outbound import (
     WhatsAppGroupDirectory,
     WhatsAppGroupParticipant,
 )
-from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
+
+if TYPE_CHECKING:
+    from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1/whatsapp-directory"
 _ADMIN_ROLES = frozenset({"owner", "admin"})
@@ -125,7 +127,11 @@ def _configured_store() -> DirectoryStore | None:
 
 async def _groups(deps: WebDependencies) -> WhatsAppGroupDirectory:
     if deps.bot_bridge_status is None:
-        return WhatsAppGroupDirectory(False, "unavailable", ())
+        return WhatsAppGroupDirectory(
+            ready=False,
+            connection="unavailable",
+            groups=(),
+        )
     return await deps.bot_bridge_status.get_groups()
 
 
@@ -161,7 +167,7 @@ def _closing_response(
     )
 
 
-def whatsapp_directory_router(
+def whatsapp_directory_router(  # noqa: C901 - cohesive API route factory
     deps: WebDependencies,
     store: DirectoryStore | None = None,
 ) -> APIRouter:
