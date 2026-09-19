@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
 from uuid import UUID
 
 import pytest
@@ -45,7 +44,7 @@ class _FakeCursor:
         self.statements.append((statement, parameters))
         return self
 
-    def fetchone(self) -> Any:
+    def fetchone(self) -> object | None:
         return self.row
 
 
@@ -63,13 +62,13 @@ class _FakeConnection:
         return self._cursor
 
 
-class _FakeContextService(AttendanceReminderContextService):
-    def __init__(self, cursor: _FakeCursor) -> None:
-        super().__init__("postgresql://unused")
-        self.cursor = cursor
-
-    def _connect(self) -> Any:
-        return _FakeConnection(self.cursor)
+def _service(
+    cursor: _FakeCursor,
+    monkeypatch: pytest.MonkeyPatch,
+) -> AttendanceReminderContextService:
+    service = AttendanceReminderContextService("postgresql://unused")
+    monkeypatch.setattr(service, "_connect", lambda: _FakeConnection(cursor))
+    return service
 
 
 def test_snapshot_keeps_the_exact_sent_order_for_number_replies() -> None:
@@ -98,11 +97,13 @@ def test_snapshot_rejects_ambiguous_or_invalid_identity_lists() -> None:
             "employee-1",
             "cycle-1",
             ("attendance:a",),
-            datetime(2026, 9, 19, 12, 0),
+            datetime(2026, 9, 19, 12, 0),  # noqa: DTZ001
         )
 
 
-def test_load_preserves_order_and_fails_closed_after_expiry() -> None:
+def test_load_preserves_order_and_fails_closed_after_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     row = SimpleNamespace(
         context_id=_CONTEXT_ID,
         version=1,
@@ -111,18 +112,18 @@ def test_load_preserves_order_and_fails_closed_after_expiry() -> None:
         attendance_keys=["attendance:first", "attendance:second"],
         expires_at=_NOW + timedelta(minutes=30),
     )
-    service = _FakeContextService(_FakeCursor(row))
+    service = _service(_FakeCursor(row), monkeypatch)
 
-    loaded = service._load("62812@c.us", _NOW)  # noqa: SLF001
+    loaded = service._load("62812@c.us", _NOW)
 
     assert loaded is not None
     assert loaded.context_id == _CONTEXT_ID
     assert loaded.attendance_keys == ("attendance:first", "attendance:second")
     assert loaded.attendance_key_at(2) == "attendance:second"
-    assert service._load("62812@c.us", _NOW + timedelta(hours=1)) is None  # noqa: SLF001
+    assert service._load("62812@c.us", _NOW + timedelta(hours=1)) is None
 
 
-def test_load_fails_closed_for_corrupt_key_payload() -> None:
+def test_load_fails_closed_for_corrupt_key_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     row = SimpleNamespace(
         context_id=_CONTEXT_ID,
         version=1,
@@ -131,16 +132,18 @@ def test_load_fails_closed_for_corrupt_key_payload() -> None:
         attendance_keys={"not": "an array"},
         expires_at=_NOW + timedelta(minutes=30),
     )
-    service = _FakeContextService(_FakeCursor(row))
+    service = _service(_FakeCursor(row), monkeypatch)
 
-    assert service._load("62812@c.us", _NOW) is None  # noqa: SLF001
+    assert service._load("62812@c.us", _NOW) is None
 
 
-def test_save_does_not_touch_legacy_or_navigation_timestamps() -> None:
+def test_save_does_not_touch_legacy_or_navigation_timestamps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cursor = _FakeCursor()
-    service = _FakeContextService(cursor)
+    service = _service(cursor, monkeypatch)
 
-    service._save("62812@c.us", _context())  # noqa: SLF001
+    service._save("62812@c.us", _context())
 
     statement, parameters = cursor.statements[-1]
     assert "attendance_context_keys" in statement
@@ -151,11 +154,11 @@ def test_save_does_not_touch_legacy_or_navigation_timestamps() -> None:
     assert parameters[1] == _CONTEXT_ID
 
 
-def test_clear_only_removes_attendance_snapshot() -> None:
+def test_clear_only_removes_attendance_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     cursor = _FakeCursor()
-    service = _FakeContextService(cursor)
+    service = _service(cursor, monkeypatch)
 
-    service._clear("62812@c.us")  # noqa: SLF001
+    service._clear("62812@c.us")
 
     statement, parameters = cursor.statements[-1]
     assert "attendance_context_id = NULL" in statement
