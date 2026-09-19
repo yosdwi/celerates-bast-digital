@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as payrollApi from "../api/payroll";
-import type { PayrollOverviewResponse, PayrollTalentDetailResponse } from "../api/payroll";
+import type {
+  PayrollOverviewResponse,
+  PayrollReviewQueueResponse,
+  PayrollTalentDetailResponse,
+} from "../api/payroll";
 import type { TalentOpsSession } from "../api/types";
 import PayrollPage from "./PayrollPage";
 
@@ -86,6 +90,23 @@ function overview(): PayrollOverviewResponse {
   };
 }
 
+function emptyQueue(): PayrollReviewQueueResponse {
+  const data = overview();
+  return {
+    cycle: data.cycle,
+    summary: {
+      total: 0,
+      reviewable: 0,
+      stale: 0,
+      missing_clock_in: 0,
+      missing_clock_out: 0,
+      missing_both_worked: 0,
+      absence: 0,
+    },
+    items: [],
+  };
+}
+
 function detailFor(employeeId: string): PayrollTalentDetailResponse {
   const base = overview();
   if (employeeId === "c") {
@@ -164,6 +185,11 @@ function detailFor(employeeId: string): PayrollTalentDetailResponse {
     ],
   };
 }
+
+beforeEach(() => {
+  vi.spyOn(payrollApi, "getPayrollOverview").mockImplementation(async () => overview());
+  vi.spyOn(payrollApi, "getPayrollReviewQueue").mockImplementation(async () => emptyQueue());
+});
 
 afterEach(() => {
   cleanup();
