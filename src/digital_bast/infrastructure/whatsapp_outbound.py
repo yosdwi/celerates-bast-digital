@@ -83,14 +83,27 @@ class WhatsAppGroupDirectory:
     discovered_at: datetime | None = None
 
 
+def _unavailable_receipt() -> WhatsAppSendReceipt:
+    return WhatsAppSendReceipt(
+        status="bridge_unavailable",
+        error_code="bridge_not_configured",
+    )
+
+
 @final
 class UnavailableWhatsAppOutboundGateway:
     async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt:
         _ = (jid, text, request_id)
-        return WhatsAppSendReceipt(
-            status="bridge_unavailable",
-            error_code="bridge_not_configured",
-        )
+        return _unavailable_receipt()
+
+    async def send_group(
+        self,
+        group_jid: str,
+        text: str,
+        request_id: str,
+    ) -> WhatsAppSendReceipt:
+        _ = (group_jid, text, request_id)
+        return _unavailable_receipt()
 
 
 @final
@@ -106,13 +119,35 @@ class BotBridgeWhatsAppOutboundGateway:
         self._timeout_seconds = timeout_seconds
 
     async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt:
+        return await self._send_to("/internal/v1/messages", jid, text, request_id)
+
+    async def send_group(
+        self,
+        group_jid: str,
+        text: str,
+        request_id: str,
+    ) -> WhatsAppSendReceipt:
+        return await self._send_to(
+            "/internal/v1/group-messages",
+            group_jid,
+            text,
+            request_id,
+        )
+
+    async def _send_to(
+        self,
+        path: str,
+        jid: str,
+        text: str,
+        request_id: str,
+    ) -> WhatsAppSendReceipt:
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout_seconds,
             ) as client:
                 response = await client.post(
-                    "/internal/v1/messages",
+                    path,
                     headers={"X-Bridge-Token": self._token},
                     json={"jid": jid, "text": text, "request_id": request_id},
                 )
