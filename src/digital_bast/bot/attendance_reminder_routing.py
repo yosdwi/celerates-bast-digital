@@ -13,7 +13,10 @@ from datetime import date, time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Protocol
 
-from digital_bast.application.attendance_closing import AttendanceClosingReason
+from digital_bast.application.attendance_closing import (
+    AttendanceClosingReason,
+    AttendanceClosingStatus,
+)
 from digital_bast.application.attendance_closing_policy import payroll_cycle
 from digital_bast.bot.attendance_reminder import (
     ATTENDANCE_REMINDER_LATER_ACTION_ID,
@@ -159,7 +162,12 @@ def _same_gap_suggestion(
         prior = by_key.get(prior_key)
         if prior is None:
             continue
-        if prior.resolution_status != "pending" or prior.resolution_type != current_type:
+        if (
+            prior.status is not AttendanceClosingStatus.WAITING_SUBMITTED
+            or prior.reason is not AttendanceClosingReason.GAP_COVERED_BY_SUBMITTED_REQUEST
+            or prior.resolution_status != "pending"
+            or prior.resolution_type != current_type
+        ):
             continue
         proposed_in = _clock(prior.proposed_check_in)
         proposed_out = _clock(prior.proposed_check_out)
