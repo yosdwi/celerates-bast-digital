@@ -81,10 +81,16 @@ class PostgresPayrollClosingSettingsStore:
         normalized = scope_key.strip() or "default"
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                _ = cursor.execute(self._select_sql() + " WHERE scope_key = %s", (normalized,))
+                _ = cursor.execute(
+                    self._select_sql() + " WHERE scope_key = %s",
+                    (normalized,),
+                )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="payroll_closing_settings") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="payroll_closing_settings",
+            ) from error
         return self._settings(row, normalized)
 
     def _save(self, settings: PayrollClosingSettings) -> PayrollClosingSettings:
@@ -144,9 +150,15 @@ class PostgresPayrollClosingSettingsStore:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="save_payroll_closing_settings") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="save_payroll_closing_settings",
+            ) from error
         if row is None:  # pragma: no cover - RETURNING invariant
-            raise InfrastructureError(service="postgres", operation="reload_payroll_closing_settings")
+            raise InfrastructureError(
+                service="postgres",
+                operation="reload_payroll_closing_settings",
+            )
         return self._settings(row, settings.scope_key)
 
     def _mark_applied(self, scope_key: str, version: int) -> PayrollClosingSettings:
@@ -167,5 +179,8 @@ class PostgresPayrollClosingSettingsStore:
                     (version, normalized, version),
                 )
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="apply_payroll_closing_settings") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="apply_payroll_closing_settings",
+            ) from error
         return self._load(normalized)
