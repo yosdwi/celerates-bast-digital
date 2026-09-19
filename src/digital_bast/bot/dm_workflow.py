@@ -35,6 +35,7 @@ from digital_bast.bot.payroll_attendance_draft import (
     render_payroll_draft_prompt,
     select_payroll_proposal,
 )
+from digital_bast.bot.payroll_attendance_evidence import attach_payroll_attendance_evidence
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
 from digital_bast.bot.talent_home import home as talent_home
@@ -513,9 +514,21 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     existing = await state.pending(jid)
     if existing is not None:
         if await _is_payroll_resolution_draft(jid, existing):
-            # P11 will persist media into this active time-first draft. P10 keeps
-            # the response truthful instead of claiming evidence was stored.
-            return render_payroll_draft_prompt(existing)
+            bound_employee_id = await create_activation_service().resolve(jid)
+            if bound_employee_id != existing.employee_id:
+                await state.clear(jid)
+                return (
+                    "Draft attendance ini tidak cocok dengan identity WhatsApp aktif. "
+                    "Balas `lengkapi` lagi setelah identity diperbaiki."
+                )
+            return await attach_payroll_attendance_evidence(
+                jid=jid,
+                draft=existing,
+                file_path=file_path,
+                caption=caption,
+                evidence=create_attendance_evidence_service(),
+                state=state,
+            )
         return _resolution_prompt(existing)
 
     activation = create_activation_service()
