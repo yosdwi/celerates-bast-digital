@@ -213,17 +213,22 @@ async def test_h1_digest_sends_one_configured_group_message_and_deduplicates() -
     assert "Perlu Talent: 4" in message
     assert "Belum merespons: 2" in message
     assert "UNKNOWN 1" in message
-    assert request_id.endswith(":H-1")
+    assert request_id.startswith("payroll:")
+    assert len(request_id) == 72
+    logical = next(iter(deliveries.records))
+    assert logical.endswith(":H-1")
 
 
 async def test_final_digest_uses_final_milestone_on_cycle_end() -> None:
-    service, outbound, _ = _service()
+    service, outbound, deliveries = _service()
 
     result = await service.run(now=_FINAL)
 
     assert result.outcome == "sent"
     assert result.milestone == "FINAL"
-    assert outbound.calls[0][2].endswith(":FINAL")
+    assert outbound.calls[0][2].startswith("payroll:")
+    assert len(outbound.calls[0][2]) == 72
+    assert next(iter(deliveries.records)).endswith(":FINAL")
 
 
 async def test_group_digest_respects_disabled_paused_and_missing_destination() -> None:
