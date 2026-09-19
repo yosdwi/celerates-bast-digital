@@ -294,11 +294,17 @@ async def _payroll_reminder_reply(
     if context is None:
         if is_digit_shortcut:
             return None
-        return "Reminder attendance ini sudah tidak aktif. Tunggu reminder berikutnya atau cek attendance terbaru."
+        return (
+            "Reminder attendance ini sudah tidak aktif. "
+            "Tunggu reminder berikutnya atau cek attendance terbaru."
+        )
 
     if context.employee_id != employee_id:
         await context_store.clear(jid)
-        return "Reminder attendance ini sudah tidak cocok dengan identity WhatsApp aktif. Hubungi admin."
+        return (
+            "Reminder attendance ini sudah tidak cocok dengan identity WhatsApp aktif. "
+            "Hubungi admin."
+        )
 
     if command is AttendanceReminderCommand.LATER:
         return (
@@ -319,8 +325,14 @@ async def _payroll_reminder_reply(
 
     await context_store.clear(jid)
     if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
-        return "Attendance dari reminder ini sudah tidak perlu action. Tidak ada yang perlu kamu isi sekarang."
-    return "Reminder attendance ini sudah tidak valid. Tunggu reminder berikutnya atau cek attendance terbaru."
+        return (
+            "Attendance dari reminder ini sudah tidak perlu action. "
+            "Tidak ada yang perlu kamu isi sekarang."
+        )
+    return (
+        "Reminder attendance ini sudah tidak valid. "
+        "Tunggu reminder berikutnya atau cek attendance terbaru."
+    )
 
 
 async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
