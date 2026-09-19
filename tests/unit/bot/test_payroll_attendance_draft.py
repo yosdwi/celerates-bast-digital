@@ -3,6 +3,8 @@ from datetime import date, time
 from digital_bast.bot.attendance_resolution import AbsenceType, ResolutionType
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.bot.payroll_attendance_draft import (
+    PAYROLL_DRAFT_EDIT_ACTION_ID,
+    PAYROLL_DRAFT_SUBMIT_ACTION_ID,
     render_payroll_draft_prompt,
     select_payroll_proposal,
 )
@@ -75,7 +77,7 @@ def test_saved_clock_without_evidence_asks_only_for_evidence() -> None:
     assert "PMO" not in text
 
 
-def test_saved_clock_with_existing_evidence_stays_draft_not_submitted() -> None:
+def test_saved_clock_with_existing_evidence_moves_to_explicit_review() -> None:
     text = render_payroll_draft_prompt(
         _draft(
             ResolutionType.MISSING_CLOCK_OUT,
@@ -86,5 +88,7 @@ def test_saved_clock_with_existing_evidence_stays_draft_not_submitted() -> None:
 
     assert "Clock Out: 17:40" in text
     assert "Bukti: ✓" in text
-    assert "Belum diajukan ke PMO" in text
+    assert "Ajukan informasi ini?" in text
+    assert PAYROLL_DRAFT_SUBMIT_ACTION_ID in text
+    assert PAYROLL_DRAFT_EDIT_ACTION_ID in text
     assert "Menunggu approval" not in text
