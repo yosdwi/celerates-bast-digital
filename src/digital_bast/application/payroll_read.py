@@ -13,14 +13,22 @@ from digital_bast.application.attendance_closing import (
     AttendanceScheduleState,
     AttendanceSourceState,
 )
-from digital_bast.application.attendance_closing_policy import PayrollCycle, evaluated_through
+from digital_bast.application.attendance_closing_policy import evaluated_through
 from digital_bast.domain.completion import resolve_off_days
-from digital_bast.domain.models import EntityKind, Holiday, Month, Schedule, Timesheet
+from digital_bast.domain.models import (
+    EmployeeRole,
+    EntityKind,
+    Holiday,
+    Month,
+    Schedule,
+    Timesheet,
+)
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
     from datetime import date
 
+    from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.domain.completion import DateRange
     from digital_bast.domain.models import DomainRecord, Employee
 
@@ -158,6 +166,32 @@ def _coverage(resolution_type: str | None) -> tuple[bool, bool]:
     return False, False
 
 
+def _verified_off_days(
+    employee: Employee,
+    cycle: PayrollCycle,
+    holidays: dict[date, Holiday],
+    schedules: dict[date, Schedule],
+    timesheets: dict[date, Timesheet],
+) -> frozenset[date]:
+    resolved = set(
+        resolve_off_days(
+            employee.role,
+            cycle.period,
+            holidays,
+            schedules,
+            timesheets,
+        )
+    )
+    if employee.role is EmployeeRole.IOT_OPERATIONS:
+        # Missing schedule + missing timesheet is source ambiguity, not proof of OFF.
+        # The legacy resolver defaults a schedule-less IoT day to OFF; Payroll must
+        # fail closed instead so source-sync failures never look complete.
+        for work_date in cycle.period.days():
+            if work_date not in schedules and work_date not in timesheets:
+                resolved.discard(work_date)
+    return frozenset(resolved)
+
+
 @final
 class PayrollReadService:
     def __init__(
@@ -190,9 +224,9 @@ class PayrollReadService:
             timesheet_by_day = {
                 row.work_date: row for row in timesheets if row.employee_id == employee.id
             }
-            off_days = resolve_off_days(
-                employee.role,
-                cycle.period,
+            off_days = _verified_off_days(
+                employee,
+                cycle,
                 holiday_by_day,
                 schedule_by_day,
                 timesheet_by_day,
@@ -207,7 +241,9 @@ class PayrollReadService:
                 )
             )
 
-        ordered = tuple(sorted(talents, key=lambda item: (item.name.casefold(), item.employee_id)))
+        ordered = tuple(
+            sorted(talents, key=lambda item: (item.name.casefold(), item.employee_id))
+        )
         summary = PayrollSummary(
             total_talents=len(ordered),
             complete=sum(
