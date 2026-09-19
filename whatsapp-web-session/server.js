@@ -42,6 +42,10 @@ function validDirectJid(raw) {
   return /^\d+@(c\.us|lid)$/.test(raw);
 }
 
+function validGroupJid(raw) {
+  return /^\d+(?:-\d+)?@g\.us$/.test(raw);
+}
+
 fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o750 });
 fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
 
@@ -209,7 +213,7 @@ async function handleGroups(req, res) {
   }
 }
 
-async function handleSendOutbound(req, res) {
+async function handleSendOutbound(req, res, jidValidator) {
   if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
     writeJson(res, 403, { status: "forbidden" });
     return;
@@ -228,7 +232,7 @@ async function handleSendOutbound(req, res) {
   const jid = String(payload.jid || "").trim();
   const text = String(payload.text || "").trim();
   const requestId = String(payload.request_id || "").trim();
-  if (!validDirectJid(jid) || !text || text.length > MAX_MESSAGE_CHARS || !requestId || requestId.length > MAX_REQUEST_ID_CHARS) {
+  if (!jidValidator(jid) || !text || text.length > MAX_MESSAGE_CHARS || !requestId || requestId.length > MAX_REQUEST_ID_CHARS) {
     writeJson(res, 422, { status: "invalid", error: "invalid_message_request" });
     return;
   }
@@ -317,7 +321,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === "POST" && url.pathname === "/internal/v1/messages") {
-      await handleSendOutbound(req, res);
+      await handleSendOutbound(req, res, validDirectJid);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/internal/v1/group-messages") {
+      await handleSendOutbound(req, res, validGroupJid);
       return;
     }
     if (req.method === "POST" && url.pathname === "/pair") {
