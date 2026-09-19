@@ -36,9 +36,11 @@ class _DeliveryRow:
         "message",
         "milestone",
         "provider_message_id",
+        "reserved_at",
         "responded_at",
         "response_kind",
         "scope_key",
+        "sent_at",
     )
 
     def __init__(  # noqa: PLR0913, PLR0917 - mirrors selected ledger fields
@@ -55,6 +57,8 @@ class _DeliveryRow:
         attempt_count: int,
         provider_message_id: str | None,
         error_code: str | None,
+        reserved_at: datetime | None,
+        sent_at: datetime | None,
         responded_at: datetime | None,
         response_kind: str | None,
     ) -> None:
@@ -70,6 +74,8 @@ class _DeliveryRow:
         self.attempt_count = attempt_count
         self.provider_message_id = provider_message_id
         self.error_code = error_code
+        self.reserved_at = reserved_at
+        self.sent_at = sent_at
         self.responded_at = responded_at
         self.response_kind = response_kind
 
@@ -88,6 +94,8 @@ def _record(row: _DeliveryRow) -> PayrollDeliveryRecord:
         attempt_count=row.attempt_count,
         provider_message_id=row.provider_message_id,
         error_code=row.error_code,
+        reserved_at=row.reserved_at,
+        sent_at=row.sent_at,
         responded_at=row.responded_at,
         response_kind=row.response_kind,
     )
@@ -126,6 +134,8 @@ _RESERVE_SQL = """
               attempt_count,
               provider_message_id,
               error_code,
+              reserved_at,
+              sent_at,
               responded_at,
               response_kind
 """
@@ -142,6 +152,8 @@ _BY_KEY_SQL = """
            attempt_count,
            provider_message_id,
            error_code,
+           reserved_at,
+           sent_at,
            responded_at,
            response_kind
     FROM talentops_followups
@@ -172,6 +184,8 @@ _REFRESH_SQL = """
               attempt_count,
               provider_message_id,
               error_code,
+              reserved_at,
+              sent_at,
               responded_at,
               response_kind
 """
@@ -195,6 +209,8 @@ _CLAIM_SQL = """
               attempt_count,
               provider_message_id,
               error_code,
+              reserved_at,
+              sent_at,
               responded_at,
               response_kind
 """
@@ -219,6 +235,8 @@ _FINISH_SQL = """
               attempt_count,
               provider_message_id,
               error_code,
+              reserved_at,
+              sent_at,
               responded_at,
               response_kind
 """
@@ -230,6 +248,29 @@ _RESPONSE_SQL = """
       AND employee_id = %s
       AND delivery_state = 'SENT'
       AND responded_at IS NULL
+"""
+_LIST_CYCLE_SQL = """
+    SELECT id,
+           idempotency_key,
+           employee_id,
+           message,
+           delivery_state,
+           scope_key,
+           cycle_id,
+           milestone,
+           context_id,
+           attempt_count,
+           provider_message_id,
+           error_code,
+           reserved_at,
+           sent_at,
+           responded_at,
+           response_kind
+    FROM talentops_followups
+    WHERE scope_key = %s
+      AND cycle_id = %s
+      AND delivery_state IS NOT NULL
+    ORDER BY reserved_at, id
 """
 
 
@@ -312,6 +353,14 @@ class PostgresPayrollReminderDeliveryStore:
             responded_at,
         )
 
+    async def list_cycle(
+        self,
+        *,
+        scope_key: str,
+        cycle_id: str,
+    ) -> tuple[PayrollDeliveryRecord, ...]:
+        return await run_sync(self._list_cycle, scope_key, cycle_id)
+
     def _reserve(  # noqa: PLR0913, PLR0917 - mirrors reserve contract
         self,
         idempotency_key: str,
@@ -374,10 +423,7 @@ class PostgresPayrollReminderDeliveryStore:
                 self._connect() as connection,
                 connection.cursor(row_factory=class_row(_DeliveryRow)) as cursor,
             ):
-                _ = cursor.execute(
-                    _REFRESH_SQL,
-                    (message, context_id, idempotency_key),
-                )
+                _ = cursor.execute(_REFRESH_SQL, (message, context_id, idempotency_key))
                 row = cursor.fetchone()
         except psycopg.Error as error:
             raise InfrastructureError(
@@ -444,13 +490,28 @@ class PostgresPayrollReminderDeliveryStore:
     ) -> bool:
         try:
             with self._connect() as connection, connection.cursor() as cursor:
-                _ = cursor.execute(
-                    _RESPONSE_SQL,
-                    (responded_at, context_id, employee_id),
-                )
+                _ = cursor.execute(_RESPONSE_SQL, (responded_at, context_id, employee_id))
                 return cursor.rowcount > 0
         except psycopg.Error as error:
             raise InfrastructureError(
                 service="postgres",
                 operation="mark_payroll_reminder_response",
+            ) from error
+
+    def _list_cycle(
+        self,
+        scope_key: str,
+        cycle_id: str,
+    ) -> tuple[PayrollDeliveryRecord, ...]:
+        try:
+            with (
+                self._connect() as connection,
+                connection.cursor(row_factory=class_row(_DeliveryRow)) as cursor,
+            ):
+                _ = cursor.execute(_LIST_CYCLE_SQL, (scope_key, cycle_id))
+                return tuple(_record(row) for row in cursor.fetchall())
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres",
+                operation="list_payroll_reminder_deliveries",
             ) from error
