@@ -96,7 +96,7 @@ describe("PayrollPage", () => {
     expect(screen.getByRole("heading", { name: "Payroll" })).toBeInTheDocument();
     expect(screen.getByText(/Payroll September 2026/)).toBeInTheDocument();
     expect(screen.getByText(/Dievaluasi s.d. 18 Sep 2026/)).toBeInTheDocument();
-    expect(screen.getByText("4 Talent perlu cek data sumber.")).toBeInTheDocument();
+    expect(screen.getByText("1 Talent perlu cek data sumber.")).toBeInTheDocument();
 
     const summary = screen.getByRole("region", { name: "Ringkasan Payroll" });
     expect(within(summary).getByText("Complete")).toBeInTheDocument();
