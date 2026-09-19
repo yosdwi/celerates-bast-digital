@@ -77,8 +77,8 @@ def _talent(
 def test_composer_keeps_only_current_action_and_builds_p07_snapshot() -> None:
     cycle = payroll_cycle(2026, 9)
     talent = _talent(
-        _day(4, key="attendance:four"),
         _day(7, key="attendance:seven", raw_in=None, raw_out="17:51"),
+        _day(4, key="attendance:four"),
         _day(
             8,
             status=AttendanceClosingStatus.WAITING_SUBMITTED,
@@ -103,6 +103,7 @@ def test_composer_keeps_only_current_action_and_builds_p07_snapshot() -> None:
 
     assert draft is not None
     assert "ada 2 attendance Payroll September 2026" in draft.text
+    assert draft.text.index("4 Sep") < draft.text.index("7 Sep")
     assert "4 Sep — Clock Out belum ada" in draft.text
     assert "7 Sep — Clock In belum ada" in draft.text
     assert "8 Sep" not in draft.text
@@ -183,13 +184,21 @@ def test_composer_skips_waiting_complete_and_unverified_only_talents() -> None:
     assert compose_attendance_reminder(unverified, cycle, expires_at=_EXPIRES_AT) is None
 
 
-def test_composer_fails_closed_when_actionable_row_has_no_attendance_key() -> None:
-    talent = _talent(_day(4, key=""))
+def test_composer_fails_closed_for_unaddressable_or_duplicate_actionable_rows() -> None:
+    cycle = payroll_cycle(2026, 9)
 
     assert (
         compose_attendance_reminder(
-            talent,
-            payroll_cycle(2026, 9),
+            _talent(_day(4, key="")),
+            cycle,
+            expires_at=_EXPIRES_AT,
+        )
+        is None
+    )
+    assert (
+        compose_attendance_reminder(
+            _talent(_day(4, key="attendance:same"), _day(7, key="attendance:same")),
+            cycle,
             expires_at=_EXPIRES_AT,
         )
         is None
@@ -229,4 +238,6 @@ def test_large_reminder_stays_concise_but_snapshot_keeps_every_actionable_key() 
     assert "8 Sep" in draft.text
     assert "9 Sep" not in draft.text
     assert "+1 attendance lainnya" in draft.text
-    assert draft.context.attendance_keys == tuple(f"attendance:{day}" for day in (4, 5, 6, 7, 8, 9))
+    assert draft.context.attendance_keys == tuple(
+        f"attendance:{day}" for day in (4, 5, 6, 7, 8, 9)
+    )
