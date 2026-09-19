@@ -34,12 +34,17 @@ class Attendance:
         )
 
 
-def employee(employee_id: str, nrp: str, name: str) -> Employee:
+def employee(
+    employee_id: str,
+    nrp: str,
+    name: str,
+    role: EmployeeRole = EmployeeRole.DEVELOPER,
+) -> Employee:
     return Employee(
         id=EmployeeId(employee_id),
         external_id=nrp,
         name=name,
-        role=EmployeeRole.DEVELOPER,
+        role=role,
     )
 
 
@@ -157,6 +162,35 @@ async def test_developer_weekend_without_attendance_is_valid_off_day() -> None:
     assert talent.evaluated_days == 0
     assert talent.unverified_days == 0
     assert talent.days[0].reason is AttendanceClosingReason.SCHEDULED_OFF
+
+
+async def test_iot_day_without_schedule_timesheet_or_attendance_is_unverified() -> None:
+    work_date = date(2026, 9, 14)
+    service = PayrollReadService(
+        Employees(
+            (
+                employee(
+                    "emp-iot",
+                    "I01",
+                    "Ira",
+                    EmployeeRole.IOT_OPERATIONS,
+                ),
+            )
+        ),
+        Records(),
+        Attendance(()),
+    )
+
+    overview = await service.overview(
+        one_day_cycle(work_date),
+        now=datetime(2026, 9, 15, 7, 0, tzinfo=JAKARTA),
+    )
+
+    talent = overview.talents[0]
+    assert talent.actionable_days == 0
+    assert talent.unverified_days == 1
+    assert talent.days[0].reason is AttendanceClosingReason.SOURCE_UNAVAILABLE
+    assert talent.days[0].talent_action_required is False
 
 
 async def test_current_day_waits_for_next_day_evaluation_boundary() -> None:
