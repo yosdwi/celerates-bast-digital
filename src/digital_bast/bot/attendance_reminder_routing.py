@@ -1,16 +1,15 @@
 """Resolve a reminder action against its stable Payroll attendance snapshot.
 
-P09 only selects and renders the next current actionable gap. It does not create
-an attendance correction draft, persist evidence, or submit a PMO request; those
-mutations remain P10+ responsibilities. The stable P07 snapshot owns ordering,
-while PayrollReadService revalidates current attendance facts before the prompt
-is shown.
+P09 selects and renders the next current actionable gap. P14 extends that
+selection with an optional progressive same-gap suggestion derived from a prior
+WAITING_SUBMITTED item in the same stable P07 snapshot. The suggestion is never
+persisted as a new proposal until the Talent explicitly chooses ``Sama``.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Protocol
 
@@ -43,10 +42,19 @@ class AttendanceReminderRouteStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class AttendanceSameGapSuggestion:
+    source_work_date: date
+    resolution_type: str
+    proposed_check_in: time | None = None
+    proposed_check_out: time | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AttendanceReminderGapSelection:
     cycle: PayrollCycle
     day: PayrollDayView
     remaining_actionable: int
+    same_gap_suggestion: AttendanceSameGapSuggestion | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +84,7 @@ _LATER_WORDS: Final = frozenset(
         "selesai dulu",
     }
 )
+_SINGLE_GAP_TYPES: Final = frozenset({"missing_clock_in", "missing_clock_out"})
 
 
 def parse_attendance_reminder_command(
@@ -110,6 +119,61 @@ def _cycle_from_id(cycle_id: str) -> PayrollCycle | None:
     if candidate.cycle_id != cycle_id:
         return None
     return candidate
+
+
+def _is_missing(value: str | None) -> bool:
+    return value is None or not value.strip()
+
+
+def _single_gap_type(day: PayrollDayView) -> str | None:
+    missing_in = _is_missing(day.raw_check_in)
+    missing_out = _is_missing(day.raw_check_out)
+    if missing_in and not missing_out:
+        return "missing_clock_in"
+    if missing_out and not missing_in:
+        return "missing_clock_out"
+    return None
+
+
+def _clock(value: str | None) -> time | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        return time.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
+def _same_gap_suggestion(
+    *,
+    context: AttendanceReminderContext,
+    by_key: dict[str, PayrollDayView],
+    current_position: int,
+    current_day: PayrollDayView,
+) -> AttendanceSameGapSuggestion | None:
+    current_type = _single_gap_type(current_day)
+    if current_type not in _SINGLE_GAP_TYPES:
+        return None
+
+    for prior_key in reversed(context.attendance_keys[:current_position]):
+        prior = by_key.get(prior_key)
+        if prior is None:
+            continue
+        if prior.resolution_status != "pending" or prior.resolution_type != current_type:
+            continue
+        proposed_in = _clock(prior.proposed_check_in)
+        proposed_out = _clock(prior.proposed_check_out)
+        if current_type == "missing_clock_in" and proposed_in is None:
+            continue
+        if current_type == "missing_clock_out" and proposed_out is None:
+            continue
+        return AttendanceSameGapSuggestion(
+            source_work_date=prior.work_date,
+            resolution_type=current_type,
+            proposed_check_in=proposed_in,
+            proposed_check_out=proposed_out,
+        )
+    return None
 
 
 class AttendanceReminderRoutingService:
@@ -150,7 +214,7 @@ class AttendanceReminderRoutingService:
         current_actionable = {
             key for key, day in by_key.items() if day.talent_action_required
         }
-        for key in context.attendance_keys:
+        for position, key in enumerate(context.attendance_keys):
             day = by_key.get(key)
             if day is None or not day.talent_action_required:
                 continue
@@ -160,13 +224,19 @@ class AttendanceReminderRoutingService:
             )
             return AttendanceReminderRouteResult(
                 AttendanceReminderRouteStatus.OPEN,
-                AttendanceReminderGapSelection(cycle, day, remaining),
+                AttendanceReminderGapSelection(
+                    cycle,
+                    day,
+                    remaining,
+                    _same_gap_suggestion(
+                        context=context,
+                        by_key=by_key,
+                        current_position=position,
+                        current_day=day,
+                    ),
+                ),
             )
         return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
-
-
-def _is_missing(value: str | None) -> bool:
-    return value is None or not value.strip()
 
 
 def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> str:
