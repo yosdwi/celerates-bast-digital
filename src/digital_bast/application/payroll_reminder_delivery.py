@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from hashlib import sha256
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -20,6 +21,12 @@ class PayrollDeliveryState(StrEnum):
     FAILED_RETRYABLE = "FAILED_RETRYABLE"
     FAILED_FINAL = "FAILED_FINAL"
     UNKNOWN = "UNKNOWN"
+
+
+def payroll_bridge_request_id(idempotency_key: str) -> str:
+    """Return a stable bridge request id safely below the transport length cap."""
+    digest = sha256(idempotency_key.encode("utf-8")).hexdigest()
+    return f"payroll:{digest}"
 
 
 @dataclass(frozen=True, slots=True)
