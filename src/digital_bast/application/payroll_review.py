@@ -1,7 +1,7 @@
 """Payroll PMO review projection and partial bulk decision orchestration.
 
 The existing attendance resolution request remains the only approval lifecycle.
-This module projects pending requests into a Payroll 21–20 review queue and
+This module projects pending requests into a Payroll 21-20 review queue and
 coordinates per-request decisions without mutating raw attendance.
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
-from uuid import UUID
 
 from digital_bast.application.attendance_closing import (
     AttendanceClosingReason,
@@ -26,6 +25,7 @@ from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
     from datetime import date, datetime, time
+    from uuid import UUID
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.attendance_review import AttendanceReviewEvidenceMetadata
@@ -34,6 +34,12 @@ if TYPE_CHECKING:
         AttendanceResolution,
         DecisionResult,
     )
+
+_MAX_REVIEW_BATCH = 100
+_BATCH_TOO_LARGE_MESSAGE = (
+    f"Payroll review batch cannot exceed {_MAX_REVIEW_BATCH} requests"
+)
+_REJECTION_REASON_REQUIRED_MESSAGE = "rejection_reason is required for reject"
 
 
 class PayrollReviewDecision(StrEnum):
@@ -174,7 +180,10 @@ def _reviewability(
             day.raw_check_in,
             day.raw_check_out,
         )
-    if day.resolution_id != str(request.id) or day.resolution_status != ResolutionStatus.PENDING.value:
+    if (
+        day.resolution_id != str(request.id)
+        or day.resolution_status != ResolutionStatus.PENDING.value
+    ):
         return (
             False,
             PayrollReviewabilityReason.REQUEST_NOT_CURRENT,
@@ -280,11 +289,11 @@ class PayrollReviewService:
         ordered_ids = tuple(dict.fromkeys(request_ids))
         if not ordered_ids:
             return PayrollReviewDecisionResult(0, 0, 0, 0, ())
-        if len(ordered_ids) > 100:
-            raise ValueError("Payroll review batch cannot exceed 100 requests")
+        if len(ordered_ids) > _MAX_REVIEW_BATCH:
+            raise ValueError(_BATCH_TOO_LARGE_MESSAGE)
         normalized_reason = (rejection_reason or "").strip()
         if decision is PayrollReviewDecision.REJECT and not normalized_reason:
-            raise ValueError("rejection_reason is required for reject")
+            raise ValueError(_REJECTION_REASON_REQUIRED_MESSAGE)
 
         queue = await self.queue(cycle, now=now)
         by_id = {item.request_id: item for item in queue.items}
