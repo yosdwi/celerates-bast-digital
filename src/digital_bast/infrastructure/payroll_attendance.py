@@ -24,6 +24,7 @@ class _PayrollAttendanceRow:
         "check_out",
         "employee_id",
         "evidence_count",
+        "evidence_note",
         "proposed_check_in",
         "proposed_check_out",
         "rejection_reason",
@@ -42,6 +43,7 @@ class _PayrollAttendanceRow:
         work_date: date,
         check_in: time | None,
         check_out: time | None,
+        evidence_note: str,
         evidence_count: int,
         resolution_id: str | None,
         resolution_status: str | None,
@@ -58,6 +60,7 @@ class _PayrollAttendanceRow:
         self.work_date = work_date
         self.check_in = check_in
         self.check_out = check_out
+        self.evidence_note = evidence_note
         self.evidence_count = evidence_count
         self.resolution_id = resolution_id
         self.resolution_status = resolution_status
@@ -96,6 +99,7 @@ class PostgresPayrollAttendanceReader:
                            a.work_date,
                            a.check_in,
                            a.check_out,
+                           a.evidence_note,
                            COALESCE(ev.evidence_count, 0) AS evidence_count,
                            r.id::text AS resolution_id,
                            r.status AS resolution_status,
@@ -149,7 +153,7 @@ class PostgresPayrollAttendanceReader:
                 work_date=row.work_date,
                 check_in=row.check_in,
                 check_out=row.check_out,
-                has_evidence=row.evidence_count > 0,
+                has_evidence=bool(row.evidence_note.strip()) or row.evidence_count > 0,
                 resolution_id=row.resolution_id,
                 resolution_status=row.resolution_status,
                 resolution_type=row.resolution_type,
