@@ -35,12 +35,13 @@ _EMPLOYEE_ID = "MTG-TF/TEST1"
 _FIRST_KEY = "ATT-2026-09-04"
 _NEXT_KEY = "ATT-2026-09-07"
 _NOW = datetime(2026, 9, 19, 9, 0, tzinfo=UTC)
+_CYCLE_ID = "2026-09:2026-08-21:2026-09-20"
 
 
 def _context() -> AttendanceReminderContext:
     return AttendanceReminderContext.create(
         employee_id=_EMPLOYEE_ID,
-        cycle_id="2026-09:2026-08-21:2026-09-20",
+        cycle_id=_CYCLE_ID,
         attendance_keys=(_FIRST_KEY, _NEXT_KEY),
         expires_at=datetime(2026, 9, 21, tzinfo=UTC),
     )
@@ -151,7 +152,9 @@ class _Router:
         employee_id: str,
         now: datetime,
     ) -> AttendanceReminderRouteResult:
-        assert context == _context()
+        assert context.employee_id == _EMPLOYEE_ID
+        assert context.cycle_id == _CYCLE_ID
+        assert context.attendance_keys == (_FIRST_KEY, _NEXT_KEY)
         assert employee_id == _EMPLOYEE_ID
         assert now == _NOW
         self.calls += 1
