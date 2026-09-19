@@ -21,6 +21,9 @@ from anyio.to_thread import run_sync
 
 from digital_bast import cli
 from digital_bast.application.workflow_control import InviteOutcome
+from digital_bast.bot.attendance_reminder_runtime import (
+    create_attendance_reminder_context_service,
+)
 from digital_bast.bot.attendance_resolution import (
     ResolutionStatus,
     ResolutionType,
@@ -28,6 +31,10 @@ from digital_bast.bot.attendance_resolution import (
 )
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
 from digital_bast.bot.interactive import interactive
+from digital_bast.bot.payroll_attendance_draft import (
+    render_payroll_draft_prompt,
+    select_payroll_proposal,
+)
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
 from digital_bast.bot.talent_home import home as talent_home
@@ -314,6 +321,49 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
     return _resolution_prompt(draft)
 
 
+async def _is_payroll_resolution_draft(
+    jid: str,
+    draft: AttendanceResolutionDraft,
+) -> bool:
+    context = await create_attendance_reminder_context_service().load(jid)
+    return (
+        context is not None
+        and context.employee_id == draft.employee_id
+        and draft.attendance_key in context.attendance_keys
+    )
+
+
+async def _save_payroll_resolution_draft(
+    text: str,
+    jid: str,
+    draft: AttendanceResolutionDraft,
+) -> str:
+    proposal = select_payroll_proposal(draft, text)
+    if proposal is None:
+        return render_payroll_draft_prompt(draft)
+
+    state = create_attendance_resolution_dm_state_service()
+    saved = await state.save_proposal(
+        jid,
+        draft.employee_id,
+        draft.attendance_key,
+        proposal.resolution_type,
+        proposed_check_in=proposal.proposed_check_in,
+        proposed_check_out=proposal.proposed_check_out,
+        absence_type=proposal.absence_type,
+    )
+    if saved is None:
+        await state.clear(jid)
+        return (
+            "Data attendance barusan berubah, jadi draft ini tidak disimpan. "
+            "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
+        )
+    return render_payroll_draft_prompt(
+        saved,
+        prefix="Oke, informasi attendance sudah tersimpan.",
+    )
+
+
 def _mask_jid(jid: str) -> str:
     number = jid.split("@", 1)[0]
     if len(number) <= 6:
@@ -443,6 +493,11 @@ async def reply(text: str, jid: str) -> str:
         await state.clear(jid)
         return await run_sync(_legacy_dm_reply, text, jid)
 
+    if await _is_payroll_resolution_draft(jid, draft):
+        if looks_like_resolution_input(text):
+            return await _save_payroll_resolution_draft(text, jid, draft)
+        return render_payroll_draft_prompt(draft)
+
     if looks_like_resolution_input(text):
         return await _submit_resolution(text, jid, draft)
     return _resolution_prompt(draft)
@@ -457,6 +512,10 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     state = create_attendance_resolution_dm_state_service()
     existing = await state.pending(jid)
     if existing is not None:
+        if await _is_payroll_resolution_draft(jid, existing):
+            # P11 will persist media into this active time-first draft. P10 keeps
+            # the response truthful instead of claiming evidence was stored.
+            return render_payroll_draft_prompt(existing)
         return _resolution_prompt(existing)
 
     activation = create_activation_service()
