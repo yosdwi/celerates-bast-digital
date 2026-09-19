@@ -7,7 +7,7 @@ Repository: `yosdwi/celerates-bast-digital`
 Branch: `chore/session-20260918-fixes`  
 Checkpoint date: 19 September 2026
 
-## Completed through P09
+## Completed through P10
 
 P00–P06 remain completed as recorded in the master implementation plan.
 
@@ -141,36 +141,101 @@ Delivered contract:
 - P09 does not create a correction draft, write proposed clocks, persist evidence,
   submit a request, send reminders, or alter the legacy monthly BAST reminder.
 
+### P10 — Time-first correction draft
+
+Status: `DONE`
+
+Commits:
+
+- `839b858280671736b6f7875a0b840a879b13380e` — durable time-first draft state and proposal persistence.
+- `9c29c556c6725ab432e36adcba59544092e8408b` — open the selected Payroll draft before evidence.
+- `c5e85692e9f1127a2f87b6011bd881b88e25baca` — pure Payroll draft proposal/prompt helpers.
+- `57ab89a04a9b6749e7cc6697feb691e1c0aa36d4` — store Payroll clock input without PMO submission.
+- `26e9036f921598c86e44ab8f9255ed25b672eb45` — reminder-to-draft regression coverage.
+- `3c98a63dbd033eb96c8259f280d642ac63ea12b5` — preserve legacy non-Payroll DM behavior.
+- `a668e4e37d2e0ee2b08183a6f9526cb0af6e938e` — focused Payroll draft helper tests.
+- `93d417db2f414fac08d72d04e1221dd6415da2a2` — end-to-end DM draft-state tests with PMO-submit guard.
+
+Files:
+
+- `src/digital_bast/bot/attendance_resolution_dm_state.py`
+- `src/digital_bast/bot/dm_entry.py`
+- `src/digital_bast/bot/dm_workflow.py`
+- `src/digital_bast/bot/payroll_attendance_draft.py`
+- `tests/unit/bot/test_dm_entry_payroll_reminder.py`
+- `tests/unit/bot/test_dm_workflow.py`
+- `tests/unit/bot/test_dm_workflow_payroll_draft.py`
+- `tests/unit/bot/test_payroll_attendance_draft.py`
+
+Delivered contract:
+
+- P09 `Lengkapi` now opens a durable attendance-resolution draft for the exact
+  revalidated attendance key before any evidence is uploaded.
+- No new migration is required: P10 reuses the existing `bot_conversations`
+  `pending_proposed_check_in`, `pending_proposed_check_out` and
+  `pending_absence_type` columns introduced by the earlier attendance-resolution
+  migration.
+- A reply such as `17.40` on a missing Clock Out stores only the proposed Clock Out.
+  Missing Clock In behaves symmetrically; a value already present in raw attendance
+  is never fabricated or overwritten.
+- For a day missing both punches, one clock value is not enough. The flow accepts
+  an explicit Clock In + Clock Out pair or the existing explicit Cuti/Izin/Sakit
+  classification.
+- Every proposal write revalidates the conversation target, canonical owner,
+  current raw source gap and absence of an already pending/approved request.
+- Draft state carries work date, proposed clocks/absence and concrete evidence
+  presence, while the raw attendance row remains immutable.
+- Entering a clock value does **not** call `AttendanceResolutionService.submit()`
+  and does not create a PMO request. The user sees truthful wording such as
+  `informasi attendance sudah tersimpan`, not `Menunggu approval`.
+- If no concrete attendance evidence row exists after the proposal is saved, the
+  next prompt asks only for the screenshot/evidence for that selected date.
+- If concrete evidence already exists, the bot does not ask for it again; the draft
+  is still explicitly described as not yet submitted to PMO.
+- `mark_evidence_ready()` preserves a time-first proposal when evidence later lands
+  on the same attendance identity, while still supporting the legacy evidence-first
+  path when no proposal draft existed.
+- Legacy non-Payroll attendance-resolution DMs keep the previous evidence-first
+  behavior and can still submit immediately through the existing resolution
+  authority; P10 changes behavior only when the active draft belongs to a valid P07
+  Payroll reminder context.
+- Media arriving while the time-first Payroll draft is active is deliberately not
+  persisted in P10. The response remains truthful and P11 owns active-draft media
+  persistence rather than partially implementing it here.
+
 Validation evidence:
 
-- P08->P09 branch compare contains only the routing/runtime/DM-entry source files
-  and focused unit/regression tests listed above.
-- Tests lock command parsing, stable snapshot ordering, skip-already-resolved
-  behavior, wrong-owner/invalid-cycle fail-closed, no-action result, rejected prompt,
-  direct start action, guarded numeric fallback, `Nanti`, and legacy digit precedence.
-- The tool container still cannot resolve `github.com`, so repository checkout and
-  full `pytest + ruff + basedpyright` cannot be executed here. No passing full-suite
-  result is claimed. PR/main CI remains the complete quality gate.
+- P09->P10 branch compare is limited to the four source files and four focused
+  unit/regression test files listed above; no schema migration, scheduler, outbound,
+  `AttendanceResolutionService`, raw attendance writer, or legacy reminder change is
+  included.
+- Focused tests lock exact-gap proposal selection, both-missing ambiguity, explicit
+  absence, saved-clock wording, evidence/no-evidence branches, stale-source recovery,
+  reminder start opening the draft, and the invariant that Payroll P10 must not call
+  the PMO submit service merely because a clock was entered.
+- Legacy DM tests are explicitly isolated from Payroll reminder context so the old
+  evidence-first correction path remains regression-covered.
+- The branch currently has no commit-status checks. A full repository
+  `pytest + ruff + basedpyright` pass is not claimed from this connector-only
+  environment; PR/main CI remains the complete quality gate.
 
 ## Next card
 
-**P10 — Time-first correction draft**
+**P11 — Evidence in active attendance draft**
 
 Scope remains locked:
 
-- After P09 selects one stable/current attendance key, accept the missing explicit
-  clock fact before evidence is uploaded.
-- Reuse the existing attendance-resolution authority; do not mutate raw attendance.
-- Persist only a durable draft tied to the selected attendance identity and owner.
-- Ask only the field that is actually missing. One missing Clock Out must not ask
-  Clock In again; one missing Clock In must not ask Clock Out again.
-- For both missing, accept explicit worked-day clock pair or the existing absence
-  choices without fabricating values.
-- Revalidate ownership/current source before saving each draft transition.
-- Do not submit to PMO yet merely because a clock was entered. Evidence requirement
-  and active-draft media attachment are completed in P11, then final review/submit
-  loop lands in P13.
-- Keep Talent Mobile outside the normal happy path.
+- When media arrives while a Payroll time-first draft is active, persist it through
+  the existing `AttendanceEvidenceService` against the exact selected attendance key
+  and canonical Talent owner; do not re-run list selection or guess another date.
+- Preserve the proposed clock/absence values already stored in the durable draft.
+- Handle stored, duplicate, unsupported type, too-large, not-found and not-owned
+  outcomes truthfully without losing the draft.
+- After successful evidence persistence, refresh the same draft and show a concise
+  summary with `Bukti: ✓`; still do not submit to PMO yet.
+- Keep legacy task evidence and legacy attendance evidence flows unchanged.
+- P11 supports the existing image formats only. PDF evidence remains the additive
+  P12 card.
 
 For a new session: read the master implementation plan first, then this checkpoint,
-verify branch HEAD, and continue P10 without redesigning locked requirements.
+verify branch HEAD, and continue P11 without redesigning locked requirements.
