@@ -9,7 +9,6 @@ from digital_bast.application.attendance_closing import (
     AttendanceScheduleState,
     AttendanceSourceState,
 )
-from digital_bast.application.attendance_closing_policy import payroll_cycle
 from digital_bast.application.payroll_read import (
     PayrollDayView,
     PayrollOverview,
