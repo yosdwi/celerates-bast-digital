@@ -13,11 +13,12 @@ from typing import TYPE_CHECKING, Protocol
 
 from anyio.to_thread import run_sync
 
-from digital_bast.bot.evidence import UploadOutcome, UploadResult
+from digital_bast.bot.evidence import UploadOutcome
 from digital_bast.bot.payroll_attendance_draft import render_payroll_draft_prompt
 
 if TYPE_CHECKING:
     from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
+    from digital_bast.bot.evidence import UploadResult
 
 
 class AttendanceEvidenceWriter(Protocol):
