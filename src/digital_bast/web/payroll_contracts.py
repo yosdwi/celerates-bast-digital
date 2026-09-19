@@ -119,6 +119,10 @@ class PayrollReviewItemResponse(_FrozenModel):
     proposed_check_out: str | None
     absence_type: str | None
     evidence_id: UUID
+    evidence_content_type: str | None
+    evidence_byte_size: int | None
+    evidence_caption: str
+    evidence_uploaded_at: datetime | None
     submitted_at: datetime
     reviewable: bool
     reviewability_reason: PayrollReviewabilityReason | None
