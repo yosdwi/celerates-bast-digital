@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { getPayrollTalentDetail } from "../api/payroll";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getPayrollOverview, getPayrollTalentDetail } from "../api/payroll";
 import type {
   PayrollDay,
   PayrollOverviewResponse,
@@ -9,6 +9,7 @@ import type {
 import type { TalentOpsSession } from "../api/types";
 import { ChevronIcon, CloseIcon } from "../components/Icons";
 import WorkspaceFrame from "../components/WorkspaceFrame";
+import PayrollReviewQueuePanel from "./PayrollReviewQueuePanel";
 
 type PayrollFilter = "all" | "needs" | "waiting" | "complete" | "unverified";
 
@@ -139,6 +140,7 @@ function sortedDetailDays(days: PayrollDay[]): PayrollDay[] {
 }
 
 export default function PayrollPage({ session, data, onNavigate }: Props) {
+  const [view, setView] = useState(data);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PayrollFilter>("all");
   const [detail, setDetail] = useState<PayrollTalentDetailResponse | null>(null);
@@ -147,20 +149,43 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const detailRequestId = useRef(0);
 
+  useEffect(() => {
+    let active = true;
+    setView(data);
+    void getPayrollOverview(data.cycle.year, data.cycle.month)
+      .then((next) => {
+        if (active) setView(next);
+      })
+      .catch(() => {
+        // Keep the already loaded overview; the Review Queue exposes its own error state.
+      });
+    return () => {
+      active = false;
+    };
+  }, [data, data.cycle.month, data.cycle.year]);
+
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
-    return data.talents.filter((talent) => {
+    return view.talents.filter((talent) => {
       const searchOk = !needle
         || `${talent.name} ${talent.nrp} ${talent.role}`.toLocaleLowerCase().includes(needle);
       return searchOk && filterMatches(talent, filter);
     });
-  }, [data.talents, filter, search]);
+  }, [filter, search, view.talents]);
 
-  const waitingTalents = data.talents.filter((talent) => talent.waiting_days > 0).length;
-  const waitingDays = data.talents.reduce((total, talent) => total + talent.waiting_days, 0);
-  const actionTalents = data.talents.filter((talent) => talent.actionable_days > 0).length;
-  const actionDays = data.talents.reduce((total, talent) => total + talent.actionable_days, 0);
-  const unverifiedDays = data.talents.reduce((total, talent) => total + talent.unverified_days, 0);
+  const waitingTalents = view.talents.filter((talent) => talent.waiting_days > 0).length;
+  const waitingDays = view.talents.reduce((total, talent) => total + talent.waiting_days, 0);
+  const actionTalents = view.talents.filter((talent) => talent.actionable_days > 0).length;
+  const actionDays = view.talents.reduce((total, talent) => total + talent.actionable_days, 0);
+  const unverifiedDays = view.talents.reduce((total, talent) => total + talent.unverified_days, 0);
+
+  async function refreshOverview() {
+    setView(await getPayrollOverview(view.cycle.year, view.cycle.month));
+  }
+
+  function scrollToReviewQueue() {
+    document.getElementById("payroll-review-queue")?.scrollIntoView({ behavior: "smooth" });
+  }
 
   async function openDetail(talent: PayrollTalentRow) {
     const requestId = detailRequestId.current + 1;
@@ -172,8 +197,8 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
     try {
       const nextDetail = await getPayrollTalentDetail(
         talent.employee_id,
-        data.cycle.year,
-        data.cycle.month,
+        view.cycle.year,
+        view.cycle.month,
       );
       if (requestId !== detailRequestId.current) return;
       setDetail(nextDetail);
@@ -209,39 +234,39 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
           <div>
             <h1>Payroll</h1>
             <p>
-              {data.cycle.label} · {cycleRange(data.cycle.start, data.cycle.end)}
-              {data.evaluated_through
-                ? ` · Dievaluasi s.d. ${formatDate(data.evaluated_through)}`
+              {view.cycle.label} · {cycleRange(view.cycle.start, view.cycle.end)}
+              {view.evaluated_through
+                ? ` · Dievaluasi s.d. ${formatDate(view.evaluated_through)}`
                 : " · Belum ada hari yang siap dievaluasi"}
             </p>
           </div>
           <div className="payroll-total" aria-label="Total Talent">
             <span>Total Talent</span>
-            <strong>{data.summary.total_talents}</strong>
+            <strong>{view.summary.total_talents}</strong>
           </div>
         </div>
 
         <section className="payroll-summary" aria-label="Ringkasan Payroll">
           <button type="button" onClick={() => setFilter("complete")}>
             <span className="payroll-summary-label">Complete</span>
-            <strong>{data.summary.complete}</strong>
+            <strong>{view.summary.complete}</strong>
             <small>Tidak ada action attendance</small>
           </button>
           <button type="button" onClick={() => setFilter("needs")}>
             <span className="payroll-summary-label">Perlu Talent</span>
-            <strong>{data.summary.needs_talent_action}</strong>
+            <strong>{view.summary.needs_talent_action}</strong>
             <small>{actionDays} tanggal perlu dilengkapi</small>
           </button>
           <button type="button" onClick={() => setFilter("waiting")}>
             <span className="payroll-summary-label">Menunggu review</span>
-            <strong>{data.summary.waiting_submitted}</strong>
+            <strong>{view.summary.waiting_submitted}</strong>
             <small>{waitingDays} pengajuan menunggu PMO</small>
           </button>
         </section>
 
-        {data.summary.unverified > 0 ? (
+        {view.summary.unverified > 0 ? (
           <div className="payroll-source-notice" role="status">
-            <strong>{data.summary.unverified} Talent perlu cek data sumber.</strong>
+            <strong>{view.summary.unverified} Talent perlu cek data sumber.</strong>
             <span>{unverifiedDays} tanggal belum terverifikasi dan tidak akan dianggap action Talent.</span>
             <button type="button" onClick={() => setFilter("unverified")}>Lihat</button>
           </div>
@@ -254,8 +279,8 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
               <strong>{waitingDays}</strong>
               <p>{waitingTalents} Talent punya pengajuan yang menunggu review.</p>
             </div>
-            <button className="secondary-button" type="button" onClick={() => setFilter("waiting")}>
-              Lihat daftar
+            <button className="secondary-button" type="button" onClick={scrollToReviewQueue}>
+              Buka queue
             </button>
           </section>
 
@@ -271,11 +296,17 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
           </section>
         </div>
 
+        <PayrollReviewQueuePanel
+          session={session}
+          cycle={view.cycle}
+          onRefreshOverview={refreshOverview}
+        />
+
         <section className="panel payroll-talent-panel">
           <div className="panel-title-row payroll-list-heading">
             <div>
               <h2>Status Talent</h2>
-              <span>{visible.length} dari {data.talents.length} Talent</span>
+              <span>{visible.length} dari {view.talents.length} Talent</span>
             </div>
           </div>
 
@@ -284,7 +315,7 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
             <button type="button" className={filter === "needs" ? "active" : ""} onClick={() => setFilter("needs")}>Perlu Talent</button>
             <button type="button" className={filter === "waiting" ? "active" : ""} onClick={() => setFilter("waiting")}>Menunggu review</button>
             <button type="button" className={filter === "complete" ? "active" : ""} onClick={() => setFilter("complete")}>Complete</button>
-            {data.summary.unverified > 0 ? (
+            {view.summary.unverified > 0 ? (
               <button type="button" className={filter === "unverified" ? "active" : ""} onClick={() => setFilter("unverified")}>Perlu cek data</button>
             ) : null}
           </div>
@@ -381,7 +412,7 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
               <div>
                 <span>Detail attendance</span>
                 <h2>{detailTarget.name}</h2>
-                <p>{detailTarget.nrp} · {detailTarget.role} · {data.cycle.label}</p>
+                <p>{detailTarget.nrp} · {detailTarget.role} · {view.cycle.label}</p>
               </div>
               <button className="icon-button" type="button" aria-label="Tutup detail" onClick={closeDetail}>
                 <CloseIcon />
