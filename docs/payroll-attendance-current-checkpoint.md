@@ -16,318 +16,269 @@ waves. Keep changes small and reversible, preserve source-of-truth boundaries, a
 checkpoint only after integration/validation review. The canonical Payroll plan
 remains authoritative; this file records the latest execution state.
 
-## Completed through P27
+## Completed through P30
 
-P00–P14 remain completed as recorded in the canonical implementation plan and
-prior checkpoint history.
+P00–P14 delivered the canonical 21–20 Payroll cycle/projection, Talent Payroll
+workspace, stable reminder context, deterministic WhatsApp correction flow,
+evidence/PDF handling, explicit submit/review wording, and progressive same-gap
+shortcut without mutating raw attendance.
 
 P15–P18 delivered the PMO Payroll review queue, evidence inspection, per-item
 revalidation, bulk approve/reject with partial success, and rejection back into
 the existing Talent correction lifecycle.
 
-P19–P22 delivered the Contacts & WhatsApp Mapping wave:
+P19–P22 delivered Contacts & WhatsApp Mapping:
 
 - real group/member discovery through the active `whatsapp-web-session` runtime,
 - Talent↔WhatsApp mapping using existing `wa_identity`,
 - Contacts & WhatsApp operational UI,
 - one stable configured Payroll closing-group JID,
-- no provider migration, fuzzy identity inference, or group outbound cutover.
+- no provider migration, fuzzy identity inference, or arbitrary group outbound.
 
-P23–P27 delivered the Reminder Automation Foundations wave described below.
+P23–P27 delivered Reminder Automation Foundations:
+
+- independent Payroll closing policy/settings,
+- typed preview/control UI,
+- durable logical Talent reminder delivery lifecycle,
+- existing-Prefect scheduled Payroll reminder cutover,
+- attendance-action-only response correlation,
+- no generic conversation timestamp used as response evidence.
 
 ---
 
-## Wave 5 — Reminder Automation Foundations (P23–P27)
+## Wave 6 — PMO Closing Digest & Follow-up (P28–P30)
 
 Status: `DONE`
 
 Baseline before this wave:
 
-- `0703ddd9c8c94414bc8bb523fdf65e99a675dcab`
+- `81809b7e9cf352ee8977e9fa80a092d74a57383b`
 
 Pre-checkpoint implementation head:
 
-- `73e4200001cf4d2027cae9d4d25cbaf4c7819094`
+- `5aff66c6d11a11b1b9ae6e07bdf2ff3e37638fdf`
 
-Comparison from the P22 checkpoint baseline to the P27 pre-checkpoint head:
+Comparison from the P27 checkpoint baseline to the P30 pre-checkpoint head:
 
-- 31 commits ahead,
+- 35 commits ahead,
 - 0 commits behind,
-- 20 changed files,
-- scope limited to Payroll closing policy/settings, reminder scheduling/runtime,
-  durable delivery lifecycle, response correlation, UI/API, additive migrations,
+- 22 changed files,
+- scope limited to Payroll digest projection, configured-group digest delivery,
+  PMO follow-up API/UI, additive group-delivery persistence, existing reminder
+  delivery reads/manual send, WhatsApp outbound bridge boundaries, runtime wiring,
   and focused tests.
 
-No legacy attendance CSV contract, raw attendance authority, BAST monthly/calendar
+No raw attendance authority, legacy attendance CSV contract, BAST monthly/calendar
 semantics, or active WhatsApp provider was replaced by this wave.
 
-### P23 — Closing settings migration/control model
+### P28 — Closing digest projection
 
 Status: `DONE`
 
 Delivered:
 
-- Added migration `20260919_0024_payroll_closing_policy` after P22 migration
-  `0023`.
-- Extended the existing `workflow_notification_settings` control-plane instead of
-  creating another workflow/settings database.
-- Added an independent typed Payroll closing policy with:
-  - enabled state,
-  - pause state,
-  - closing day,
-  - reminder hour,
-  - H-N reminder offsets,
-  - target Talent roles,
-  - next-day evaluation-ready hour,
-  - desired policy version,
-  - applied policy version,
-  - updated-by audit identity.
-- Payroll closing settings do **not** reuse legacy BAST `talent_reminder_days`.
-  The two concepts retain separate semantics.
-- Migration/default policy is `enabled=false`, so applying schema alone cannot
-  unexpectedly start a Payroll reminder campaign.
-- The configured next-day ready hour is wired into Closing Projection evaluation;
-  it is not a display-only setting.
-- Validation remains fail-closed for unsupported roles, invalid closing day/hour,
-  invalid reminder offsets, and invalid desired/applied version relationships.
+- Added `PayrollDigestService` as a read-side projection over the canonical Payroll
+  Closing Projection plus durable P25/P27 reminder delivery facts.
+- Kept the locked three primary Payroll business statuses unchanged. Delivery,
+  technical-unverified and response facts remain operational dimensions only.
+- Follow-up reasons include:
+  - delivery `UNKNOWN`,
+  - retryable delivery failure,
+  - final delivery failure,
+  - genuinely `UNRESPONDED`,
+  - current actionable Talent never successfully reminded,
+  - submitted/waiting review,
+  - technical source-unverified.
+- `UNRESPONDED` requires all of the following:
+  - Talent is still currently actionable,
+  - at least one successful `SENT` Payroll reminder exists,
+  - the latest relevant successful reminder has no correlated attendance response.
+- Generic chat activity does not contribute to the unresponded calculation.
+- Digest summary exposes current cycle business counts plus actual successful send,
+  unresponded, not-reminded, failed and `UNKNOWN` delivery dimensions.
 
 Primary files:
 
-- `migrations/versions/20260919_0024_payroll_closing_policy.py`
-- `src/digital_bast/application/payroll_closing_settings.py`
-- `src/digital_bast/infrastructure/payroll_closing_settings.py`
-- `src/digital_bast/application/payroll_read.py`
-- `tests/unit/application/test_payroll_closing_settings.py`
-
-### P24 — Reminder settings UI + preview
-
-Status: `DONE`
-
-Delivered:
-
-- Added typed Payroll closing settings API under the existing Payroll router.
-- Added compact Settings UI component:
-  `frontend/src/components/PayrollClosingPolicySettings.tsx`.
-- Operators can inspect/edit the supported policy without a generic workflow
-  designer.
-- Preview is computed from the same cycle/policy/projection authority and exposes:
-  - current Payroll cycle,
-  - H-N milestone dates,
-  - estimated actionable Talent audience,
-  - estimated technically unverified Talent count,
-  - desired/applied policy version.
-- Source-unverified attendance is kept separate from Talent-action audience and is
-  not presented as Talent fault.
-- Save remains CSRF-protected and owner/admin-authorized.
-
-Primary files:
-
-- `src/digital_bast/web/payroll_contracts.py`
-- `src/digital_bast/web/payroll_router.py`
-- `frontend/src/api/payroll.ts`
-- `frontend/src/components/PayrollClosingPolicySettings.tsx`
-- `frontend/src/pages/SettingsPage.tsx`
-
-### P25 — Durable logical delivery reservation
-
-Status: `DONE`
-
-Delivered:
-
-- Added migration `20260919_0025_payroll_delivery_lifecycle` after `0024`.
-- Reused existing `talentops_followups` as the durable logical-delivery ledger;
-  no separate reminder queue/event bus was introduced.
-- Added explicit Payroll delivery lifecycle:
-  - `RESERVED`
-  - `SENDING`
-  - `SENT`
-  - `FAILED_RETRYABLE`
-  - `FAILED_FINAL`
-  - `UNKNOWN`
-- Reservation uses a stable idempotency key per scope/cycle/milestone/Talent.
-- Retryable transport failure reuses the same logical delivery and increments an
-  attempt count instead of creating duplicate follow-up rows.
-- A process interruption after delivery claim is handled conservatively: a
-  pre-existing `SENDING` state encountered on a later run becomes `UNKNOWN` and is
-  **not** blindly resent.
-- Provider receipt/error facts, context identity, cycle, milestone, timestamps,
-  and response-correlation fields are retained on the ledger.
-- SQL statements remain static with bound values; the final adapter no longer
-  relies on concatenated query construction.
-
-Primary files:
-
-- `migrations/versions/20260919_0025_payroll_delivery_lifecycle.py`
+- `src/digital_bast/application/payroll_digest.py`
 - `src/digital_bast/application/payroll_reminder_delivery.py`
 - `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
-- `tests/unit/application/test_payroll_reminders.py`
+- `tests/unit/application/test_payroll_digest.py`
 
-### P26 — Scheduled Talent reminder cutover
+### P29 — Configured group digest outbound
 
 Status: `DONE`
 
 Delivered:
 
-- Kept the existing scheduler/Prefect cadence; no new scheduling service was
-  introduced.
-- Added `PayrollTalentReminderService` over the canonical Closing Projection,
-  current configured policy, existing WhatsApp identity binding, stable reminder
-  context, existing outbound gateway, and durable delivery ledger.
-- Only current Talent rows with real `talent_action_required=true` are eligible.
-- WAITING, COMPLETE, technically unverified-only, and unsafe/no-stable-attendance-
-  identity cases are not silently converted into Talent action.
-- Stable P07 attendance context is persisted before outbound so user-visible
-  numbering remains bound to the exact ordered attendance identities sent.
-- Unbound Talent is recorded as a final non-deliverable outcome rather than being
-  guessed from names/numbers.
-- While Payroll policy is disabled, the legacy BAST Talent reminder path continues
-  unchanged.
-- Once Payroll policy is enabled, Payroll becomes the scheduled Talent reminder
-  authority for that scope, including when the Payroll policy is paused. This
-  prevents a paused Payroll campaign from silently falling back to the legacy path
-  and double-sending.
-- Active WhatsApp transport remains the existing `whatsapp-web-session` /
-  `whatsapp-web.js` bridge.
+- Added additive migration
+  `20260920_0026_payroll_group_digest_delivery.py`.
+- Group digest delivery has its own durable destination ledger; it does not create
+  synthetic Talent or operator rows in `talentops_followups`.
+- Uses the single configured P22 Payroll closing-group JID.
+- Sends one PMO digest per scope/cycle/milestone using stable logical idempotency.
+- Uses H-N closing milestones plus `FINAL` on the cycle end date.
+- Group digest contains aggregate closing/reminder/review workload. It does not send
+  one PMO WhatsApp message per Talent correction submission.
+- Delivery lifecycle preserves the same conservative semantics used by Talent
+  reminders:
+  - `RESERVED`,
+  - `SENDING`,
+  - `SENT`,
+  - `FAILED_RETRYABLE`,
+  - `FAILED_FINAL`,
+  - `UNKNOWN`.
+- A pre-existing `SENDING` delivery found after interruption is converted to
+  `UNKNOWN` and is not blindly resent.
+- Direct-message bridge contract remains restricted to direct JIDs. Group outbound
+  uses a dedicated authenticated `/group-messages` boundary accepting only `@g.us`.
+- Bridge request IDs are deterministic bounded SHA-256 identifiers while the
+  readable logical idempotency key remains durable in the database.
+- Existing WhatsApp runtime remains `whatsapp-web-session` / `whatsapp-web.js`.
+
+Primary files:
+
+- `migrations/versions/20260920_0026_payroll_group_digest_delivery.py`
+- `src/digital_bast/application/payroll_group_digest.py`
+- `src/digital_bast/infrastructure/payroll_group_digest.py`
+- `src/digital_bast/infrastructure/whatsapp_outbound.py`
+- `src/digital_bast/payroll_runtime.py`
+- `src/digital_bast/flows/notifications.py`
+- `whatsapp-web-session/server.js`
+- `tests/unit/application/test_payroll_group_digest.py`
+- `tests/unit/infrastructure/test_whatsapp_outbound.py`
+
+### P30 — Payroll Follow-up panel live actions
+
+Status: `DONE`
+
+Delivered:
+
+- Added PMO-facing Payroll digest/follow-up API and compact web panel.
+- PMO can distinguish:
+  - current Talent attendance action required,
+  - submitted/waiting review,
+  - source-unverified technical cases,
+  - reminder delivery retry/final failures,
+  - `UNKNOWN` delivery,
+  - successfully reminded but genuinely unresponded Talent.
+- Added reminder preview using current canonical cycle/policy/projection.
+- Added explicit manual reminder action with CSRF + PMO/admin authorization.
+- Manual send re-reads current Payroll projection at action time; an old preview
+  cannot send to a Talent that has since become WAITING/COMPLETE/non-actionable.
+- Manual send is fail-closed for ambiguous/in-progress delivery states:
+  - `UNKNOWN` -> blocked,
+  - `RESERVED` / `SENDING` -> blocked as in progress,
+  - `FAILED_RETRYABLE` -> blocked while durable retry remains pending.
+- Request UUID is preserved as logical manual-action identity and converted to a
+  bounded deterministic bridge request ID for transport.
+- No second PMO task/workflow system was introduced.
 
 Primary files:
 
 - `src/digital_bast/application/payroll_reminders.py`
-- `src/digital_bast/payroll_runtime.py`
-- `src/digital_bast/bot/attendance_reminder_runtime.py`
-- `src/digital_bast/flows/notifications.py`
-- `tests/unit/application/test_payroll_reminders.py`
-
-### P27 — Correlated response tracking
-
-Status: `DONE`
-
-Delivered:
-
-- Added response correlation against the specific successful Payroll reminder
-  context/delivery.
-- `responded_at` is written only after a subsequent attendance interaction that
-  successfully routes into the Payroll attendance action flow.
-- Generic DM traffic, navigation, `Nanti`, and generic conversation
-  `bot_conversations.updated_at` do not count as a Payroll attendance response.
-- Correlation requires matching stable reminder context + employee identity and a
-  `SENT` logical delivery.
-- This creates the required source for later `unresponded` projections without
-  inventing engagement from unrelated chat activity.
-
-Primary files:
-
-- `src/digital_bast/bot/attendance_reminder_runtime.py`
-- `src/digital_bast/application/payroll_reminder_delivery.py`
-- `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
-- `tests/unit/bot/test_attendance_reminder_response_tracking.py`
+- `src/digital_bast/web/payroll_contracts.py`
+- `src/digital_bast/web/payroll_followup_router.py`
+- `src/digital_bast/web/app.py`
+- `frontend/src/api/payroll.ts`
+- `frontend/src/pages/PayrollFollowUpPanel.tsx`
+- `frontend/src/pages/PayrollPage.tsx`
+- `tests/unit/web/test_payroll_followup_routes.py`
 
 ### Validation truth
 
-Validation PR #73 CI run `#505` / `35454927546` on pre-checkpoint head
-`73e4200001cf4d2027cae9d4d25cbaf4c7819094`:
+Validation PR #73 CI run `#514` / `35477238998` on pre-checkpoint head
+`5aff66c6d11a11b1b9ae6e07bdf2ff3e37638fdf`:
 
+- `gitleaks`: **PASS**.
 - `uv sync --all-groups`: **PASS**.
 - `uv run python -m compileall -q src tests`: **PASS**.
 - `migration-smoke`: **PASS**.
+  - container initialization: PASS,
   - migration gate: PASS,
   - migration idempotency gate: PASS,
   - smoke/shadow gate: PASS.
-- `gitleaks`: **PASS**.
-- repository-wide `uv run ruff check .`: **FAIL** with 108 existing findings.
-- After the final P23–P27 lint cleanup, none of the new P23–P27 implementation
-  files appears in the current Ruff failure list, including:
-  - `src/digital_bast/application/payroll_closing_settings.py`
-  - `src/digital_bast/application/payroll_reminder_delivery.py`
-  - `src/digital_bast/application/payroll_reminders.py`
-  - `src/digital_bast/infrastructure/payroll_closing_settings.py`
-  - `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
-  - `src/digital_bast/payroll_runtime.py`
-  - `src/digital_bast/web/payroll_router.py`
-  - `tests/unit/application/test_payroll_closing_settings.py`
-  - `tests/unit/application/test_payroll_reminders.py`
-  - `tests/unit/bot/test_attendance_reminder_response_tracking.py`
-- Remaining Ruff findings are branch-wide debt from earlier Payroll cards and
-  unrelated legacy/BAST/infrastructure code. They intentionally were not swept
-  into this wave.
+- repository-wide `uv run ruff check .`: **FAIL** with 108 findings.
+- Before P28–P30 lint cleanup, the same validation branch reported 147 findings.
+  After the focused cleanup, **none of the P28–P30 changed files appears in the
+  current Ruff failure list**. The remaining 108 findings are pre-existing branch
+  debt from earlier Payroll cards and unrelated legacy/BAST/infrastructure code.
 - Because repository-wide Ruff fails first, the quality job does **not** reach
-  `basedpyright`, `pytest`, or `scripts/check-ops.sh`; a full green quality job is
-  therefore not claimed.
-- The container job failure is infrastructure/setup-only: GitHub Actions cannot
-  resolve `aquasecurity/trivy-action@0.30.0`. It fails in job setup before checkout
-  or image build, so it does not execute or invalidate P23–P27 application code.
-- Frontend component behavior is implemented, but this repository CI does not run
-  the frontend npm test/typecheck suite; a frontend green suite is not claimed.
+  `basedpyright`, full `pytest`, or `scripts/check-ops.sh`; a full green quality job
+  is therefore not claimed.
+- The container job still fails during job setup before checkout/build due to the
+  external `aquasecurity/trivy-action@0.30.0` resolution problem. It does not
+  execute or invalidate P28–P30 application code.
+- Frontend behavior is implemented, but this repository CI does not run a frontend
+  npm test/typecheck suite; a frontend green suite is not claimed.
 
 PR #73 is used only as a CI validation trigger for the long-lived working branch.
 It is **not** a merge/release candidate and must not be merged into `main`.
 
 ### Wave acceptance result
 
-The system now has the following end-to-end reminder foundation:
+The current closing operations flow is now:
 
 ```text
-Payroll closing policy (disabled by default)
-  -> real 21–20 cycle + H-N milestone evaluation
-  -> canonical Closing Projection
-  -> current actionable Talent audience only
-  -> stable attendance reminder context
-  -> durable logical delivery reservation
-  -> existing WhatsApp outbound transport
-  -> SENT / retryable / final / UNKNOWN receipt state
-  -> subsequent attendance action correlated back to the exact reminder
+21–20 Payroll Closing Projection
+  -> durable Talent reminder receipts + correlated attendance responses
+  -> PMO Closing Digest projection
+  -> configured group aggregate digest at closing milestones/final
+  -> Payroll Follow-up panel
+       -> current reason / delivery fact
+       -> preview current reminder
+       -> explicit safe manual reminder
+       -> revalidate actionability before send
 ```
 
-without converting evidence into approval truth, storing a synthetic
-`payroll_ready` flag, changing the legacy CSV contract, adding a new transport,
-or using generic conversation timestamps as response evidence.
+while preserving raw attendance immutability, existing correction approval truth,
+legacy CSV behavior, direct/group destination boundaries, and conservative
+`UNKNOWN` delivery handling.
 
 ---
 
-## Next execution wave — PMO Closing Digest & Follow-up (P28–P30)
+## Next execution wave — WhatsApp Operational Reliability (P31–P35)
 
-Execute P28–P30 continuously as one integration wave unless an implementation
-finding creates a genuine source-of-truth conflict.
+Execute P31–P35 continuously as one integration wave unless an implementation
+finding creates a genuine auth/session ownership conflict.
 
-### P28 — Digest projection
-
-Status: `TODO`
-
-Build the PMO-facing closing digest projection from existing Payroll truth and
-P25/P27 delivery facts. Keep business status to the locked three primary states;
-`unverified`, delivery failure, and `unresponded` remain operational dimensions,
-not new Payroll readiness states.
-
-Expected digest dimensions include current cycle summary, actionable Talent,
-waiting submissions, technical-unverified cases, delivery failures/UNKNOWN, and
-Talent who received a successful reminder but have not subsequently entered the
-attendance action flow.
-
-### P29 — Group digest outbound
+### P31 — Durable gateway request receipt
 
 Status: `TODO`
 
-Use the configured P22 Payroll closing-group JID and existing WhatsApp session to
-send PMO digest messages only at the intended closing milestones/final/incident
-conditions. Do not send per-Talent correction submissions to the PMO group.
+Add bounded durable request/receipt persistence around the active WhatsApp gateway
+so an accepted request can be reconciled after gateway/process recovery. Preserve
+strict request-id conflict handling and do not claim exactly-once delivery.
 
-Group delivery must use durable/idempotent delivery semantics and must not alter
-Talent reminder authority or attendance truth.
-
-### P30 — Follow-up panel actions
+### P32 — Session supervisor core
 
 Status: `TODO`
 
-Expose the digest/follow-up projection on the PMO web surface with operational
-actions for items that need attention. Reuse current review/mapping/reminder
-contracts rather than creating a second task system.
+Add readiness probing and a conservative transient-recovery ladder with durable
+budget/cooldown. Routine recovery must not log out, reset or destroy LocalAuth.
 
-The panel should make it easy to distinguish:
+### P33 — Single-owner/auth safety
 
-- Talent still needing attendance action,
-- Talent already submitted/waiting review,
-- source-unverified technical cases,
-- reminder delivery failures/UNKNOWN,
-- successfully reminded but genuinely unresponded Talent.
+Status: `TODO`
+
+Enforce one active session owner before any Chromium Singleton cleanup. Add
+filesystem/disk/inode/auth-store safety checks so recovery cannot casually corrupt
+or erase the WhatsApp auth authority.
+
+### P34 — Extended WhatsApp status API
+
+Status: `TODO`
+
+Expose alive vs messaging-ready plus recovery state/reason, last probe/ack,
+operator-action-required state and applied recovery policy/version through the
+existing authenticated operational contract.
+
+### P35 — Payroll WhatsApp operations UI
+
+Status: `TODO`
+
+Add a compact operational surface using understandable states such as
+`Terhubung / Sedang pulih / Perlu tindakan`, with safe pause/resume/reconnect
+controls and admin-only pairing only when genuinely required.
 
 ### Continuation instructions
 
@@ -337,5 +288,6 @@ For a new session:
 2. Read `docs/payroll-attendance-implementation-plan.md`.
 3. Read this rolling checkpoint.
 4. Verify branch HEAD and inspect any commits after this checkpoint before editing.
-5. Continue with P28–P30 as one integration wave without redesigning the locked
-   Payroll, review, identity, delivery, or WhatsApp source-of-truth boundaries.
+5. Continue with P31–P35 without replacing `whatsapp-web.js`/LocalAuth, weakening
+   direct/group destination validation, or introducing destructive routine auth
+   reset behavior.
