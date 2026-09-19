@@ -25,9 +25,10 @@ from digital_bast.bot.attendance_resolution import (
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
-    from datetime import datetime, time
+    from datetime import date, datetime, time
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
+    from digital_bast.application.attendance_review import AttendanceReviewEvidenceMetadata
     from digital_bast.application.payroll_read import PayrollOverview
     from digital_bast.bot.attendance_resolution import (
         AttendanceResolution,
@@ -52,6 +53,7 @@ class PayrollReviewabilityReason(StrEnum):
     SOURCE_UNAVAILABLE = "source_unavailable"
     REQUEST_NOT_CURRENT = "request_not_current"
     SOURCE_CHANGED = "source_changed"
+    EVIDENCE_NOT_FOUND = "evidence_not_found"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +64,7 @@ class PayrollReviewItem:
     nrp: str
     name: str
     role: str
-    work_date: object
+    work_date: date
     resolution_type: ResolutionType
     raw_check_in: str | None
     raw_check_out: str | None
@@ -70,6 +72,10 @@ class PayrollReviewItem:
     proposed_check_out: str | None
     absence_type: str | None
     evidence_id: UUID
+    evidence_content_type: str | None
+    evidence_byte_size: int | None
+    evidence_caption: str
+    evidence_uploaded_at: datetime | None
     submitted_at: datetime
     reviewable: bool
     reviewability_reason: PayrollReviewabilityReason | None
@@ -123,6 +129,10 @@ class AttendanceResolutionAuthority(Protocol):
         approve: bool,
         rejection_reason: str | None = None,
     ) -> DecisionResult: ...
+
+
+class AttendanceEvidenceReviewReader(Protocol):
+    async def metadata(self, request_id: UUID) -> AttendanceReviewEvidenceMetadata | None: ...
 
 
 def _clock(value: time | None) -> str | None:
@@ -209,9 +219,11 @@ class PayrollReviewService:
         self,
         payroll: PayrollOverviewReader,
         resolutions: AttendanceResolutionAuthority,
+        evidence: AttendanceEvidenceReviewReader,
     ) -> None:
         self._payroll = payroll
         self._resolutions = resolutions
+        self._evidence = evidence
 
     async def queue(self, cycle: PayrollCycle, *, now: datetime) -> PayrollReviewQueue:
         overview = await self._payroll.overview(cycle, now=now)
@@ -221,6 +233,10 @@ class PayrollReviewService:
             if not cycle.period.start <= request.work_date <= cycle.period.end:
                 continue
             reviewable, reason, role, raw_in, raw_out = _reviewability(request, overview)
+            evidence = await self._evidence.metadata(request.id)
+            if evidence is None:
+                reviewable = False
+                reason = PayrollReviewabilityReason.EVIDENCE_NOT_FOUND
             items.append(
                 PayrollReviewItem(
                     request_id=request.id,
@@ -239,6 +255,10 @@ class PayrollReviewService:
                         request.absence_type.value if request.absence_type is not None else None
                     ),
                     evidence_id=request.evidence_id,
+                    evidence_content_type=(evidence.content_type if evidence is not None else None),
+                    evidence_byte_size=(evidence.byte_size if evidence is not None else None),
+                    evidence_caption=(evidence.caption if evidence is not None else ""),
+                    evidence_uploaded_at=(evidence.uploaded_at if evidence is not None else None),
                     submitted_at=request.submitted_at,
                     reviewable=reviewable,
                     reviewability_reason=reason,
