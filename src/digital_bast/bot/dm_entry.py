@@ -81,8 +81,11 @@ _PAYROLL_EXPLICIT_ACTIONS: Final = frozenset(
         "payroll_attendance_later",
         "lengkapi",
         "lengkapi sekarang",
+        "lanjut",
         "nanti",
         "nanti dulu",
+        "selesai",
+        "selesai dulu",
     }
 )
 
@@ -308,8 +311,8 @@ async def _payroll_reminder_reply(
 
     if command is AttendanceReminderCommand.LATER:
         return (
-            "Oke, belum ada data attendance yang diubah. "
-            "Balas `lengkapi` dari reminder ini kalau mau lanjut selama masih aktif."
+            "Oke, tidak ada perubahan attendance tambahan dari langkah ini. "
+            "Balas `lengkapi` atau `lanjut` selama reminder ini masih aktif kalau mau meneruskan."
         )
 
     routed = await create_attendance_reminder_routing_service().first_actionable(
