@@ -628,8 +628,13 @@ Validation note: full `npm test` / `npm run typecheck` could not run because the
 
 #### P06 — Payroll day detail drawer
 
-Status: `TODO`  
-Scope: actual/proposed/evidence/status/reason detail, read-only first. Mobile-friendly.
+Status: `DONE`  
+Commits: `d4040554c1b4a3bf768cbec307f21bf584d99226`, `a1e65743aba2aaa7a2ec6ce329db113e94756769`, `9cb3199e37672537f56c3859b46be99b56a52841`.  
+Files: `frontend/src/pages/PayrollPage.tsx`, `frontend/src/pages/PayrollPage.test.tsx`, `frontend/src/styles/payroll.css`.  
+Scope delivered: on-demand per-Talent detail fetch using the existing P03 detail endpoint; read-only day cards for actual/proposed clock values, evidence presence, projection status/reason, resolution type/status and rejection reason; actionable/waiting/unverified days are surfaced before complete days; desktop uses a side drawer and mobile uses a bottom sheet.  
+Boundary: P06 deliberately adds no approve/reject mutation. Evidence is shown only as the truthful `Ada/Tidak ada` fact because P03 does not expose evidence file URLs; evidence preview/download is not fabricated.  
+Tests added: detail is not fetched during overview bootstrap, opening a Talent passes the Payroll cycle to `getPayrollTalentDetail`, actual/proposed/evidence/review facts render, rejection context renders, closing removes the drawer, and no Setujui/Tolak controls are introduced.  
+Validation note: the tool container still cannot resolve `github.com`, so repository checkout and full `npm run typecheck` / `npm test` could not execute. The branch has no commit status checks at this checkpoint. No frontend runner pass is claimed; PR/main CI remains the full gate.
 
 ### Phase C — reminder-first Talent flow
 
@@ -909,12 +914,12 @@ The final user-facing test sheet should cover at least:
 
 ## 22. Current checkpoint
 
-Implementation is complete through **P05 — Payroll mobile-friendly summary**.
+Implementation is complete through **P06 — Payroll day detail drawer**.
 
-Current implementation HEAD before this docs-only checkpoint: `e48dc8d0135544cc7d89bcff1e141d777c612b33`.
+Current implementation HEAD before this docs-only checkpoint: `9cb3199e37672537f56c3859b46be99b56a52841`.
 
-P05 replaces the temporary Payroll shell with the operational read-only workspace: 21–20 cycle/evaluated-through context, the three locked business counts, truthful review/follow-up workload cards, separate source-unverified warning, status filters/search, and desktop/mobile Talent lists. It consumes only P03/P04 read contracts; no review mutation or reminder side effect was added.
+P06 adds on-demand Talent attendance detail to the Payroll workspace without increasing overview payload size. PMO can inspect current raw clocks, proposed correction values, evidence presence, deterministic status/reason, resolution metadata and rejection reason. Non-complete exceptions are surfaced before complete days, with a desktop side drawer and mobile bottom sheet. It remains read-only and does not introduce approval/rejection mutations.
 
-Frontend tests were added for summary semantics, unverified-vs-Talent-action separation, status filtering and search. Full `npm test` / `npm run typecheck` could not run in the tool container because DNS still prevents repository/package checkout, so no passing frontend runner result is claimed. Full frontend CI remains the PR/main gate.
+Frontend tests were extended to lock lazy detail loading, cycle-aware detail requests, actual/proposed/evidence rendering, rejection context, close behavior, and the absence of premature review actions. Full `npm test` / `npm run typecheck` could not run in the tool container because DNS still prevents repository/package checkout; the branch also has no status checks at this checkpoint. No passing frontend runner result is claimed. Full frontend CI remains the PR/main gate.
 
-The next implementation card is **P06 — Payroll day detail drawer**. It should fetch `/api/talentops/v1/payroll/talents/{employee_id}` on demand and expose actual/proposed values, evidence presence, status/reason and current request metadata in a mobile-friendly read-only drawer without introducing review actions yet.
+The next implementation card is **P07 — Stable reminder context schema**. It should add additive durable context/snapshot fields for reminder-driven attendance interactions, storing cycle/context identity and the exact attendance keys/order sent, without changing reminder dispatch behavior yet.
