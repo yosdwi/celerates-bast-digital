@@ -64,6 +64,7 @@ _START_WORDS: Final = frozenset(
         ATTENDANCE_REMINDER_START_ACTION_ID,
         "lengkapi",
         "lengkapi sekarang",
+        "lanjut",
     }
 )
 _LATER_WORDS: Final = frozenset(
@@ -71,6 +72,8 @@ _LATER_WORDS: Final = frozenset(
         ATTENDANCE_REMINDER_LATER_ACTION_ID,
         "nanti",
         "nanti dulu",
+        "selesai",
+        "selesai dulu",
     }
 )
 
