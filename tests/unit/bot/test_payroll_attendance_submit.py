@@ -225,7 +225,7 @@ async def test_submit_uses_durable_draft_then_opens_next_snapshot_gap() -> None:
 
 
 @pytest.mark.asyncio
-async def test_submit_final_gap_clears_context_but_only_claims_waiting_review() -> None:
+async def test_submit_final_gap_clears_context_and_only_claims_waiting_review() -> None:
     state = _State()
     context_store = _ContextStore()
     router = _Router(AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION))
@@ -243,9 +243,56 @@ async def test_submit_final_gap_clears_context_but_only_claims_waiting_review() 
 
     assert state.cleared == 1
     assert context_store.cleared == 1
-    assert "Semua attendance dari reminder ini sudah ditangani" in response
+    assert "Tidak ada action Talent lain" in response
     assert "menunggu review PMO" in response
     assert "payroll-ready" not in response.casefold()
+
+
+@pytest.mark.asyncio
+async def test_source_change_does_not_claim_a_request_was_submitted() -> None:
+    state = _State()
+    context_store = _ContextStore()
+    router = _Router(AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION))
+
+    response = await submit_payroll_attendance_draft(
+        jid=_JID,
+        draft=_draft(),
+        context=_context(),
+        now=_NOW,
+        resolutions=_ResolutionService(SubmitOutcome.SOURCE_NOT_ELIGIBLE),
+        state=state,
+        context_store=context_store,
+        routing=router,
+    )
+
+    assert state.cleared == 1
+    assert context_store.cleared == 1
+    assert "informasi lama tidak diajukan" in response
+    assert "menunggu review PMO" not in response
+    assert "Tidak ada action Talent lain" in response
+
+
+@pytest.mark.asyncio
+async def test_missing_evidence_keeps_draft_open_for_reupload() -> None:
+    state = _State()
+    context_store = _ContextStore()
+    router = _Router(AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION))
+
+    response = await submit_payroll_attendance_draft(
+        jid=_JID,
+        draft=_draft(),
+        context=_context(),
+        now=_NOW,
+        resolutions=_ResolutionService(SubmitOutcome.EVIDENCE_REQUIRED),
+        state=state,
+        context_store=context_store,
+        routing=router,
+    )
+
+    assert state.cleared == 0
+    assert context_store.cleared == 0
+    assert router.calls == 0
+    assert "Kirim ulang screenshot/dokumen" in response
 
 
 @pytest.mark.asyncio
