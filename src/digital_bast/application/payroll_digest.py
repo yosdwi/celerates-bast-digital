@@ -112,7 +112,7 @@ def _latest_sent_by_employee(
     )
 
 
-def _reason(
+def _reason(  # noqa: PLR0911 - ordered operational priority is explicit
     talent: PayrollTalentView,
     latest: PayrollDeliveryRecord | None,
     latest_sent: PayrollDeliveryRecord | None,
@@ -282,7 +282,11 @@ class PayrollDigestService:
         ordered = tuple(
             sorted(
                 items,
-                key=lambda item: (_REASON_RANK[item.reason], item.name.casefold(), item.employee_id),
+                key=lambda item: (
+                    _REASON_RANK[item.reason],
+                    item.name.casefold(),
+                    item.employee_id,
+                ),
             )
         )
         return PayrollClosingDigest(
