@@ -151,16 +151,31 @@ function serializedId(value) {
   return value?._serialized ?? value?.$1 ?? "";
 }
 
-function serializeGroup(chat) {
-  const participants = Array.isArray(chat.participants)
-    ? chat.participants
-        .map((participant) => ({
-          jid: serializedId(participant.id),
-          is_admin: Boolean(participant.isAdmin),
-          is_super_admin: Boolean(participant.isSuperAdmin),
-        }))
-        .filter((participant) => participant.jid !== "")
-    : [];
+async function serializeParticipant(participant) {
+  const jid = serializedId(participant.id);
+  let contact = null;
+  if (jid) {
+    try {
+      contact = await bridge.client.getContactById(jid);
+    } catch (err) {
+      state.logf(`contact metadata unavailable jid=${jid}: ${err.message}`);
+    }
+  }
+  return {
+    jid,
+    display_name: String(contact?.pushname || contact?.name || contact?.shortName || ""),
+    number: String(contact?.number || ""),
+    is_my_contact: Boolean(contact?.isMyContact),
+    is_admin: Boolean(participant.isAdmin),
+    is_super_admin: Boolean(participant.isSuperAdmin),
+  };
+}
+
+async function serializeGroup(chat) {
+  const rawParticipants = Array.isArray(chat.participants) ? chat.participants : [];
+  const participants = (await Promise.all(rawParticipants.map(serializeParticipant))).filter(
+    (participant) => participant.jid !== "",
+  );
   return {
     jid: serializedId(chat.id),
     subject: String(chat.name || ""),
@@ -180,7 +195,7 @@ async function handleGroups(req, res) {
   }
   try {
     const chats = await bridge.client.getChats();
-    const groups = chats.filter((chat) => chat.isGroup).map(serializeGroup);
+    const groups = await Promise.all(chats.filter((chat) => chat.isGroup).map(serializeGroup));
     state.groups = groups;
     writeJson(res, 200, {
       ready: true,
