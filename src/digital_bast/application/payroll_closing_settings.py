@@ -5,9 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Final, Protocol
 
+_MAX_CALENDAR_DAY: Final = 31
+_MAX_CLOCK_HOUR: Final = 23
+_MAX_POLICY_ITEMS: Final = 10
 _SUPPORTED_ROLES: Final = frozenset({"Developer", "IoT Operations"})
 _DEFAULT_ROLES: Final = ("Developer", "IoT Operations")
 _DEFAULT_OFFSETS: Final = (5, 3, 1)
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,36 +33,54 @@ class PayrollClosingSettings:
     updated_by: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.scope_key.strip():
-            raise ValueError("scope_key must not be blank")
-        if not 1 <= self.closing_day <= 31:
-            raise ValueError("closing_day must be between 1 and 31")
-        if not 0 <= self.reminder_hour <= 23:
-            raise ValueError("reminder_hour must be between 0 and 23")
-        if not 0 <= self.next_day_ready_hour <= 23:
-            raise ValueError("next_day_ready_hour must be between 0 and 23")
-        if not self.reminder_offsets or len(self.reminder_offsets) > 10:
-            raise ValueError("reminder_offsets must contain between 1 and 10 values")
-        if any(offset <= 0 or offset > 31 for offset in self.reminder_offsets):
-            raise ValueError("reminder_offsets must be between 1 and 31")
-        if tuple(sorted(set(self.reminder_offsets), reverse=True)) != self.reminder_offsets:
-            raise ValueError("reminder_offsets must be unique and sorted descending")
-        if not self.target_roles or len(self.target_roles) > 10:
-            raise ValueError("target_roles must contain between 1 and 10 roles")
-        if len(set(self.target_roles)) != len(self.target_roles):
-            raise ValueError("target_roles must be unique")
-        if any(role not in _SUPPORTED_ROLES for role in self.target_roles):
-            raise ValueError("target_roles contains an unsupported role")
-        if self.desired_version <= 0:
-            raise ValueError("desired_version must be greater than zero")
-        if not 0 <= self.applied_version <= self.desired_version:
-            raise ValueError("applied_version must be between zero and desired_version")
+        _require(bool(self.scope_key.strip()), "scope_key must not be blank")
+        _require(
+            1 <= self.closing_day <= _MAX_CALENDAR_DAY,
+            "closing_day must be between 1 and 31",
+        )
+        _require(
+            0 <= self.reminder_hour <= _MAX_CLOCK_HOUR,
+            "reminder_hour must be between 0 and 23",
+        )
+        _require(
+            0 <= self.next_day_ready_hour <= _MAX_CLOCK_HOUR,
+            "next_day_ready_hour must be between 0 and 23",
+        )
+        _require(
+            1 <= len(self.reminder_offsets) <= _MAX_POLICY_ITEMS,
+            "reminder_offsets must contain between 1 and 10 values",
+        )
+        _require(
+            all(1 <= offset <= _MAX_CALENDAR_DAY for offset in self.reminder_offsets),
+            "reminder_offsets must be between 1 and 31",
+        )
+        _require(
+            tuple(sorted(set(self.reminder_offsets), reverse=True)) == self.reminder_offsets,
+            "reminder_offsets must be unique and sorted descending",
+        )
+        _require(
+            1 <= len(self.target_roles) <= _MAX_POLICY_ITEMS,
+            "target_roles must contain between 1 and 10 roles",
+        )
+        _require(
+            len(set(self.target_roles)) == len(self.target_roles),
+            "target_roles must be unique",
+        )
+        _require(
+            all(role in _SUPPORTED_ROLES for role in self.target_roles),
+            "target_roles contains an unsupported role",
+        )
+        _require(self.desired_version > 0, "desired_version must be greater than zero")
+        _require(
+            0 <= self.applied_version <= self.desired_version,
+            "applied_version must be between zero and desired_version",
+        )
 
     @property
     def dispatch_enabled(self) -> bool:
         return self.enabled and not self.paused
 
-    def with_desired_update(
+    def with_desired_update(  # noqa: PLR0913 - mirrors the typed settings form
         self,
         *,
         enabled: bool,
@@ -67,7 +93,9 @@ class PayrollClosingSettings:
         actor: str,
     ) -> PayrollClosingSettings:
         normalized_offsets = tuple(sorted(set(reminder_offsets), reverse=True))
-        normalized_roles = tuple(dict.fromkeys(role.strip() for role in target_roles if role.strip()))
+        normalized_roles = tuple(
+            dict.fromkeys(role.strip() for role in target_roles if role.strip())
+        )
         return replace(
             self,
             enabled=enabled,
