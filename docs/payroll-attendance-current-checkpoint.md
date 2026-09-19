@@ -7,123 +7,96 @@ Repository: `yosdwi/celerates-bast-digital`
 Branch: `chore/session-20260918-fixes`  
 Checkpoint date: 19 September 2026
 
-## Completed through P13
+## Completed through P14
 
-P00–P12 remain completed as recorded in the master implementation plan and prior
-checkpoint history. The latest completed card is P13 below.
+P00–P13 remain completed as recorded in the master implementation plan and prior
+checkpoint history. Phase C reminder/Talent correction flow is now completed through
+P14.
 
-### P13 — Review / submit / next-gap loop
+### P14 — Progressive same-gap shortcut
 
 Status: `DONE`
 
 Key commits:
 
-- `a77e6e75ae7684e65eb92ae2ccda2a150745b9fe` — explicit Payroll draft review actions.
-- `687a59f826dbc0f6b0b908d465cf5287f5589dac` — submit/continuation orchestration foundation.
-- `10baaa3da604216813936212c8d23b143bef4e9b` — strict protocol/type hardening.
-- `77c529957952b27421b5f1e18ea981a6f04502ba` — submit-loop unit coverage foundation.
-- `7631d8955bfa399182220e797594b922d363aacb` — active Payroll draft DM integration.
-- `5cbe839b7d1f211887e45d2007de3293543be3db` — review action routing tests.
-- `9bea842a3a2c7e87691e775d69c50d6fa97efde8` — truthful source-change completion wording.
-- `2e3e422b83d7fd949d5028959727d7df851ab03d` — canonical `[Lanjut] [Selesai dulu]` continuation choice.
-- `bdf0ad2835b76a7cfff90b6acc4fbc99bf73b879` — `lanjut/selesai dulu` text fallbacks.
-- `f6a6b9287792cad2c98a0cb1ea038bb2534e30ee` — context-safe stop wording in Talent entrypoint.
-- `eb01e867b06b45b228ed5658273e0b06a20905da` — continuation helper style hardening.
-- `5a2b8ae05287d8ed994648f28f19cac3b30036d9` — continue/stop submit tests aligned with canonical flow.
-- `6da2d2f80fc469fc1013700974364fa9a3f1c8be` — reminder parser continuation regression coverage.
-- `6975b293ede7f10a8eec4ddd3f757d746fa6e924` — DM continuation/stop regression coverage.
-
-Additional corrective/regression commits inside the same P13 card:
-
-- `9979e2aebc87ec6c9fa30425e14d32352891a744`
-- `a110fca0d17c2278aa087f83ebdbf3d32169c7e2`
-- `5d782defc91d1fc50db9a17336c7f6ce1c2b6105`
-- `8908719e27eaef4c93556039f08cc11f2d8c6b64`
-- `0a482e7523bcc3195ff7a3daff3fb6ee45e4b0f0`
-- `46ef198594606aae715e12ce0f2de48b84bec271`
+- `1e6d918af7fd29f64dfd698a069f184349f757c5` — derive a same-gap suggestion from the stable snapshot/current projection.
+- `b3bc3a7e077ee36f0c29ec4d2e086bbaafd20a27` — `Sama / Berbeda` helper and revalidation flow.
+- `6084d415286fd192be1db2cea71a4e75ebc87a3b` — offer the shortcut when continuing to an eligible next gap.
+- `c849711a21c8093cf711d193b2c2a3b928cbd67a` — active Payroll draft reply integration.
+- `4f3ceeb906d2a41c07290925e1d16ca9dd82c8f8` — routing/helper unit coverage.
+- `ef2ec5ec654f5d3c4a4005153c97741c81de252a` — Talent entrypoint continuation regression coverage.
+- `78bf814eaf3f9885eb3ebb89a431b0ae271b1300` — active-draft action precedence coverage.
+- `d7eba950cbf23411567db3e793ccc62cc46c4760` — local strict-lint hardening.
+- `0e7ec47cfd13e7bdf58bff5848c9a354b51a579a` — require truthful WAITING projection before reuse suggestion.
+- `d30d407207c31ac33645c8d2103ef7aabae780df` — stale-source regression coverage.
 
 Files:
 
-- `src/digital_bast/bot/payroll_attendance_draft.py`
-- `src/digital_bast/bot/payroll_attendance_submit.py`
-- `src/digital_bast/bot/dm_workflow.py`
 - `src/digital_bast/bot/attendance_reminder_routing.py`
+- `src/digital_bast/bot/payroll_attendance_repeat.py`
 - `src/digital_bast/bot/dm_entry.py`
-- `tests/unit/bot/test_payroll_attendance_submit.py`
-- `tests/unit/bot/test_dm_workflow_payroll_submit.py`
-- `tests/unit/bot/test_payroll_attendance_draft.py`
-- `tests/unit/bot/test_payroll_attendance_evidence.py`
-- `tests/unit/bot/test_dm_workflow_payroll_draft.py`
-- `tests/unit/bot/test_attendance_reminder_routing.py`
-- `tests/unit/bot/test_dm_entry_payroll_reminder.py`
+- `src/digital_bast/bot/dm_workflow.py`
+- `tests/unit/bot/test_payroll_attendance_repeat.py`
+- `tests/unit/bot/test_dm_entry_payroll_repeat.py`
+- `tests/unit/bot/test_dm_workflow_payroll_repeat.py`
 
 Delivered contract:
 
-- A Payroll draft only becomes reviewable when both an explicit proposal and
-  evidence exist. Evidence alone never submits or completes a correction.
-- Review displays the exact durable proposal plus `Bukti: ✓` and only two
-  decisions: `Ajukan` and `Ubah`. Stable action IDs plus `1/2` and text fallback
-  remain available for WhatsApp transports without buttons.
-- `Ubah` re-opens the same exact attendance key, revalidates current source state,
-  clears/replaces only proposed correction values and keeps already stored evidence.
-- `Ajukan` uses the existing `AttendanceResolutionService.submit()` authority and
-  passes values stored in the durable draft; submit text is never reparsed into
-  attendance facts.
-- Successful creation is reported only as `sudah diajukan` / `menunggu review PMO`.
-  It is never described as approved or payroll-ready.
-- `ALREADY_OPEN` is treated idempotently as an already submitted request; it does
-  not create another business action.
-- `EVIDENCE_REQUIRED` leaves the draft open and asks for evidence again.
-- Source change before submit clears the stale draft and never claims a request was
-  created. Ownership mismatch clears draft + reminder context and fails closed.
-- After a successful submit, the P07 snapshot is re-read through P09 current
-  projection routing. The submitted/pending date naturally leaves the actionable
-  set; no snapshot index is manually popped or renumbered.
-- If more Talent action exists, the user gets exactly `[Lanjut] [Selesai dulu]`.
-  The submit handler does not auto-open the next gap.
-- `Lanjut` (or the existing start action ID / guarded numeric fallback) revalidates
-  context/projection again in `dm_entry` and only then opens the next still-actionable
-  gap.
-- `Selesai dulu` performs no additional attendance mutation, does not open Mobile or
-  menu, and leaves the stable reminder context available until normal expiry.
-- If no Talent action remains, the reminder context is cleared and the reply says
-  there is no additional Talent action while already submitted requests remain
-  pending PMO review.
-- Legacy non-Payroll attendance-resolution drafts still use their existing
-  evidence-first submission behavior.
+- P14 only offers the shortcut for a single missing Clock In or single missing Clock
+  Out. Missing-both and absence cases remain explicit one-gap-at-a-time flows; the
+  shortcut is deliberately not expanded into a bulk correction menu.
+- A suggestion is derived only from an earlier key in the same immutable P07
+  snapshot whose current projection is still `WAITING_SUBMITTED`, whose reason is
+  `GAP_COVERED_BY_SUBMITTED_REQUEST`, whose request is still `pending`, and whose
+  resolution type matches the current missing field.
+- A stale pending request whose raw source has become complete cannot seed a
+  `Sama` suggestion, even if its historical request row is still pending.
+- After P13 `[Lanjut]`, an eligible next gap is opened as a normal durable draft but
+  no proposed value is written yet. WhatsApp shows only `[Sama] [Berbeda]` with
+  text/numeric fallback.
+- `Sama` re-reads the current projection again before mutation. Only after the
+  Talent explicitly chooses it is the prior explicit clock copied into the current
+  draft. It does not copy evidence and does not submit a PMO request.
+- The copied clock proceeds through the existing P10–P13 lifecycle: current
+  attendance still needs its own evidence, review and explicit `Ajukan`.
+- `Berbeda` performs no mutation and returns to the normal exact-gap clock question.
+- If the suggestion disappears, the current key changes, or the source changes
+  before `Sama` is processed, the shortcut fails closed/back to explicit input;
+  no blind value copy occurs.
+- Numeric fallback remains contextual: while the P14 draft has no proposal,
+  `1/2` means `Sama/Berbeda`; once proposal + evidence are ready, P13 owns `1/2`
+  again as `Ajukan/Ubah`.
+- Raw client attendance is never mutated and stable snapshot ordering is preserved.
 
 Validation evidence:
 
-- P12→P13 branch compare is limited to Payroll draft/submit/reminder DM routing and
-  focused unit/regression tests; no scheduler, outbound gateway, PMO review API/UI,
-  raw attendance mutation or migration is included.
-- Focused tests lock review rendering, action IDs/text/numeric fallback, durable
-  proposal submission, explicit continue/stop choice, final-gap completion,
-  truthful source-change behavior, evidence-required recovery, same-key edit,
-  DM action precedence, `lanjut`, `selesai dulu`, stable-context retention and
-  legacy digit precedence.
+- P13→P14 branch compare is limited to seven Payroll reminder/draft source/test
+  files plus this docs checkpoint; no migration, scheduler, outbound gateway, PMO
+  review API/UI, or raw attendance write is introduced.
+- Focused tests were added for same-gap eligibility, incompatible types, stale/raw
+  source changes, action/text/numeric fallback, explicit `Sama` revalidation,
+  `Berbeda` no-mutation behavior, continuation rendering and active-draft parser
+  precedence.
 - Full repository `pytest + ruff + basedpyright` is not claimed in this tool
-  environment because repository-local execution remains unavailable here. Branch
-  status checks are verified separately; PR/main CI remains the complete quality
-  gate.
+  environment. Branch status checks remain separate; PR/main CI is still the full
+  quality gate.
 
 ## Next card
 
-**P14 — Progressive same-gap shortcut**
+**P15 — Review queue API**
 
 Scope remains locked:
 
-- Only offer a progressive shortcut when multiple still-actionable snapshot dates
-  share the same missing attendance field/type.
-- Ask a small `Sama / Berbeda` decision after one explicit value has been captured;
-  do not show a large bulk mapping/menu or silently copy values.
-- `Sama` may prefill the same explicit clock/absence fact only for compatible gaps,
-  but each exact attendance identity must still retain its own evidence requirement
-  and its own explicit submit/review lifecycle.
-- `Berbeda` keeps the normal one-gap-at-a-time P09–P13 flow.
-- Revalidate every target against current source/projection before any draft value is
-  persisted. Skip dates that became waiting/complete/unverified.
-- Preserve stable P07 ordering and never change the immutable source attendance.
+- Expose pending attendance-resolution requests for Payroll through a dedicated,
+  read-only PMO review queue API.
+- Reuse the existing `AttendanceResolutionService` / correction lifecycle as the
+  authority. Do not create a second review/approval store.
+- Return enough factual context for PMO review: Talent identity, work date,
+  resolution type, raw vs proposed values, evidence metadata, submitted time and
+  current-source validity/reviewability.
+- Group/filter facts may be prepared for the web, but P15 does not approve/reject
+  anything; mutation remains P17/P18.
+- Preserve Payroll 21–20 cycle semantics and existing PMO/admin authorization.
 
 For a new session: read the master implementation plan first, then this checkpoint,
-verify branch HEAD, and continue P14 without redesigning locked requirements.
+verify branch HEAD, and continue P15 without redesigning locked requirements.
