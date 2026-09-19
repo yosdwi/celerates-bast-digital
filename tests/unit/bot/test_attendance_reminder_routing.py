@@ -123,7 +123,15 @@ def test_command_parser_supports_ids_words_and_guarded_digits() -> None:
         is AttendanceReminderCommand.START
     )
     assert (
+        parse_attendance_reminder_command("lanjut", allow_digit_shortcuts=False)
+        is AttendanceReminderCommand.START
+    )
+    assert (
         parse_attendance_reminder_command("nanti", allow_digit_shortcuts=False)
+        is AttendanceReminderCommand.LATER
+    )
+    assert (
+        parse_attendance_reminder_command("selesai dulu", allow_digit_shortcuts=False)
         is AttendanceReminderCommand.LATER
     )
     assert parse_attendance_reminder_command("1", allow_digit_shortcuts=False) is None
