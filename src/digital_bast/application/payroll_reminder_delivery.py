@@ -36,6 +36,8 @@ class PayrollDeliveryRecord:
     attempt_count: int
     provider_message_id: str | None = None
     error_code: str | None = None
+    reserved_at: datetime | None = None
+    sent_at: datetime | None = None
     responded_at: datetime | None = None
     response_kind: str | None = None
 
@@ -88,3 +90,10 @@ class PayrollReminderDeliveryStore(Protocol):
         employee_id: str,
         responded_at: datetime,
     ) -> bool: ...
+
+    async def list_cycle(
+        self,
+        *,
+        scope_key: str,
+        cycle_id: str,
+    ) -> tuple[PayrollDeliveryRecord, ...]: ...
