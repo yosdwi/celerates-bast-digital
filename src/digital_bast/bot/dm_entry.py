@@ -39,6 +39,7 @@ from digital_bast.bot.attendance_resolution import AttendanceResolution, Resolut
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.guideline_onboarding import try_guideline_onboarding
 from digital_bast.bot.interactive import interactive
+from digital_bast.bot.payroll_attendance_repeat import render_payroll_repeat_prompt
 from digital_bast.bot.talent_context import (
     TalentConversationContext,
     TalentIntent,
@@ -340,6 +341,8 @@ async def _payroll_reminder_reply(
                 "Data attendance barusan berubah. "
                 "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
             )
+        if routed.selection.same_gap_suggestion is not None:
+            return render_payroll_repeat_prompt(routed.selection)
         return render_attendance_gap_prompt(routed.selection)
 
     await context_store.clear(jid)
