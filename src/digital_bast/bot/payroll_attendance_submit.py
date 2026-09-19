@@ -113,10 +113,9 @@ async def _continue_to_next_gap(
         and routed.selection is not None
     ):
         remaining = routed.selection.remaining_actionable
-        noun = "tanggal" if remaining == 1 else "tanggal"
         body = (
             f"{prefix}\n\n"
-            f"Masih ada {remaining} {noun} yang perlu kamu lengkapi. Mau lanjut sekarang?"
+            f"Masih ada {remaining} tanggal yang perlu kamu lengkapi. Mau lanjut sekarang?"
         )
         return interactive(
             body,
