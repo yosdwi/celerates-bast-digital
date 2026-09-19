@@ -7,7 +7,7 @@ Repository: `yosdwi/celerates-bast-digital`
 Branch: `chore/session-20260918-fixes`  
 Checkpoint date: 19 September 2026
 
-## Completed through P07
+## Completed through P08
 
 P00–P06 remain completed as recorded in the master implementation plan.
 
@@ -50,30 +50,80 @@ Migration chain:
 
 `20260911_0021 -> 20260919_0022`
 
+### P08 — Reminder message composer
+
+Status: `DONE`
+
+Commits:
+
+- `a074bd7397592a28f4148cd13eacf393209820ab` — initial Payroll attendance reminder composer.
+- `6dfa9d145af7a347ca885b7a9d484230df3ff672` — initial composer unit coverage.
+- `6833ce522b3b2e3298f5f878c52323119438dcaf` — transport-safe/public action contract hardening.
+- `302de2e3122f10eebfc46e48e52a83e9fb00eb44` — ordering, duplicate and concise-message test hardening.
+- `47d6fc2a80db7419897455222cd79c4642ef6040` — strict-safe rejected-action lookup.
+
+Files:
+
+- `src/digital_bast/bot/attendance_reminder.py`
+- `tests/unit/bot/test_attendance_reminder.py`
+
+Delivered contract:
+
+- Composer is side-effect free: no WhatsApp send and no attendance mutation.
+- It consumes the P03 Payroll closing projection and includes only rows currently
+  marked `talent_action_required=true`.
+- `WAITING_SUBMITTED`, `COMPLETE` and source-unverified-only Talent produce no
+  reminder draft.
+- Any actionable row without a canonical attendance key fails closed rather than
+  producing a reminder that cannot later be resolved safely.
+- The draft carries the exact P07 `AttendanceReminderContext` with canonical
+  employee ID, immutable cycle ID, ordered actionable attendance keys and expiry.
+- Actionable rows are ordered chronologically before both rendering and snapshot
+  creation, so the message and persisted context share one order.
+- Normal gaps use direct wording such as `Clock Out belum ada`; rejected requests
+  use current-action wording such as `Clock Out perlu diperbaiki` rather than
+  pretending the previous submission never happened.
+- Reminder exposes only two decisions: `Lengkapi` and `Nanti`, with stable public
+  action IDs for P09 and a plain-text `1/2` plus `lengkapi/nanti` fallback.
+- At most five gap lines are rendered to keep WhatsApp concise; additional current
+  gaps are summarized as `+N attendance lainnya`, while the P07 snapshot still
+  retains every actionable attendance key.
+- The existing `InteractiveReply` envelope can be produced when a transport
+  supports it, but current scheduled follow-up plain-text outbound is not changed
+  in P08. This prevents accidental JSON-as-text delivery.
+- Existing monthly BAST `TalentReminderService` behavior remains untouched.
+
 Validation evidence:
 
-- Branch diff from P06 contains only the migration, context service and its tests.
-- Unit tests cover stable ordering, invalid/duplicate identities, timezone-aware
-  expiry, expired/corrupt fail-closed behavior, save isolation and clear isolation.
+- P07→P08 branch compare contains only the composer and its unit-test file.
+- Tests cover actionable-only filtering, chronological stable snapshot order,
+  waiting/complete/unverified skip behavior, unaddressable/duplicate fail-closed,
+  rejected correction wording, two-action fallback, and large-list truncation
+  without losing snapshot identities.
 - Full repository `pytest + ruff + basedpyright` is not claimed in this tool
-  environment because the runtime does not have the repository dependency set
-  (`psycopg` is unavailable) and branch CI is not automatically triggered here.
-  PR/main CI remains the complete quality gate.
+  environment because there is no repository checkout/dependency runtime attached
+  to the GitHub connector. PR/main CI remains the complete quality gate.
 
 ## Next card
 
-**P08 — Reminder message composer**
+**P09 — Reminder -> current gap routing**
 
 Scope remains locked:
 
-- Compose one concise Payroll attendance reminder from current Closing Projection.
-- Include only current `NEEDS_TALENT_ACTION` items.
-- Persist the P07 stable snapshot before/with dispatch orchestration when P08 is
-  wired; P08 must not recompute numbering after the message is sent.
-- Message stays simple: gap summary plus `[Lengkapi] [Nanti]` with numeric/text
-  fallback.
-- Do not route replies yet; direct reminder-to-gap routing remains P09.
-- Do not change legacy BAST monthly reminder semantics.
+- `dm_entry.py` / attendance workflow recognize the P08 start/later action IDs and
+  their text/number fallback after the gateway resolves them.
+- Load the P07 stable reminder context; never rebuild the sent list from a fresh
+  projection merely to interpret the reply.
+- `Lengkapi` opens the first still-actionable attendance identity from the stable
+  snapshot directly in WhatsApp.
+- Before opening/mutating, revalidate identity ownership and current projection.
+  Skip snapshot items that are no longer actionable instead of changing the
+  meaning/order of later items.
+- If no snapshot item remains actionable, clear/finish the reminder flow with a
+  concise no-action message; do not send Talent to Mobile or a generic menu.
+- `Nanti` ends the immediate prompt without mutating attendance.
+- Do not implement time entry/evidence mutation yet; collecting the missing clock
+  starts in P10.
 
 For a new session: read the master implementation plan first, then this checkpoint,
-verify branch HEAD, and continue P08 without redesigning locked requirements.
+verify branch HEAD, and continue P09 without redesigning locked requirements.
