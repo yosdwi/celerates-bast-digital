@@ -7,6 +7,19 @@ Repository: `yosdwi/celerates-bast-digital`
 Branch: `chore/session-20260918-fixes`  
 Checkpoint date: 19 September 2026
 
+## Execution standard
+
+This project now follows `docs/development-execution-standard.md`.
+
+Key rule: **cards remain audit/commit boundaries, but execution and conversation
+progress happen by end-to-end waves.** Do not pause after each card unless a
+material product/architecture/data-integrity conflict makes safe continuation
+ambiguous. Keep small/revertible commits and focused tests inside the wave, then
+perform one integration review and one rolling checkpoint at the wave boundary.
+
+Project-specific business/source-of-truth rules in the Payroll implementation plan
+remain authoritative over the generic execution standard.
+
 ## Completed through P14
 
 P00–P13 remain completed as recorded in the master implementation plan and prior
@@ -81,22 +94,66 @@ Validation evidence:
   environment. Branch status checks remain separate; PR/main CI is still the full
   quality gate.
 
-## Next card
+## Next execution wave — PMO Review Operations
 
-**P15 — Review queue API**
+**Cards P15–P18 are executed continuously as one wave.** Cards remain separate
+implementation/commit boundaries; do not stop after each card solely for a status
+handoff.
 
-Scope remains locked:
+### P15 — Review queue API
 
 - Expose pending attendance-resolution requests for Payroll through a dedicated,
   read-only PMO review queue API.
 - Reuse the existing `AttendanceResolutionService` / correction lifecycle as the
   authority. Do not create a second review/approval store.
-- Return enough factual context for PMO review: Talent identity, work date,
+- Return factual context needed for PMO review: Talent identity, work date,
   resolution type, raw vs proposed values, evidence metadata, submitted time and
   current-source validity/reviewability.
-- Group/filter facts may be prepared for the web, but P15 does not approve/reject
-  anything; mutation remains P17/P18.
 - Preserve Payroll 21–20 cycle semantics and existing PMO/admin authorization.
 
-For a new session: read the master implementation plan first, then this checkpoint,
-verify branch HEAD, and continue P15 without redesigning locked requirements.
+### P16 — Review queue UI
+
+- Build the compact PMO review workspace on the existing Payroll page.
+- Support selection, type grouping/filtering and exception/detail inspection.
+- Do not duplicate backend decision logic in the frontend.
+
+### P17 — Bulk approve service/API
+
+- Revalidate each selected request against current authoritative state.
+- Reuse the existing decision/approval authority.
+- Return truthful per-item/partial-success results; one stale item must not fail the
+  entire batch.
+- Never mutate raw attendance.
+
+### P18 — Bulk approve UI + rejection reasons
+
+- Add confirmation summary for selected approvals.
+- Support structured rejection reason and clear success/stale/failure outcomes.
+- Refresh the Payroll projection/review queue after decisions so the web reflects
+  effective current state.
+
+### Wave acceptance
+
+The wave is done when the manual end-to-end operational flow is usable:
+
+```text
+Talent WhatsApp
+  -> correction + evidence + Ajukan
+  -> WAITING_SUBMITTED
+
+PMO Payroll Web
+  -> Review Queue
+  -> inspect raw/proposed/evidence
+  -> approve / reject / bulk approve
+
+Closing Projection
+  -> refreshes from authoritative correction lifecycle
+  -> approved/rejected/pending state is reflected truthfully
+```
+
+At the end of P15–P18, run one focused integration/regression review and update this
+rolling checkpoint once for the whole wave.
+
+For a new session: read `docs/development-execution-standard.md`, then the master
+Payroll implementation plan and this checkpoint, verify branch HEAD, and execute the
+full P15–P18 wave without redesigning locked requirements.
