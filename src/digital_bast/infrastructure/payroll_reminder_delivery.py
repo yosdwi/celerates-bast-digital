@@ -93,24 +93,7 @@ def _record(row: _DeliveryRow) -> PayrollDeliveryRecord:
     )
 
 
-_RETURNING = """
-    RETURNING id,
-              idempotency_key,
-              employee_id,
-              message,
-              delivery_state,
-              scope_key,
-              cycle_id,
-              milestone,
-              context_id,
-              attempt_count,
-              provider_message_id,
-              error_code,
-              responded_at,
-              response_kind
-"""
-_RESERVE_SQL = (
-    """
+_RESERVE_SQL = """
     INSERT INTO talentops_followups (
         id,
         idempotency_key,
@@ -131,11 +114,22 @@ _RESERVE_SQL = (
     ) VALUES (%s,%s,%s,%s,%s,'whatsapp',%s,'deterministic','reserved',%s,
               'RESERVED',%s,%s,%s,%s,now())
     ON CONFLICT (idempotency_key) DO NOTHING
-    """
-    + _RETURNING
-)
-_BY_KEY_SQL = (
-    """
+    RETURNING id,
+              idempotency_key,
+              employee_id,
+              message,
+              delivery_state,
+              scope_key,
+              cycle_id,
+              milestone,
+              context_id,
+              attempt_count,
+              provider_message_id,
+              error_code,
+              responded_at,
+              response_kind
+"""
+_BY_KEY_SQL = """
     SELECT id,
            idempotency_key,
            employee_id,
@@ -153,10 +147,8 @@ _BY_KEY_SQL = (
     FROM talentops_followups
     WHERE idempotency_key = %s
       AND delivery_state IS NOT NULL
-    """
-)
-_REFRESH_SQL = (
-    """
+"""
+_REFRESH_SQL = """
     UPDATE talentops_followups
     SET message = %s,
         context_id = %s,
@@ -168,11 +160,22 @@ _REFRESH_SQL = (
         reserved_at = now()
     WHERE idempotency_key = %s
       AND delivery_state IN ('RESERVED', 'FAILED_RETRYABLE')
-    """
-    + _RETURNING
-)
-_CLAIM_SQL = (
-    """
+    RETURNING id,
+              idempotency_key,
+              employee_id,
+              message,
+              delivery_state,
+              scope_key,
+              cycle_id,
+              milestone,
+              context_id,
+              attempt_count,
+              provider_message_id,
+              error_code,
+              responded_at,
+              response_kind
+"""
+_CLAIM_SQL = """
     UPDATE talentops_followups
     SET delivery_state = 'SENDING',
         status = 'sending',
@@ -180,11 +183,22 @@ _CLAIM_SQL = (
         attempt_count = attempt_count + 1
     WHERE idempotency_key = %s
       AND delivery_state = 'RESERVED'
-    """
-    + _RETURNING
-)
-_FINISH_SQL = (
-    """
+    RETURNING id,
+              idempotency_key,
+              employee_id,
+              message,
+              delivery_state,
+              scope_key,
+              cycle_id,
+              milestone,
+              context_id,
+              attempt_count,
+              provider_message_id,
+              error_code,
+              responded_at,
+              response_kind
+"""
+_FINISH_SQL = """
     UPDATE talentops_followups
     SET delivery_state = %s,
         status = %s,
@@ -193,9 +207,21 @@ _FINISH_SQL = (
         sent_at = %s
     WHERE idempotency_key = %s
       AND delivery_state = 'SENDING'
-    """
-    + _RETURNING
-)
+    RETURNING id,
+              idempotency_key,
+              employee_id,
+              message,
+              delivery_state,
+              scope_key,
+              cycle_id,
+              milestone,
+              context_id,
+              attempt_count,
+              provider_message_id,
+              error_code,
+              responded_at,
+              response_kind
+"""
 _RESPONSE_SQL = """
     UPDATE talentops_followups
     SET responded_at = %s,
