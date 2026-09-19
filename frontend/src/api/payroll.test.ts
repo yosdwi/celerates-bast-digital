@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  decidePayrollReviewQueue,
   getPayrollCycles,
   getPayrollOverview,
+  getPayrollReviewQueue,
   getPayrollTalentDetail,
 } from "./payroll";
 
@@ -41,5 +43,53 @@ describe("Payroll API client", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/talentops/v1/payroll/talents/employee%2Fa%20b?year=2026&month=9",
     );
+  });
+
+  it("loads the review queue for the selected payroll cycle", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [], summary: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getPayrollReviewQueue(2026, 9);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/talentops/v1/payroll/review-queue?year=2026&month=9",
+    );
+  });
+
+  it("sends csrf, exact ids, decision, and structured rejection reason", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      requested: 2,
+      succeeded: 1,
+      skipped: 1,
+      failed: 0,
+      items: [],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await decidePayrollReviewQueue(
+      "csrf-1",
+      2026,
+      9,
+      ["request-1", "request-2"],
+      "reject",
+      "  Evidence tidak cukup jelas  ",
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(
+      "/api/talentops/v1/payroll/review-queue/decide?year=2026&month=9",
+    );
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: expect.objectContaining({
+        "X-CSRF-Token": "csrf-1",
+        "Content-Type": "application/json",
+      }),
+    });
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      request_ids: ["request-1", "request-2"],
+      decision: "reject",
+      rejection_reason: "Evidence tidak cukup jelas",
+    });
   });
 });
