@@ -196,7 +196,11 @@ class PayrollTalentReminderService:
     ) -> PayrollManualReminderPreview:
         policy, talent, outcome = await self._current_talent(employee_id, cycle, now)
         if talent is None:
-            return PayrollManualReminderPreview(employee_id, False, outcome)
+            return PayrollManualReminderPreview(
+                employee_id=employee_id,
+                eligible=False,
+                outcome=outcome,
+            )
         context_id = uuid5(
             NAMESPACE_URL,
             f"payroll-preview:{self._scope_key}:{cycle.cycle_id}:{employee_id}",
@@ -209,16 +213,16 @@ class PayrollTalentReminderService:
         )
         if draft is None:
             return PayrollManualReminderPreview(
-                employee_id,
-                False,
-                "unsafe_skipped",
+                employee_id=employee_id,
+                eligible=False,
+                outcome="unsafe_skipped",
                 actionable_days=talent.actionable_days,
             )
         _ = policy
         return PayrollManualReminderPreview(
-            employee_id,
-            True,
-            "ready",
+            employee_id=employee_id,
+            eligible=True,
+            outcome="ready",
             actionable_days=talent.actionable_days,
             message=draft.as_plain_text(),
         )
@@ -233,7 +237,11 @@ class PayrollTalentReminderService:
     ) -> PayrollManualReminderResult:
         _, talent, outcome = await self._current_talent(employee_id, cycle, now)
         if talent is None:
-            return PayrollManualReminderResult(employee_id, outcome, False)
+            return PayrollManualReminderResult(
+                employee_id=employee_id,
+                outcome=outcome,
+                sent=False,
+            )
 
         latest = await self._latest_delivery(employee_id, cycle)
         if latest is not None and latest.state in {
@@ -248,7 +256,11 @@ class PayrollTalentReminderService:
                 PayrollDeliveryState.SENDING: "delivery_in_progress",
                 PayrollDeliveryState.FAILED_RETRYABLE: "retry_pending",
             }[latest.state]
-            return PayrollManualReminderResult(employee_id, blocked, False)
+            return PayrollManualReminderResult(
+                employee_id=employee_id,
+                outcome=blocked,
+                sent=False,
+            )
 
         idempotency_key = (
             f"payroll-manual:{self._scope_key}:{cycle.cycle_id}:"
@@ -262,7 +274,11 @@ class PayrollTalentReminderService:
             idempotency_key=idempotency_key,
             created_by=_MANUAL_BY,
         )
-        return PayrollManualReminderResult(employee_id, result, result == "sent")
+        return PayrollManualReminderResult(
+            employee_id=employee_id,
+            outcome=result,
+            sent=result == "sent",
+        )
 
     async def _current_talent(
         self,
