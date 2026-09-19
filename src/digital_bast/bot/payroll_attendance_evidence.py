@@ -39,6 +39,8 @@ class AttendanceDraftEvidenceState(Protocol):
         attendance_key: str,
     ) -> AttendanceResolutionDraft | None: ...
 
+    async def clear(self, wa_jid: str) -> None: ...
+
 
 _OUTCOME_REPLY = {
     UploadOutcome.NOT_FOUND: "Attendance ini sudah tidak ditemukan.",
@@ -76,6 +78,7 @@ async def attach_payroll_attendance_evidence(
         draft.attendance_key,
     )
     if refreshed is None:
+        await state.clear(jid)
         return (
             "Bukti sudah ada, tapi kondisi attendance berubah sebelum draft diperbarui. "
             "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
