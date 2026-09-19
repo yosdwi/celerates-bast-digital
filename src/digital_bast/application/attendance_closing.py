@@ -56,7 +56,7 @@ class AttendanceClosingReason(Enum):
 class AttendanceClosingDayInput:
     """Normalized attendance/correction facts consumed by the closing projection."""
 
-    attendance_id: int
+    attendance_id: int | None
     attendance_date: date
     clock_in_local: str | None
     clock_out_local: str | None
@@ -72,7 +72,7 @@ class AttendanceClosingDayInput:
 class AttendanceClosingDayDetail:
     """Per-day decision emitted as part of an employee closing projection."""
 
-    attendance_id: int
+    attendance_id: int | None
     attendance_date: date
     missing_clock_in: bool
     missing_clock_out: bool
@@ -84,7 +84,7 @@ class AttendanceClosingDayDetail:
 class AttendanceClosingResult:
     """Payroll-facing closing projection for one employee."""
 
-    employee_id: int
+    employee_id: str
     status: AttendanceClosingStatus
     days: tuple[AttendanceClosingDayDetail, ...]
 
@@ -112,13 +112,16 @@ class AttendanceClosingService:
     def evaluate(
         self,
         *,
-        employee_id: int,
+        employee_id: str,
         rows: Sequence[AttendanceClosingDayInput],
         evaluated_through: date,
     ) -> AttendanceClosingResult:
         considered_rows = sorted(
             (row for row in rows if row.attendance_date <= evaluated_through),
-            key=lambda row: (row.attendance_date, row.attendance_id),
+            key=lambda row: (
+                row.attendance_date,
+                -1 if row.attendance_id is None else row.attendance_id,
+            ),
         )
         day_details = tuple(self._evaluate_day(row) for row in considered_rows)
 
