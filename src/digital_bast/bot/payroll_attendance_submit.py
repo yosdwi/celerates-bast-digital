@@ -100,6 +100,7 @@ async def _continue_to_next_gap(
     context_store: AttendanceContextStore,
     routing: AttendanceNextGapRouter,
     prefix: str,
+    no_action_message: str,
 ) -> str:
     routed = await routing.first_actionable(
         context,
@@ -131,11 +132,7 @@ async def _continue_to_next_gap(
 
     await context_store.clear(jid)
     if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
-        return (
-            f"{prefix}\n\n"
-            "Semua attendance dari reminder ini sudah ditangani. "
-            "Pengajuan yang masuk tetap menunggu review PMO."
-        )
+        return f"{prefix}\n\n{no_action_message}"
     return f"{prefix}\n\nKonteks reminder sudah berubah. Tidak ada action lanjutan dari sesi ini."
 
 
@@ -180,6 +177,10 @@ async def submit_payroll_attendance_draft(
             context_store=context_store,
             routing=routing,
             prefix=prefix,
+            no_action_message=(
+                "Tidak ada action Talent lain dari reminder ini sekarang. "
+                "Pengajuan yang sudah masuk tetap menunggu review PMO."
+            ),
         )
 
     if result.outcome is SubmitOutcome.EVIDENCE_REQUIRED:
@@ -199,6 +200,7 @@ async def submit_payroll_attendance_draft(
             context_store=context_store,
             routing=routing,
             prefix="Data attendance berubah sebelum pengajuan, jadi informasi lama tidak diajukan.",
+            no_action_message="Tidak ada action Talent lain dari reminder ini sekarang.",
         )
 
     if result.outcome is SubmitOutcome.NOT_OWNED:
