@@ -15,16 +15,13 @@ from digital_bast.domain.time import JAKARTA
 if TYPE_CHECKING:
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.payroll_closing_settings import PayrollClosingSettingsStore
-    from digital_bast.application.payroll_read import PayrollOverview
+    from digital_bast.application.payroll_read import PayrollOverview, PayrollTalentView
     from digital_bast.application.payroll_reminder_delivery import PayrollReminderDeliveryStore
     from digital_bast.application.talentops_followups import (
         WhatsAppIdentityResolver,
         WhatsAppOutboundGateway,
     )
-    from digital_bast.bot.attendance_context import (
-        AttendanceReminderContext,
-        AttendanceReminderContextService,
-    )
+    from digital_bast.bot.attendance_context import AttendanceReminderContext
 
 _CONTEXT_TTL = timedelta(days=7)
 _CREATED_BY = "payroll-scheduler"
@@ -63,7 +60,7 @@ class PayrollReminderRunSummary:
 
 @final
 class PayrollTalentReminderService:
-    def __init__(  # noqa: PLR0913 - explicit side-effect ports are intentional
+    def __init__(  # noqa: PLR0913, PLR0917 - explicit side-effect ports are intentional
         self,
         scope_key: str,
         settings: PayrollClosingSettingsStore,
@@ -152,20 +149,14 @@ class PayrollTalentReminderService:
             **counts,
         )
 
-    async def _send_one(  # noqa: PLR0911
+    async def _send_one(  # noqa: C901, PLR0911 - explicit delivery state machine
         self,
         *,
-        talent: object,
+        talent: PayrollTalentView,
         cycle: PayrollCycle,
         milestone: str,
         now: datetime,
     ) -> str:
-        # Protocol surface is intentionally narrow at construction time; the
-        # actual PayrollReadService returns PayrollTalentView here.
-        from digital_bast.application.payroll_read import PayrollTalentView  # noqa: PLC0415
-
-        if not isinstance(talent, PayrollTalentView):
-            return "unsafe_skipped"
         idempotency_key = (
             f"payroll-reminder:{self._scope_key}:{cycle.cycle_id}:"
             f"{milestone}:{talent.employee_id}"
