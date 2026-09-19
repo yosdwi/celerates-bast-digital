@@ -12,6 +12,8 @@ from digital_bast.application.attendance_closing import (  # noqa: TC001
     AttendanceScheduleState,
     AttendanceSourceState,
 )
+from digital_bast.application.payroll_digest import PayrollFollowUpReason  # noqa: TC001
+from digital_bast.application.payroll_reminder_delivery import PayrollDeliveryState  # noqa: TC001
 from digital_bast.application.payroll_review import (  # noqa: TC001
     PayrollReviewabilityReason,
     PayrollReviewDecision,
@@ -194,3 +196,60 @@ class PayrollClosingSettingsInput(BaseModel):
         max_length=10,
     )
     next_day_ready_hour: int = Field(default=6, ge=0, le=23)
+
+
+class PayrollDigestSummaryResponse(_FrozenModel):
+    total_talents: int
+    complete: int
+    waiting_submitted: int
+    needs_talent_action: int
+    unverified: int
+    successful_reminder_deliveries: int
+    successfully_reminded_talents: int
+    unresponded_talents: int
+    actionable_not_reminded: int
+    delivery_retryable_failed: int
+    delivery_final_failed: int
+    delivery_unknown: int
+
+
+class PayrollFollowUpItemResponse(_FrozenModel):
+    employee_id: str
+    nrp: str
+    name: str
+    role: str
+    status: str
+    actionable_days: int
+    waiting_days: int
+    unverified_days: int
+    reason: PayrollFollowUpReason
+    latest_delivery_state: PayrollDeliveryState | None
+    latest_milestone: str | None
+    latest_sent_at: datetime | None
+    responded_at: datetime | None
+    error_code: str | None
+
+
+class PayrollDigestResponse(_FrozenModel):
+    cycle: PayrollCycleResponse
+    evaluated_through: date | None
+    summary: PayrollDigestSummaryResponse
+    items: tuple[PayrollFollowUpItemResponse, ...]
+
+
+class PayrollManualReminderPreviewResponse(_FrozenModel):
+    employee_id: str
+    eligible: bool
+    outcome: str
+    actionable_days: int
+    message: str | None
+
+
+class PayrollManualReminderInput(BaseModel):
+    request_id: UUID
+
+
+class PayrollManualReminderResponse(_FrozenModel):
+    employee_id: str
+    outcome: str
+    sent: bool
