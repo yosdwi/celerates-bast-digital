@@ -31,7 +31,7 @@ def upgrade() -> None:
             created_by          text NOT NULL,
             created_at          timestamptz NOT NULL DEFAULT now(),
             CONSTRAINT ck_payroll_group_digest_group_jid
-                CHECK (group_jid ~ '^[0-9]+(-[0-9]+)?@g\\.us$'),
+                CHECK (group_jid ~ '^[0-9]+(-[0-9]+)?@g[.]us$'),
             CONSTRAINT ck_payroll_group_digest_message_nonempty
                 CHECK (length(btrim(message)) > 0),
             CONSTRAINT ck_payroll_group_digest_delivery_state
