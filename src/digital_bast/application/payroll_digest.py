@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Protocol, final
 from digital_bast.application.payroll_reminder_delivery import PayrollDeliveryState
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.payroll_read import PayrollOverview, PayrollTalentView
     from digital_bast.application.payroll_reminder_delivery import PayrollDeliveryRecord
@@ -20,7 +22,7 @@ class PayrollFollowUpReason(StrEnum):
     DELIVERY_RETRYABLE_FAILED = "DELIVERY_RETRYABLE_FAILED"
     DELIVERY_FINAL_FAILED = "DELIVERY_FINAL_FAILED"
     UNRESPONDED = "UNRESPONDED"
-    NOT_REMinded = "NOT_REMinded"
+    NOT_REMINDED = "NOT_REMINDED"
     WAITING_REVIEW = "WAITING_REVIEW"
     SOURCE_UNVERIFIED = "SOURCE_UNVERIFIED"
 
@@ -62,7 +64,7 @@ class PayrollFollowUpItem:
 @dataclass(frozen=True, slots=True)
 class PayrollClosingDigest:
     cycle: PayrollCycle
-    evaluated_through: object
+    evaluated_through: date | None
     summary: PayrollDigestSummary
     items: tuple[PayrollFollowUpItem, ...]
 
@@ -88,11 +90,7 @@ class PayrollDigestDeliveryReader(Protocol):
 
 def _delivery_order(record: PayrollDeliveryRecord) -> tuple[datetime, datetime, str]:
     minimum = datetime.min.replace(tzinfo=UTC)
-    return (
-        record.reserved_at or minimum,
-        record.sent_at or minimum,
-        record.id,
-    )
+    return record.reserved_at or minimum, record.sent_at or minimum, record.id
 
 
 def _latest_by_employee(
@@ -129,7 +127,7 @@ def _reason(
         if latest_sent is not None and latest_sent.responded_at is None:
             return PayrollFollowUpReason.UNRESPONDED
         if latest_sent is None:
-            return PayrollFollowUpReason.NOT_REMinded
+            return PayrollFollowUpReason.NOT_REMINDED
     if talent.waiting_days > 0:
         return PayrollFollowUpReason.WAITING_REVIEW
     if talent.unverified_days > 0:
@@ -162,12 +160,22 @@ def _follow_up_item(
     )
 
 
+def _is_unresponded(
+    talent: PayrollTalentView,
+    latest_sent: dict[str, PayrollDeliveryRecord],
+) -> bool:
+    if not talent.talent_action_required:
+        return False
+    sent = latest_sent.get(talent.employee_id)
+    return sent is not None and sent.responded_at is None
+
+
 _REASON_RANK = {
     PayrollFollowUpReason.DELIVERY_UNKNOWN: 0,
     PayrollFollowUpReason.DELIVERY_RETRYABLE_FAILED: 1,
     PayrollFollowUpReason.DELIVERY_FINAL_FAILED: 2,
     PayrollFollowUpReason.UNRESPONDED: 3,
-    PayrollFollowUpReason.NOT_REMinded: 4,
+    PayrollFollowUpReason.NOT_REMINDED: 4,
     PayrollFollowUpReason.WAITING_REVIEW: 5,
     PayrollFollowUpReason.SOURCE_UNVERIFIED: 6,
 }
@@ -237,16 +245,6 @@ class PayrollDigestService:
             for delivery in scoped_deliveries
             if delivery.state is PayrollDeliveryState.SENT
         )
-        unresponded = sum(
-            talent.talent_action_required
-            and (sent := latest_sent.get(talent.employee_id)) is not None
-            and sent.responded_at is None
-            for talent in audience
-        )
-        actionable_not_reminded = sum(
-            talent.talent_action_required and talent.employee_id not in latest_sent
-            for talent in audience
-        )
         current_latest = tuple(latest.values())
         summary = PayrollDigestSummary(
             total_talents=len(audience),
@@ -266,8 +264,11 @@ class PayrollDigestService:
             unverified=sum(talent.unverified_days > 0 for talent in audience),
             successful_reminder_deliveries=len(successful),
             successfully_reminded_talents=len(latest_sent),
-            unresponded_talents=unresponded,
-            actionable_not_reminded=actionable_not_reminded,
+            unresponded_talents=sum(_is_unresponded(talent, latest_sent) for talent in audience),
+            actionable_not_reminded=sum(
+                talent.talent_action_required and talent.employee_id not in latest_sent
+                for talent in audience
+            ),
             delivery_retryable_failed=sum(
                 item.state is PayrollDeliveryState.FAILED_RETRYABLE for item in current_latest
             ),
