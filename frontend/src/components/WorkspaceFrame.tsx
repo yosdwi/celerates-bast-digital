@@ -36,6 +36,7 @@ interface Props {
   onSearch: (value: string) => void;
   onNavigate: (path: string) => void;
   onAskAi: () => void;
+  showAi?: boolean;
   children: ReactNode;
 }
 
@@ -67,6 +68,7 @@ export default function WorkspaceFrame({
   onSearch,
   onNavigate,
   onAskAi,
+  showAi = true,
   children,
 }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -195,17 +197,21 @@ export default function WorkspaceFrame({
               aria-label="Search talents"
             />
           </div>
-          <button className="ask-ai-button desktop-only" type="button" onClick={onAskAi}>
-            <SparkleIcon />Ask AI
-          </button>
-          <button
-            className="icon-button ai-mobile mobile-only"
-            type="button"
-            aria-label="Ask AI"
-            onClick={onAskAi}
-          >
-            <SparkleIcon />
-          </button>
+          {showAi ? (
+            <>
+              <button className="ask-ai-button desktop-only" type="button" onClick={onAskAi}>
+                <SparkleIcon />Ask AI
+              </button>
+              <button
+                className="icon-button ai-mobile mobile-only"
+                type="button"
+                aria-label="Ask AI"
+                onClick={onAskAi}
+              >
+                <SparkleIcon />
+              </button>
+            </>
+          ) : null}
           <div className="topbar-right">
             <div className="avatar" title={session.user.name}>{initials(session.user.name)}</div>
           </div>
