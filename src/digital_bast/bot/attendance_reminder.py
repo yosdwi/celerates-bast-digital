@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.payroll_read import PayrollDayView, PayrollTalentView
 
-_START_ACTION_ID: Final = "payroll_attendance_start"
-_LATER_ACTION_ID: Final = "payroll_attendance_later"
+ATTENDANCE_REMINDER_START_ACTION_ID: Final = "payroll_attendance_start"
+ATTENDANCE_REMINDER_LATER_ACTION_ID: Final = "payroll_attendance_later"
 _MAX_VISIBLE_GAPS: Final = 5
 _MONTH_LABELS: Final = (
     "Jan",
@@ -63,7 +63,10 @@ class AttendanceReminderDraft:
     def as_plain_text(self) -> str:
         """Render the required numbered fallback for today's plain-text outbound."""
         lines = [self.text, ""]
-        lines.extend(f"{index}. {action.label}" for index, action in enumerate(self.actions, 1))
+        lines.extend(
+            f"{index}. {action.label}"
+            for index, action in enumerate(self.actions, 1)
+        )
         lines.extend(("", 'Balas 1/2 atau tulis "lengkapi" / "nanti".'))
         return "\n".join(lines)
 
@@ -105,10 +108,11 @@ def _message_text(
     cycle: PayrollCycle,
     actionable: tuple[PayrollDayView, ...],
 ) -> str:
-    lines = [
-        f"Halo {talent.name}, ada {len(actionable)} attendance {cycle.label} yang perlu dilengkapi:",
-        "",
-    ]
+    intro = (
+        f"Halo {talent.name}, ada {len(actionable)} attendance "
+        f"{cycle.label} yang perlu dilengkapi:"
+    )
+    lines = [intro, ""]
     visible = actionable[:_MAX_VISIBLE_GAPS]
     lines.extend(f"{_date_label(day)} — {_action_label(day)}" for day in visible)
     hidden_count = len(actionable) - len(visible)
@@ -159,8 +163,8 @@ def compose_attendance_reminder(
         return None
 
     actions = (
-        InteractiveAction(_START_ACTION_ID, "Lengkapi"),
-        InteractiveAction(_LATER_ACTION_ID, "Nanti"),
+        InteractiveAction(ATTENDANCE_REMINDER_START_ACTION_ID, "Lengkapi"),
+        InteractiveAction(ATTENDANCE_REMINDER_LATER_ACTION_ID, "Nanti"),
     )
     return AttendanceReminderDraft(
         text=_message_text(talent, cycle, actionable),
