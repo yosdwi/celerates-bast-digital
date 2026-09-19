@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from digital_bast.application.payroll_digest import PayrollDigestService
+from digital_bast.application.payroll_group_digest import PayrollGroupDigestService
 from digital_bast.application.payroll_read import PayrollReadService
 from digital_bast.application.payroll_reminders import PayrollTalentReminderService
 from digital_bast.bot.attendance_context import AttendanceReminderContextService
@@ -9,6 +11,9 @@ from digital_bast.config import get_settings
 from digital_bast.infrastructure.payroll_attendance import PostgresPayrollAttendanceReader
 from digital_bast.infrastructure.payroll_closing_settings import (
     PostgresPayrollClosingSettingsStore,
+)
+from digital_bast.infrastructure.payroll_group_digest import (
+    PostgresPayrollGroupDigestDeliveryStore,
 )
 from digital_bast.infrastructure.payroll_reminder_delivery import (
     PostgresPayrollReminderDeliveryStore,
@@ -18,6 +23,7 @@ from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.talentops_followup_store import (
     PostgresWhatsAppIdentityResolver,
 )
+from digital_bast.infrastructure.whatsapp_directory import PostgresTalentWhatsAppDirectory
 from digital_bast.infrastructure.whatsapp_outbound import (
     BotBridgeWhatsAppOutboundGateway,
     UnavailableWhatsAppOutboundGateway,
@@ -46,8 +52,25 @@ def _outbound_gateway() -> BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAp
     )
 
 
+def _payroll_read(dsn: str) -> PayrollReadService:
+    return PayrollReadService(
+        PostgresEmployeeSource(dsn),
+        PostgresDomainRepository(dsn),
+        PostgresPayrollAttendanceReader(dsn),
+    )
+
+
 def create_payroll_reminder_delivery_store() -> PostgresPayrollReminderDeliveryStore:
     return PostgresPayrollReminderDeliveryStore(_application_dsn())
+
+
+def create_payroll_digest_service(scope_key: str = "default") -> PayrollDigestService:
+    dsn = _application_dsn()
+    return PayrollDigestService(
+        scope_key,
+        _payroll_read(dsn),
+        PostgresPayrollReminderDeliveryStore(dsn),
+    )
 
 
 def create_payroll_talent_reminder_service(
@@ -57,13 +80,28 @@ def create_payroll_talent_reminder_service(
     return PayrollTalentReminderService(
         scope_key,
         PostgresPayrollClosingSettingsStore(dsn),
-        PayrollReadService(
-            PostgresEmployeeSource(dsn),
-            PostgresDomainRepository(dsn),
-            PostgresPayrollAttendanceReader(dsn),
-        ),
+        _payroll_read(dsn),
         PostgresWhatsAppIdentityResolver(dsn),
         AttendanceReminderContextService(dsn),
         _outbound_gateway(),
         PostgresPayrollReminderDeliveryStore(dsn),
+    )
+
+
+def create_payroll_group_digest_service(
+    scope_key: str = "default",
+) -> PayrollGroupDigestService:
+    dsn = _application_dsn()
+    digest = PayrollDigestService(
+        scope_key,
+        _payroll_read(dsn),
+        PostgresPayrollReminderDeliveryStore(dsn),
+    )
+    return PayrollGroupDigestService(
+        scope_key,
+        PostgresPayrollClosingSettingsStore(dsn),
+        digest,
+        PostgresTalentWhatsAppDirectory(dsn),
+        _outbound_gateway(),
+        PostgresPayrollGroupDigestDeliveryStore(dsn),
     )
