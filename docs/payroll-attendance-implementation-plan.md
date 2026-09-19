@@ -606,9 +606,14 @@ No migration or write path was added in P03.
 
 #### P04 — Payroll route independent bootstrap
 
-Status: `TODO`  
-Files: `frontend/src/app/App.tsx`, `frontend/src/api/payroll.ts`, types/tests.  
-Scope: `/admin/talentops/payroll` loads session + Payroll API without mandatory Command Center bootstrap.
+Status: `DONE`  
+Commits: `4f05ab3d66f0bb1fbf2fc6311a4d49c66c01f2ae`, `c9f0cd911e234dd1c1a27cd7a37b22779263483a`, `57ed058e03c023a9dfe6c463ce153cc1cbb0387b`, `727811558378d003786022a9e5d354eeecddaf7c`, `4184425f56bd20ad51b68a79474419b84509e1dc`, `d5357515d073c17c7cad7b43203a1e348fd4ee84`.  
+Files: `frontend/src/api/payroll.ts`, `frontend/src/api/payroll.test.ts`, `frontend/src/app/App.tsx`, `frontend/src/app/App.test.tsx`, `frontend/src/components/WorkspaceFrame.tsx`.  
+Scope delivered: typed Payroll API client, `/admin/talentops/payroll` route, top-level Payroll navigation entry, direct session + Payroll overview bootstrap without mandatory `getCommandCenter()`, independent Payroll error/loading state, and coherent SPA navigation back to existing monthly pages.  
+Direct-refresh note: existing FastAPI `talentops_page_router` already has `/admin/talentops/{_path:path}` wildcard, so no backend page-route change is required for direct `/admin/talentops/payroll` refresh.  
+Regression lock: frontend test explicitly asserts direct Payroll bootstrap calls `getPayrollOverview(2026, 9)` while `getCommandCenter()` is not called; API client tests lock cycle/overview/detail URLs including encoded employee IDs.  
+Validation note: repository-local `npm test` / `npm run typecheck` could not execute in the tool container because external DNS prevents GitHub/npm checkout. No passing frontend runner result is claimed. Full frontend build/typecheck remains part of the container/PR CI gate.  
+UI boundary: P04 intentionally renders only a read-only Payroll shell proving route/data independence. Operational summary, review/follow-up cards, filters and Talent list are P05.
 
 #### P05 — Payroll mobile-friendly summary
 
@@ -899,12 +904,12 @@ The final user-facing test sheet should cover at least:
 
 ## 22. Current checkpoint
 
-Implementation is complete through **P03 — Payroll read API**.
+Implementation is complete through **P04 — Payroll route independent bootstrap**.
 
-Current implementation HEAD before this docs-only checkpoint: `9dd36d998549f03f5654e202754fbfdead1dac3c`.
+Current implementation HEAD before this docs-only checkpoint: `d5357515d073c17c7cad7b43203a1e348fd4ee84`.
 
-P03 exposes read-only `/api/talentops/v1/payroll/cycles`, `/overview`, and `/talents/{employee_id}` from existing roster/attendance/schedule/timesheet/evidence/correction source truth. It does not depend on Command Center/BAST report loading and adds no payroll truth table.
+P04 adds the typed frontend Payroll API client, a discoverable `/admin/talentops/payroll` SPA route, and a route-aware bootstrap that loads session + Payroll overview without calling Command Center. Existing FastAPI wildcard routing already supports direct refresh of the client route.
 
-Targeted sandbox contract runtime validation: application service `2 passed`; FastAPI router scenario suite `1 passed`. Full repository `compileall + ruff + basedpyright + pytest + ops` remains the PR/main CI gate and is not claimed as executed on this branch-only checkpoint.
+Regression tests were added for independent Payroll bootstrap and API URL contracts. Repository-local `npm test` and `npm run typecheck` could not run in the tool container because external DNS prevents GitHub/npm checkout, so no frontend runner result is claimed at this checkpoint.
 
-The next implementation card is **P04 — Payroll route independent bootstrap**. It should add the frontend `/admin/talentops/payroll` route and Payroll API client without making the route depend on the existing Command Center bootstrap.
+The next implementation card is **P05 — Payroll mobile-friendly summary**. It should replace the temporary read-only shell with the real operational summary, Review Queue/Talent Follow-up cards, filters/search and mobile-friendly Talent list while continuing to consume the P03/P04 read-only contracts.
