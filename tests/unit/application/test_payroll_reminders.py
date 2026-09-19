@@ -326,8 +326,10 @@ async def test_due_policy_sends_only_current_actionable_talent_and_persists_cont
     assert len(contexts.saved) == 1
     assert contexts.saved[0][0] == "628111@c.us"
     assert len(outbound.calls) == 1
-    assert ":H-1:EMP-1" in outbound.calls[0][2]
+    assert outbound.calls[0][2].startswith("payroll:")
+    assert len(outbound.calls[0][2]) == 72
     record = next(iter(deliveries.records.values()))
+    assert ":H-1:EMP-1" in record.idempotency_key
     assert record.state is PayrollDeliveryState.SENT
     assert record.attempt_count == 1
 
@@ -361,6 +363,7 @@ async def test_retryable_failure_reuses_one_logical_delivery() -> None:
     record = next(iter(deliveries.records.values()))
     assert record.state is PayrollDeliveryState.SENT
     assert record.attempt_count == 2
+    assert outbound.calls[0][2] == outbound.calls[1][2]
 
 
 async def test_manual_preview_and_send_revalidate_current_actionable_talent() -> None:
@@ -390,7 +393,11 @@ async def test_manual_preview_and_send_revalidate_current_actionable_talent() ->
     assert second.sent is False
     assert second.outcome == "duplicate"
     assert len(outbound.calls) == 1
-    assert outbound.calls[0][2].startswith("payroll-manual:default:")
+    assert outbound.calls[0][2].startswith("payroll:")
+    assert len(outbound.calls[0][2]) == 72
+    record = next(iter(deliveries.records.values()))
+    assert record.idempotency_key.startswith("payroll-manual:default:")
+    assert str(request_id) in record.idempotency_key
     assert len(contexts.saved) == 1
 
 
