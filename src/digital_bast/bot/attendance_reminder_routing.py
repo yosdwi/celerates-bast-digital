@@ -15,7 +15,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Protocol
 
 from digital_bast.application.attendance_closing import AttendanceClosingReason
-from digital_bast.application.attendance_closing_policy import PayrollCycle, payroll_cycle
+from digital_bast.application.attendance_closing_policy import payroll_cycle
 from digital_bast.bot.attendance_reminder import (
     ATTENDANCE_REMINDER_LATER_ACTION_ID,
     ATTENDANCE_REMINDER_START_ACTION_ID,
@@ -25,10 +25,8 @@ from digital_bast.domain.completion import format_day
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from digital_bast.application.payroll_read import (
-        PayrollDayView,
-        PayrollOverview,
-    )
+    from digital_bast.application.attendance_closing_policy import PayrollCycle
+    from digital_bast.application.payroll_read import PayrollDayView, PayrollOverview
     from digital_bast.bot.attendance_context import AttendanceReminderContext
 
 
@@ -147,9 +145,7 @@ class AttendanceReminderRoutingService:
             if day.attendance_key is not None
         }
         current_actionable = {
-            key
-            for key, day in by_key.items()
-            if day.talent_action_required
+            key for key, day in by_key.items() if day.talent_action_required
         }
         for key in context.attendance_keys:
             day = by_key.get(key)
@@ -200,15 +196,18 @@ def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> s
         if day.raw_check_out:
             lines.append(f"Clock Out tercatat {day.raw_check_out}.")
         lines.append("Clock In perlu dikoreksi." if rejected else "Clock In belum ada.")
-        lines.extend(("", "Jam masuk yang benar berapa?" if rejected else "Jam masuk berapa?"))
+        question = "Jam masuk yang benar berapa?" if rejected else "Jam masuk berapa?"
+        lines.extend(("", question))
     elif missing_out:
         if day.raw_check_in:
             lines.append(f"Clock In tercatat {day.raw_check_in}.")
         lines.append("Clock Out perlu dikoreksi." if rejected else "Clock Out belum ada.")
-        lines.extend(("", "Jam pulang yang benar berapa?" if rejected else "Jam pulang berapa?"))
+        question = "Jam pulang yang benar berapa?" if rejected else "Jam pulang berapa?"
+        lines.extend(("", question))
     else:
         lines.extend(("Attendance ini perlu diperbaiki.", "", "Informasi yang benar apa?"))
 
     if selection.remaining_actionable > 1:
-        lines.extend(("", f"Masih ada {selection.remaining_actionable - 1} tanggal setelah ini."))
+        remaining = selection.remaining_actionable - 1
+        lines.extend(("", f"Masih ada {remaining} tanggal setelah ini."))
     return "\n".join(lines)
