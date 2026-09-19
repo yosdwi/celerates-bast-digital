@@ -16,6 +16,23 @@ export type PayrollReason =
   | "GAP_COVERED_BY_SUBMITTED_REQUEST"
   | "GAP_COVERED_BY_APPROVED_CORRECTION";
 
+export type PayrollResolutionType =
+  | "missing_clock_in"
+  | "missing_clock_out"
+  | "missing_both_worked"
+  | "absence";
+
+export type PayrollReviewabilityReason =
+  | "talent_not_in_cycle"
+  | "attendance_not_in_projection"
+  | "source_unavailable"
+  | "request_not_current"
+  | "source_changed"
+  | "evidence_not_found";
+
+export type PayrollReviewDecision = "approve" | "reject";
+export type PayrollReviewResultStatus = "succeeded" | "skipped" | "failed";
+
 export interface PayrollCycle {
   cycle_id: string;
   label: string;
@@ -86,6 +103,60 @@ export interface PayrollTalentDetailResponse extends PayrollTalentRow {
   days: PayrollDay[];
 }
 
+export interface PayrollReviewSummary {
+  total: number;
+  reviewable: number;
+  stale: number;
+  missing_clock_in: number;
+  missing_clock_out: number;
+  missing_both_worked: number;
+  absence: number;
+}
+
+export interface PayrollReviewItem {
+  request_id: string;
+  attendance_id: number;
+  employee_id: string;
+  nrp: string;
+  name: string;
+  role: string;
+  work_date: string;
+  resolution_type: PayrollResolutionType;
+  raw_check_in: string | null;
+  raw_check_out: string | null;
+  proposed_check_in: string | null;
+  proposed_check_out: string | null;
+  absence_type: string | null;
+  evidence_id: string;
+  evidence_content_type: string | null;
+  evidence_byte_size: number | null;
+  evidence_caption: string;
+  evidence_uploaded_at: string | null;
+  submitted_at: string;
+  reviewable: boolean;
+  reviewability_reason: PayrollReviewabilityReason | null;
+}
+
+export interface PayrollReviewQueueResponse {
+  cycle: PayrollCycle;
+  summary: PayrollReviewSummary;
+  items: PayrollReviewItem[];
+}
+
+export interface PayrollReviewDecisionItem {
+  request_id: string;
+  status: PayrollReviewResultStatus;
+  outcome: string;
+}
+
+export interface PayrollReviewDecisionResponse {
+  requested: number;
+  succeeded: number;
+  skipped: number;
+  failed: number;
+  items: PayrollReviewDecisionItem[];
+}
+
 function cycleQuery(year?: number, month?: number): string {
   if (year === undefined || month === undefined) return "";
   return `?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
@@ -111,5 +182,36 @@ export async function getPayrollTalentDetail(
 ): Promise<PayrollTalentDetailResponse> {
   return apiFetch<PayrollTalentDetailResponse>(
     `/api/talentops/v1/payroll/talents/${encodeURIComponent(employeeId)}${cycleQuery(year, month)}`,
+  );
+}
+
+export async function getPayrollReviewQueue(
+  year?: number,
+  month?: number,
+): Promise<PayrollReviewQueueResponse> {
+  return apiFetch<PayrollReviewQueueResponse>(
+    `/api/talentops/v1/payroll/review-queue${cycleQuery(year, month)}`,
+  );
+}
+
+export async function decidePayrollReviewQueue(
+  csrfToken: string,
+  year: number,
+  month: number,
+  requestIds: string[],
+  decision: PayrollReviewDecision,
+  rejectionReason?: string,
+): Promise<PayrollReviewDecisionResponse> {
+  return apiFetch<PayrollReviewDecisionResponse>(
+    `/api/talentops/v1/payroll/review-queue/decide${cycleQuery(year, month)}`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({
+        request_ids: requestIds,
+        decision,
+        rejection_reason: rejectionReason?.trim() || null,
+      }),
+    },
   );
 }
