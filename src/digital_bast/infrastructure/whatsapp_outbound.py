@@ -25,6 +25,9 @@ class _BridgeStatusResponse(BaseModel):
 
 class _BridgeGroupParticipantResponse(BaseModel):
     jid: str
+    display_name: str = ""
+    number: str = ""
+    is_my_contact: bool = False
     is_admin: bool = False
     is_super_admin: bool = False
 
@@ -54,6 +57,9 @@ class BotBridgeStatus:
 @dataclass(frozen=True, slots=True)
 class WhatsAppGroupParticipant:
     jid: str
+    display_name: str = ""
+    number: str = ""
+    is_my_contact: bool = False
     is_admin: bool = False
     is_super_admin: bool = False
 
@@ -199,6 +205,9 @@ class BotBridgeWhatsAppOutboundGateway:
                     participants=tuple(
                         WhatsAppGroupParticipant(
                             jid=participant.jid,
+                            display_name=participant.display_name,
+                            number=participant.number,
+                            is_my_contact=participant.is_my_contact,
                             is_admin=participant.is_admin,
                             is_super_admin=participant.is_super_admin,
                         )
