@@ -128,7 +128,7 @@ def closing_evaluated_through(
     *,
     next_day_ready_hour: int = 6,
 ) -> date | None:
-    """Conservative read boundary until configurable shift grace lands in P23."""
+    """Return the latest day whose configured next-day evaluation window ended."""
     if not 0 <= next_day_ready_hour <= 23:
         msg = "next_day_ready_hour must be between 0 and 23"
         raise ValueError(msg)
@@ -206,11 +206,21 @@ class PayrollReadService:
         self._attendance = attendance
         self._closing = closing or AttendanceClosingService()
 
-    async def overview(self, cycle: PayrollCycle, *, now: datetime) -> PayrollOverview:
+    async def overview(
+        self,
+        cycle: PayrollCycle,
+        *,
+        now: datetime,
+        next_day_ready_hour: int = 6,
+    ) -> PayrollOverview:
         employees = await self._employees.load()
         attendance = await self._attendance.load(cycle.period)
         holidays, schedules, timesheets = await self._calendar(cycle.period)
-        boundary = closing_evaluated_through(cycle, now)
+        boundary = closing_evaluated_through(
+            cycle,
+            now,
+            next_day_ready_hour=next_day_ready_hour,
+        )
 
         attendance_by_employee_day = {
             (row.employee_id, row.work_date): row for row in attendance
