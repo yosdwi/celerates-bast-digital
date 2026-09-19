@@ -1,6 +1,13 @@
-import { useMemo, useState } from "react";
-import type { PayrollOverviewResponse, PayrollTalentRow } from "../api/payroll";
+import { useMemo, useRef, useState } from "react";
+import { getPayrollTalentDetail } from "../api/payroll";
+import type {
+  PayrollDay,
+  PayrollOverviewResponse,
+  PayrollTalentDetailResponse,
+  PayrollTalentRow,
+} from "../api/payroll";
 import type { TalentOpsSession } from "../api/types";
+import { ChevronIcon, CloseIcon } from "../components/Icons";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 
 type PayrollFilter = "all" | "needs" | "waiting" | "complete" | "unverified";
@@ -71,9 +78,74 @@ function dayMeta(talent: PayrollTalentRow): string {
   return parts.join(" · ");
 }
 
+function dayStatusLabel(day: PayrollDay): string {
+  if (day.reason === "SOURCE_UNAVAILABLE") return "Perlu cek data";
+  if (day.status === "NEEDS_TALENT_ACTION") return "Perlu Talent";
+  if (day.status === "WAITING_SUBMITTED") return "Menunggu review";
+  return "Complete";
+}
+
+function dayStatusClass(day: PayrollDay): string {
+  if (day.reason === "SOURCE_UNAVAILABLE") return "unverified";
+  if (day.status === "NEEDS_TALENT_ACTION") return "needs";
+  if (day.status === "WAITING_SUBMITTED") return "waiting";
+  return "complete";
+}
+
+function dayReasonLabel(day: PayrollDay): string {
+  switch (day.reason) {
+    case "RAW_COMPLETE": return "Attendance aktual lengkap";
+    case "SCHEDULED_OFF": return "Hari libur / tidak dijadwalkan kerja";
+    case "SOURCE_UNAVAILABLE": return "Data sumber belum tersedia";
+    case "GAP_UNCOVERED": return "Attendance masih perlu dilengkapi";
+    case "CORRECTION_REJECTED": return "Pengajuan sebelumnya ditolak";
+    case "GAP_COVERED_BY_SUBMITTED_REQUEST": return "Pengajuan menunggu review PMO";
+    case "GAP_COVERED_BY_APPROVED_CORRECTION": return "Correction sudah disetujui";
+    default: return day.reason;
+  }
+}
+
+function resolutionLabel(day: PayrollDay): string | null {
+  if (!day.resolution_type) return null;
+  if (day.resolution_type === "missing_clock_in") return "Lengkapi Clock In";
+  if (day.resolution_type === "missing_clock_out") return "Lengkapi Clock Out";
+  if (day.resolution_type === "missing_both_worked") return "Lengkapi Clock In & Out";
+  if (day.resolution_type === "absence") {
+    return day.absence_type ? `Absence · ${day.absence_type}` : "Absence";
+  }
+  return day.resolution_type;
+}
+
+function clockLabel(value: string | null): string {
+  if (!value) return "—";
+  const timeMatch = value.match(/T(\d{2}:\d{2})/);
+  if (timeMatch?.[1]) return timeMatch[1];
+  const plainMatch = value.match(/^(\d{2}:\d{2})/);
+  return plainMatch?.[1] ?? value;
+}
+
+function detailDayRank(day: PayrollDay): number {
+  if (day.talent_action_required) return 0;
+  if (day.status === "WAITING_SUBMITTED") return 1;
+  if (day.reason === "SOURCE_UNAVAILABLE") return 2;
+  return 3;
+}
+
+function sortedDetailDays(days: PayrollDay[]): PayrollDay[] {
+  return [...days].sort((left, right) => {
+    const rankDiff = detailDayRank(left) - detailDayRank(right);
+    return rankDiff !== 0 ? rankDiff : right.work_date.localeCompare(left.work_date);
+  });
+}
+
 export default function PayrollPage({ session, data, onNavigate }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PayrollFilter>("all");
+  const [detail, setDetail] = useState<PayrollTalentDetailResponse | null>(null);
+  const [detailTarget, setDetailTarget] = useState<PayrollTalentRow | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const detailRequestId = useRef(0);
 
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
@@ -89,6 +161,37 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
   const actionTalents = data.talents.filter((talent) => talent.actionable_days > 0).length;
   const actionDays = data.talents.reduce((total, talent) => total + talent.actionable_days, 0);
   const unverifiedDays = data.talents.reduce((total, talent) => total + talent.unverified_days, 0);
+
+  async function openDetail(talent: PayrollTalentRow) {
+    const requestId = detailRequestId.current + 1;
+    detailRequestId.current = requestId;
+    setDetailTarget(talent);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const nextDetail = await getPayrollTalentDetail(
+        talent.employee_id,
+        data.cycle.year,
+        data.cycle.month,
+      );
+      if (requestId !== detailRequestId.current) return;
+      setDetail(nextDetail);
+    } catch (reason) {
+      if (requestId !== detailRequestId.current) return;
+      setDetailError(reason instanceof Error ? reason.message : "Detail attendance tidak dapat dimuat.");
+    } finally {
+      if (requestId === detailRequestId.current) setDetailLoading(false);
+    }
+  }
+
+  function closeDetail() {
+    detailRequestId.current += 1;
+    setDetailTarget(null);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
 
   return (
     <WorkspaceFrame
@@ -200,6 +303,7 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
                       <th>Complete</th>
                       <th>Menunggu</th>
                       <th>Perlu Talent</th>
+                      <th aria-label="Detail" />
                     </tr>
                   </thead>
                   <tbody>
@@ -214,6 +318,16 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
                         <td>{talent.complete_days}</td>
                         <td>{talent.waiting_days}</td>
                         <td>{talent.actionable_days}</td>
+                        <td>
+                          <button
+                            className="row-open"
+                            type="button"
+                            aria-label={`Lihat detail ${talent.name}`}
+                            onClick={() => void openDetail(talent)}
+                          >
+                            <ChevronIcon />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -222,7 +336,13 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
 
               <div className="payroll-mobile-list" aria-label="Payroll talent mobile list">
                 {visible.map((talent) => (
-                  <article className="payroll-mobile-row" key={talent.employee_id}>
+                  <button
+                    className="payroll-mobile-row"
+                    type="button"
+                    key={talent.employee_id}
+                    aria-label={`Lihat detail ${talent.name}`}
+                    onClick={() => void openDetail(talent)}
+                  >
                     <div className="payroll-mobile-head">
                       <div>
                         <strong>{talent.name}</strong>
@@ -235,13 +355,110 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
                       <span><small>Dievaluasi</small><strong>{talent.evaluated_days}</strong></span>
                       <span><small>Complete</small><strong>{talent.complete_days}</strong></span>
                     </div>
-                  </article>
+                  </button>
                 ))}
               </div>
             </>
           )}
         </section>
       </div>
+
+      {detailTarget ? (
+        <>
+          <button
+            className="payroll-detail-overlay"
+            type="button"
+            aria-label="Tutup detail attendance"
+            onClick={closeDetail}
+          />
+          <aside
+            className="payroll-detail-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detail attendance ${detailTarget.name}`}
+          >
+            <header className="payroll-detail-header">
+              <div>
+                <span>Detail attendance</span>
+                <h2>{detailTarget.name}</h2>
+                <p>{detailTarget.nrp} · {detailTarget.role} · {data.cycle.label}</p>
+              </div>
+              <button className="icon-button" type="button" aria-label="Tutup detail" onClick={closeDetail}>
+                <CloseIcon />
+              </button>
+            </header>
+
+            {detailLoading ? (
+              <div className="payroll-detail-state" aria-busy="true">Memuat detail attendance…</div>
+            ) : detailError ? (
+              <div className="payroll-detail-state error">
+                <strong>Detail tidak dapat dimuat.</strong>
+                <span>{detailError}</span>
+                <button className="secondary-button" type="button" onClick={() => void openDetail(detailTarget)}>
+                  Coba lagi
+                </button>
+              </div>
+            ) : detail ? (
+              <div className="payroll-detail-body">
+                <div className="payroll-detail-summary">
+                  <span><small>Dievaluasi</small><strong>{detail.evaluated_days}</strong></span>
+                  <span><small>Complete</small><strong>{detail.complete_days}</strong></span>
+                  <span><small>Menunggu</small><strong>{detail.waiting_days}</strong></span>
+                  <span><small>Perlu Talent</small><strong>{detail.actionable_days}</strong></span>
+                </div>
+
+                {detail.unverified_days > 0 ? (
+                  <div className="payroll-detail-source-note">
+                    {detail.unverified_days} tanggal belum terverifikasi dari data sumber.
+                  </div>
+                ) : null}
+
+                <div className="payroll-detail-days">
+                  {sortedDetailDays(detail.days).map((day) => {
+                    const resolution = resolutionLabel(day);
+                    const hasProposal = day.proposed_check_in !== null || day.proposed_check_out !== null;
+                    return (
+                      <article className={`payroll-day-card ${dayStatusClass(day)}`} key={`${day.work_date}:${day.attendance_key ?? "missing"}`}>
+                        <div className="payroll-day-head">
+                          <div>
+                            <strong>{formatDate(day.work_date)}</strong>
+                            <span>{dayReasonLabel(day)}</span>
+                          </div>
+                          <span className={`payroll-status ${dayStatusClass(day)}`}>{dayStatusLabel(day)}</span>
+                        </div>
+
+                        <div className="payroll-clock-grid">
+                          <div>
+                            <span>Aktual</span>
+                            <strong>Masuk {clockLabel(day.raw_check_in)}</strong>
+                            <strong>Pulang {clockLabel(day.raw_check_out)}</strong>
+                          </div>
+                          <div className={hasProposal ? "" : "muted"}>
+                            <span>Diajukan</span>
+                            <strong>Masuk {clockLabel(day.proposed_check_in)}</strong>
+                            <strong>Pulang {clockLabel(day.proposed_check_out)}</strong>
+                          </div>
+                        </div>
+
+                        <div className="payroll-day-meta">
+                          {resolution ? <span>Jenis: <strong>{resolution}</strong></span> : null}
+                          <span>Evidence: <strong>{day.has_evidence ? "Ada" : "Tidak ada"}</strong></span>
+                          {day.resolution_status ? (
+                            <span>Review: <strong>{day.resolution_status}</strong></span>
+                          ) : null}
+                          {day.rejection_reason ? (
+                            <span className="payroll-rejection">Alasan ditolak: <strong>{day.rejection_reason}</strong></span>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </aside>
+        </>
+      ) : null}
     </WorkspaceFrame>
   );
 }
