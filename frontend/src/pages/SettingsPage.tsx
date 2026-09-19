@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
 import { CloseIcon, ExternalIcon, SparkleIcon } from "../components/Icons";
+import PayrollClosingPolicySettings from "../components/PayrollClosingPolicySettings";
 import TalentMobileLinkPolicySettings from "../components/TalentMobileLinkPolicySettings";
 import WhatsAppDirectorySettings from "../components/WhatsAppDirectorySettings";
 import WorkflowSettings from "../components/WorkflowSettings";
@@ -45,6 +46,7 @@ export default function SettingsPage({ session, data, onNavigate }: Props) {
       <div className="content settings-page">
         <div className="page-heading"><div><h1>Settings</h1><p>Workflow authorization, routing, and operating boundaries</p></div></div>
 
+        <PayrollClosingPolicySettings session={session} />
         <WorkflowSettings session={session} />
         <TalentMobileLinkPolicySettings session={session} />
         <WhatsAppDirectorySettings session={session} />
