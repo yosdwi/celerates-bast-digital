@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, final
+from collections.abc import Sequence
+from typing import final
 
 import psycopg
 from anyio.to_thread import run_sync
 
 from digital_bast.application.payroll_closing_settings import PayrollClosingSettings
 from digital_bast.infrastructure.errors import InfrastructureError
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 @final
@@ -36,8 +34,18 @@ class PostgresPayrollClosingSettingsStore:
     def _settings(row: tuple[object, ...] | None, scope_key: str) -> PayrollClosingSettings:
         if row is None:
             return PayrollClosingSettings(scope_key=scope_key)
-        roles = tuple(str(value) for value in row[6]) if isinstance(row[6], Sequence) else ()
-        offsets = tuple(int(value) for value in row[5]) if isinstance(row[5], Sequence) else ()
+        raw_offsets = row[5]
+        raw_roles = row[6]
+        offsets = (
+            tuple(int(value) for value in raw_offsets)
+            if isinstance(raw_offsets, Sequence) and not isinstance(raw_offsets, (str, bytes))
+            else ()
+        )
+        roles = (
+            tuple(str(value) for value in raw_roles)
+            if isinstance(raw_roles, Sequence) and not isinstance(raw_roles, (str, bytes))
+            else ()
+        )
         return PayrollClosingSettings(
             scope_key=str(row[0]),
             enabled=bool(row[1]),
