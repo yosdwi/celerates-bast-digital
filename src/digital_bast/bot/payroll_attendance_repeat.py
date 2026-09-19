@@ -102,7 +102,7 @@ def render_payroll_repeat_prompt(selection: AttendanceReminderGapSelection) -> s
 
 
 class AttendanceRepeatState(Protocol):
-    async def save_proposal(
+    async def save_proposal(  # noqa: PLR0913
         self,
         wa_jid: str,
         employee_id: str,
@@ -127,7 +127,7 @@ class AttendanceRepeatRouter(Protocol):
     ) -> AttendanceReminderRouteResult: ...
 
 
-async def handle_payroll_repeat_command(
+async def handle_payroll_repeat_command(  # noqa: PLR0913
     *,
     command: PayrollRepeatCommand,
     jid: str,
