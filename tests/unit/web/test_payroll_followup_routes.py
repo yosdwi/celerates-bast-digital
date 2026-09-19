@@ -154,7 +154,11 @@ class _Reminders:
         assert cycle == _CYCLE
         assert now == _NOW
         self.sent.append((employee_id, request_id))
-        return PayrollManualReminderResult(employee_id, "sent", True)
+        return PayrollManualReminderResult(
+            employee_id=employee_id,
+            outcome="sent",
+            sent=True,
+        )
 
 
 def _client() -> tuple[TestClient, _Reminders]:
