@@ -22,7 +22,7 @@ from digital_bast.web.security import CookieSettings
 from digital_bast.web.whatsapp_directory_router import whatsapp_directory_router
 
 _NOW = datetime(2026, 9, 19, 14, 0, tzinfo=UTC)
-_CSRF = "synthetic-whatsapp-directory-csrf"  # noqa: S105 - synthetic test value
+_CSRF = "synthetic-whatsapp-directory-csrf"
 
 
 class _Authenticator:
