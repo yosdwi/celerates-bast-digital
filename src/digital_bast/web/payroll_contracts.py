@@ -13,9 +13,9 @@ from digital_bast.application.attendance_closing import (  # noqa: TC001
     AttendanceSourceState,
 )
 from digital_bast.application.payroll_review import (  # noqa: TC001
+    PayrollReviewabilityReason,
     PayrollReviewDecision,
     PayrollReviewItemResultStatus,
-    PayrollReviewabilityReason,
 )
 from digital_bast.bot.attendance_resolution import ResolutionType  # noqa: TC001
 
