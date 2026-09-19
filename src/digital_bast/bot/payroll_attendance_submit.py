@@ -3,19 +3,21 @@
 P13 is the first point where a time-first Payroll draft may create an existing
 ``attendance_resolution_requests`` row. Submission stays explicit: a complete
 draft is never auto-submitted merely because evidence exists. After submit, the
-stable reminder snapshot is revalidated through the P09 routing service so the
-next still-actionable attendance key is selected without renumbering.
+stable reminder snapshot is revalidated through the P09 routing service before
+offering the Talent a small continue/stop decision.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from digital_bast.bot.attendance_reminder_routing import (
-    AttendanceReminderRouteStatus,
-    render_attendance_gap_prompt,
+from digital_bast.bot.attendance_reminder import (
+    ATTENDANCE_REMINDER_LATER_ACTION_ID,
+    ATTENDANCE_REMINDER_START_ACTION_ID,
 )
+from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteStatus
 from digital_bast.bot.attendance_resolution import SubmitOutcome
+from digital_bast.bot.interactive import interactive
 from digital_bast.bot.payroll_attendance_draft import render_payroll_draft_prompt
 
 if TYPE_CHECKING:
@@ -96,7 +98,6 @@ async def _continue_to_next_gap(
     employee_id: str,
     context: AttendanceReminderContext,
     now: datetime,
-    state: AttendanceDraftState,
     context_store: AttendanceContextStore,
     routing: AttendanceNextGapRouter,
     prefix: str,
@@ -111,23 +112,17 @@ async def _continue_to_next_gap(
         routed.status is AttendanceReminderRouteStatus.OPEN
         and routed.selection is not None
     ):
-        attendance_key = routed.selection.day.attendance_key
-        if attendance_key is None:
-            await context_store.clear(jid)
-            return (
-                f"{prefix}\n\n"
-                "Attendance berikutnya belum punya identity yang aman untuk diproses."
-            )
-        next_draft = await state.begin(jid, employee_id, attendance_key)
-        if next_draft is None:
-            return (
-                f"{prefix}\n\n"
-                "Data attendance berikutnya baru berubah. "
-                "Balas `lengkapi` untuk memuat kondisi terbaru."
-            )
-        return (
+        remaining = routed.selection.remaining_actionable
+        noun = "tanggal" if remaining == 1 else "tanggal"
+        body = (
             f"{prefix}\n\n"
-            f"Selanjutnya:\n{render_attendance_gap_prompt(routed.selection)}"
+            f"Masih ada {remaining} {noun} yang perlu kamu lengkapi. Mau lanjut sekarang?"
+        )
+        return interactive(
+            body,
+            (ATTENDANCE_REMINDER_START_ACTION_ID, "Lanjut"),
+            (ATTENDANCE_REMINDER_LATER_ACTION_ID, "Selesai dulu"),
+            footer="Payroll Attendance",
         )
 
     await context_store.clear(jid)
@@ -147,7 +142,7 @@ async def submit_payroll_attendance_draft(
     context_store: AttendanceContextStore,
     routing: AttendanceNextGapRouter,
 ) -> str:
-    """Submit one complete draft, then continue through the stable reminder snapshot."""
+    """Submit one complete draft, then offer continuation from the stable snapshot."""
     if not draft.has_proposal or not draft.has_evidence:
         return render_payroll_draft_prompt(draft)
 
@@ -173,7 +168,6 @@ async def submit_payroll_attendance_draft(
             employee_id=draft.employee_id,
             context=context,
             now=now,
-            state=state,
             context_store=context_store,
             routing=routing,
             prefix=prefix,
@@ -196,7 +190,6 @@ async def submit_payroll_attendance_draft(
             employee_id=draft.employee_id,
             context=context,
             now=now,
-            state=state,
             context_store=context_store,
             routing=routing,
             prefix="Data attendance berubah sebelum pengajuan, jadi informasi lama tidak diajukan.",
