@@ -4,13 +4,13 @@ import { getPayrollOverview } from "../api/payroll";
 import type { PayrollOverviewResponse } from "../api/payroll";
 import { getCommandCenter, getSession, getTalentDetail } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
-import WorkspaceFrame from "../components/WorkspaceFrame";
 import ActionCenterPage from "../pages/ActionCenterPage";
 import AttendanceGapsPage from "../pages/AttendanceGapsPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import DeliveryPage from "../pages/DeliveryPage";
 import EvidencePage from "../pages/EvidencePage";
+import PayrollPage from "../pages/PayrollPage";
 import SettingsPage from "../pages/SettingsPage";
 import SystemSyncPage from "../pages/SystemSyncPage";
 import Talent360Page from "../pages/Talent360Page";
@@ -345,36 +345,7 @@ export default function App() {
         </main>
       );
     }
-    return (
-      <WorkspaceFrame
-        session={session}
-        active="payroll"
-        attentionCount={0}
-        search=""
-        onSearch={() => undefined}
-        onNavigate={navigate}
-        onAskAi={() => undefined}
-      >
-        <section className="page-content" aria-label="Payroll workspace">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Attendance closing</p>
-              <h1>Payroll</h1>
-              <p>
-                {payrollData.cycle.label} · {payrollData.cycle.start} – {payrollData.cycle.end}
-              </p>
-            </div>
-          </div>
-          <div className="panel">
-            <strong>Payroll data source is ready.</strong>
-            <p>
-              Read-only bootstrap is independent from Command Center. Operational summary and review
-              UI are added in the next implementation card.
-            </p>
-          </div>
-        </section>
-      </WorkspaceFrame>
-    );
+    return <PayrollPage session={session} data={payrollData} onNavigate={navigate} />;
   }
 
   if (!data && periodPending) return <LoadingScreen />;
