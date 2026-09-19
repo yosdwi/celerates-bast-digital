@@ -96,7 +96,7 @@ def _draft_value_lines(draft: AttendanceResolutionDraft) -> tuple[str, ...]:
     return (f"Status: {absence}",)
 
 
-def _review_prompt(draft: AttendanceResolutionDraft, lines: list[str]) -> str:
+def _review_prompt(lines: list[str]) -> str:
     lines.extend(("Bukti: ✓", "", "Ajukan informasi ini?"))
     return interactive(
         "\n".join(lines),
@@ -121,7 +121,7 @@ def render_payroll_draft_prompt(
         lines.append(date_label)
         lines.extend(_draft_value_lines(draft))
         if draft.has_evidence:
-            return _review_prompt(draft, lines)
+            return _review_prompt(lines)
         lines.extend(
             (
                 "",
