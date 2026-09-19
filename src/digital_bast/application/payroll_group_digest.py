@@ -149,7 +149,7 @@ def compose_payroll_group_digest(digest: PayrollClosingDigest, milestone: str) -
 
 @final
 class PayrollGroupDigestService:
-    def __init__(  # noqa: PLR0913 - explicit delivery ports are intentional
+    def __init__(  # noqa: PLR0913, PLR0917 - explicit delivery ports are intentional
         self,
         scope_key: str,
         settings: PayrollClosingSettingsStore,
@@ -165,7 +165,11 @@ class PayrollGroupDigestService:
         self._outbound = outbound
         self._deliveries = deliveries
 
-    async def run(self, *, now: datetime | None = None) -> PayrollGroupDigestRunSummary:
+    async def run(  # noqa: C901, PLR0911 - explicit delivery state machine
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> PayrollGroupDigestRunSummary:
         instant = now or datetime.now(JAKARTA)
         policy = await self._settings.load(self._scope_key)
         if not policy.dispatch_enabled:
@@ -187,11 +191,21 @@ class PayrollGroupDigestService:
             offsets=policy.reminder_offsets,
         )
         if milestone is None:
-            return PayrollGroupDigestRunSummary(True, False, None, "not_due")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=None,
+                outcome="not_due",
+            )
 
         destination = await self._groups.closing_group(self._scope_key)
         if destination.group_jid is None:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "group_not_configured")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="group_not_configured",
+            )
 
         digest = await self._digest.project(
             cycle,
@@ -212,18 +226,38 @@ class PayrollGroupDigestService:
         )
         record = reservation.record
         if record.state is PayrollDeliveryState.SENT:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "duplicate")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="duplicate",
+            )
         if record.state is PayrollDeliveryState.UNKNOWN:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "unknown")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="unknown",
+            )
         if record.state is PayrollDeliveryState.FAILED_FINAL:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "failed_final")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="failed_final",
+            )
         if record.state is PayrollDeliveryState.SENDING:
             await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code="interrupted_after_delivery_claim",
             )
-            return PayrollGroupDigestRunSummary(True, False, milestone, "unknown")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="unknown",
+            )
 
         refreshed = await self._deliveries.refresh_retryable(
             idempotency_key,
@@ -231,10 +265,20 @@ class PayrollGroupDigestService:
             message=message,
         )
         if refreshed is None:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "unsafe_skipped")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="unsafe_skipped",
+            )
         claimed = await self._deliveries.claim(idempotency_key)
         if claimed is None:
-            return PayrollGroupDigestRunSummary(True, False, milestone, "unsafe_skipped")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="unsafe_skipped",
+            )
 
         receipt = await self._outbound.send_group(
             destination.group_jid,
@@ -247,18 +291,34 @@ class PayrollGroupDigestService:
                 PayrollDeliveryState.SENT,
                 provider_message_id=receipt.provider_message_id,
             )
-            return PayrollGroupDigestRunSummary(True, False, milestone, "sent", sent=1)
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="sent",
+                sent=1,
+            )
         if receipt.status == "bridge_unavailable":
             await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.FAILED_RETRYABLE,
                 error_code=receipt.error_code,
             )
-            return PayrollGroupDigestRunSummary(True, False, milestone, "failed_retryable")
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="failed_retryable",
+            )
 
         await self._deliveries.finish(
             idempotency_key,
             PayrollDeliveryState.FAILED_FINAL,
             error_code=receipt.error_code,
         )
-        return PayrollGroupDigestRunSummary(True, False, milestone, "failed_final")
+        return PayrollGroupDigestRunSummary(
+            enabled=True,
+            paused=False,
+            milestone=milestone,
+            outcome="failed_final",
+        )
