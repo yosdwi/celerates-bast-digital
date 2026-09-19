@@ -11,6 +11,10 @@ from digital_bast.application.attendance_closing import (
 from digital_bast.application.attendance_closing_policy import payroll_cycle
 from digital_bast.application.payroll_read import PayrollDayView
 from digital_bast.bot.attendance_context import AttendanceReminderContext
+from digital_bast.bot.attendance_reminder import (
+    ATTENDANCE_REMINDER_LATER_ACTION_ID,
+    ATTENDANCE_REMINDER_START_ACTION_ID,
+)
 from digital_bast.bot.attendance_reminder_routing import (
     AttendanceReminderGapSelection,
     AttendanceReminderRouteResult,
@@ -188,10 +192,9 @@ def test_review_command_has_text_and_numeric_fallback(
 
 
 @pytest.mark.asyncio
-async def test_submit_uses_durable_draft_then_opens_next_snapshot_gap() -> None:
+async def test_submit_uses_durable_draft_then_offers_continue_or_stop() -> None:
     resolutions = _ResolutionService(SubmitOutcome.CREATED)
-    next_draft = _draft(_NEXT_KEY, proposal=False, evidence=False)
-    state = _State(next_draft)
+    state = _State(_draft(_NEXT_KEY, proposal=False, evidence=False))
     context_store = _ContextStore()
     router = _Router(
         AttendanceReminderRouteResult(
@@ -215,11 +218,14 @@ async def test_submit_uses_durable_draft_then_opens_next_snapshot_gap() -> None:
         (_EMPLOYEE_ID, _FIRST_KEY, _JID, ResolutionType.MISSING_CLOCK_OUT, time(17, 40))
     ]
     assert state.cleared == 1
-    assert state.begins == [(_JID, _EMPLOYEE_ID, _NEXT_KEY)]
+    assert state.begins == []
     assert context_store.cleared == 0
     assert "sudah diajukan ke PMO" in response
-    assert "Selanjutnya" in response
-    assert "Jam pulang berapa?" in response
+    assert "Lanjut" in response
+    assert "Selesai dulu" in response
+    assert ATTENDANCE_REMINDER_START_ACTION_ID in response
+    assert ATTENDANCE_REMINDER_LATER_ACTION_ID in response
+    assert "Jam pulang berapa?" not in response
     assert "Mobile" not in response
     assert "Menu" not in response
 
