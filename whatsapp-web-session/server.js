@@ -147,6 +147,53 @@ async function handleStatus(req, res) {
   });
 }
 
+function serializedId(value) {
+  return value?._serialized ?? value?.$1 ?? "";
+}
+
+function serializeGroup(chat) {
+  const participants = Array.isArray(chat.participants)
+    ? chat.participants
+        .map((participant) => ({
+          jid: serializedId(participant.id),
+          is_admin: Boolean(participant.isAdmin),
+          is_super_admin: Boolean(participant.isSuperAdmin),
+        }))
+        .filter((participant) => participant.jid !== "")
+    : [];
+  return {
+    jid: serializedId(chat.id),
+    subject: String(chat.name || ""),
+    member_count: participants.length,
+    participants,
+  };
+}
+
+async function handleGroups(req, res) {
+  if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
+    writeJson(res, 403, { status: "forbidden" });
+    return;
+  }
+  if (!bridge.isReady()) {
+    writeJson(res, 503, { status: "unavailable", error: "whatsapp_not_connected", groups: [] });
+    return;
+  }
+  try {
+    const chats = await bridge.client.getChats();
+    const groups = chats.filter((chat) => chat.isGroup).map(serializeGroup);
+    state.groups = groups;
+    writeJson(res, 200, {
+      ready: true,
+      connection: state.connection,
+      discovered_at: new Date().toISOString(),
+      groups,
+    });
+  } catch (err) {
+    state.logf(`group/member discovery failed: ${err && err.stack ? err.stack : err}`);
+    writeJson(res, 503, { status: "unavailable", error: "group_discovery_failed", groups: [] });
+  }
+}
+
 async function handleSendOutbound(req, res) {
   if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
     writeJson(res, 403, { status: "forbidden" });
@@ -248,6 +295,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/internal/v1/status") {
       await handleStatus(req, res);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/internal/v1/groups") {
+      await handleGroups(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/internal/v1/messages") {
