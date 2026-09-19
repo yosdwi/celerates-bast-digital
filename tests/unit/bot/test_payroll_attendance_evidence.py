@@ -6,6 +6,7 @@ import pytest
 from digital_bast.bot.attendance_resolution import ResolutionType
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.bot.evidence import UploadOutcome, UploadResult
+from digital_bast.bot.payroll_attendance_draft import PAYROLL_DRAFT_SUBMIT_ACTION_ID
 from digital_bast.bot.payroll_attendance_evidence import attach_payroll_attendance_evidence
 
 _JID = "628123@s.whatsapp.net"
@@ -61,7 +62,7 @@ class _State:
 
 
 @pytest.mark.asyncio
-async def test_image_is_attached_to_exact_active_draft_and_keeps_clock(
+async def test_image_is_attached_to_exact_active_draft_and_moves_to_review(
     tmp_path: Path,
 ) -> None:
     file_path = tmp_path / "bukti.jpg"
@@ -87,11 +88,12 @@ async def test_image_is_attached_to_exact_active_draft_and_keeps_clock(
     assert "Bukti attendance sudah tersimpan" in response
     assert "Clock Out: 17:40" in response
     assert "Bukti: ✓" in response
-    assert "Belum diajukan ke PMO" in response
+    assert "Ajukan informasi ini?" in response
+    assert PAYROLL_DRAFT_SUBMIT_ACTION_ID in response
 
 
 @pytest.mark.asyncio
-async def test_pdf_payload_follows_same_active_draft_flow(
+async def test_pdf_payload_follows_same_active_draft_review_flow(
     tmp_path: Path,
 ) -> None:
     file_path = tmp_path / "bukti.pdf"
@@ -113,11 +115,12 @@ async def test_pdf_payload_follows_same_active_draft_flow(
     ]
     assert "Bukti attendance sudah tersimpan" in response
     assert "Bukti: ✓" in response
-    assert "Belum diajukan ke PMO" in response
+    assert "Ajukan informasi ini?" in response
+    assert PAYROLL_DRAFT_SUBMIT_ACTION_ID in response
 
 
 @pytest.mark.asyncio
-async def test_duplicate_media_refreshes_existing_evidence_without_pmo_submit(
+async def test_duplicate_media_refreshes_existing_evidence_without_auto_submit(
     tmp_path: Path,
 ) -> None:
     file_path = tmp_path / "bukti.jpg"
@@ -135,6 +138,7 @@ async def test_duplicate_media_refreshes_existing_evidence_without_pmo_submit(
 
     assert "sudah pernah tersimpan" in response
     assert "Bukti: ✓" in response
+    assert "Ajukan informasi ini?" in response
     assert state.calls == [(_JID, _EMPLOYEE_ID, _ATTENDANCE_KEY)]
     assert state.cleared is False
 
