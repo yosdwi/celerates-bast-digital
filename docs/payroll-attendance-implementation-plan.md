@@ -566,23 +566,29 @@ Legend: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 
 #### P00 — Master plan checkpoint
 
-Status: `IN PROGRESS`  
-Goal: commit this canonical implementation plan.  
-Expected changes: this file only.  
-Test: none; docs-only.
+Status: `DONE`  
+Commit: `43d59f9637f50e28afeec7ae786229f9a5390a64`  
+Files: `docs/payroll-attendance-implementation-plan.md`.  
+Test: docs-only; no runtime test required.  
+Result: canonical product/workflow/implementation plan committed.
 
 #### P01 — Payroll cycle helper
 
-Status: `TODO`  
-Files: new `application/attendance_closing_policy.py` + unit tests.  
-Scope: 21–20 cycles, label by ending month, H-5/H-3/H-1, February/year boundaries, `evaluated_through` helper contract.  
-No DB/UI changes.
+Status: `DONE`  
+Commits: `6ea282a48c05e086ce1193a4c683a93f6b2b33e6`, `3ca8e9f5adb4b222ae95bde0ea276f29b5f097fa`.  
+Files: `src/digital_bast/application/attendance_closing_policy.py`, `tests/unit/application/test_attendance_closing_policy.py`.  
+Scope delivered: 21–20 cycles, label by ending month, H-5/H-3/H-1, February/year boundaries, `evaluated_through` helper contract.  
+Notes: no DB/UI changes; existing BAST calendar behavior remains independent.
 
 #### P02 — Closing projection model
 
-Status: `TODO`  
-Files: new `application/attendance_closing.py` + focused infrastructure reader changes + tests.  
-Scope: per-day and per-Talent statuses; ignore task/timesheet blockers; evidence-only != complete; pending != complete; rejected actionable; OFF handled; missing/unavailable source never fabricated as complete.
+Status: `DONE`  
+Commits: `038a2398ae39acd5bf47f0a74b2b3981b889b647`, `d509a53d02ae22755d4280c1ac25da15f12ccc04`, `7bbbb30f6746e3c13ad997fe3067935d5e646188`, `263618fb44b634d0b69b7308137975e13177f2d4`, `22c8bd20b62ec898f57e6b6ae050777b99fd4df7`.  
+Files: `src/digital_bast/application/attendance_closing.py`, `tests/unit/application/test_attendance_closing.py`.  
+Targeted test: `PYTHONPATH=. pytest -q` against the isolated P02 projection fixture -> `12 passed`.  
+Scope delivered: deterministic per-day/per-Talent `NEEDS_TALENT_ACTION`, `WAITING_SUBMITTED`, `COMPLETE`; `evaluated_through` filtering; evidence-only cannot complete; partial coverage stays actionable; rejected correction returns actionable; OFF is valid only with an available source; missing/unavailable/empty source fails closed; unresolved action has precedence over waiting rows.  
+Implementation note: P02 consumes normalized correction/schedule/source facts and deliberately does not mutate or duplicate the existing correction lifecycle. Source-specific reader/API wiring is deferred to P03.  
+Validation note: source imports were aligned with strict type-only import rules. Full repository CI is not claimed here because this branch has no open PR and the workflow runs on `main`/PR gates.
 
 #### P03 — Payroll read API
 
@@ -887,8 +893,10 @@ The final user-facing test sheet should cover at least:
 
 ## 22. Current checkpoint
 
-Implementation code has **not started** in this document yet.
+Phase A deterministic foundation is complete through **P02 — Closing projection model**.
 
-Starting source baseline: `bd57e7713fcf7503d8d969eca31a3fef1016192e`.
+Current implementation HEAD before this docs-only checkpoint: `22c8bd20b62ec898f57e6b6ae050777b99fd4df7`.
 
-The next implementation card after committing this plan is **P01 — Payroll cycle helper**.
+Verified P02 behavior: `12 passed` targeted projection tests. Full repository CI remains a later PR/merge gate; it is not claimed as executed on this branch-only checkpoint.
+
+The next implementation card is **P03 — Payroll read API**. It must adapt existing attendance/correction/schedule source truth into `AttendanceClosingService` without creating a second lifecycle or mutating raw attendance.
