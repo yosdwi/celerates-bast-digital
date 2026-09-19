@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime  # noqa: TC003 - Pydantic resolves this type at runtime
 from http import HTTPStatus
 from typing import Literal, final
 
@@ -186,14 +186,26 @@ class BotBridgeWhatsAppOutboundGateway:
                     headers={"X-Bridge-Token": self._token},
                 )
         except httpx.HTTPError:
-            return WhatsAppGroupDirectory(False, "unavailable", ())
+            return WhatsAppGroupDirectory(
+                ready=False,
+                connection="unavailable",
+                groups=(),
+            )
 
         if response.status_code != HTTPStatus.OK:
-            return WhatsAppGroupDirectory(False, "unavailable", ())
+            return WhatsAppGroupDirectory(
+                ready=False,
+                connection="unavailable",
+                groups=(),
+            )
         try:
             parsed = _BridgeGroupsResponse.model_validate(response.json())
         except (ValueError, ValidationError):
-            return WhatsAppGroupDirectory(False, "unavailable", ())
+            return WhatsAppGroupDirectory(
+                ready=False,
+                connection="unavailable",
+                groups=(),
+            )
         return WhatsAppGroupDirectory(
             ready=parsed.ready,
             connection=parsed.connection,
