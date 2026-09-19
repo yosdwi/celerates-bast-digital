@@ -5,7 +5,7 @@ This is the rolling execution checkpoint for
 
 Repository: `yosdwi/celerates-bast-digital`  
 Branch: `chore/session-20260918-fixes`  
-Checkpoint date: 19 September 2026
+Checkpoint date: 20 September 2026
 
 ## Execution standard
 
@@ -16,177 +16,215 @@ waves. Keep changes small and reversible, preserve source-of-truth boundaries, a
 checkpoint only after integration/validation review. The canonical Payroll plan
 remains authoritative; this file records the latest execution state.
 
-## Completed through P22
+## Completed through P27
 
 P00–P14 remain completed as recorded in the canonical implementation plan and
-prior checkpoint history. P15–P18 delivered the PMO Payroll review queue, evidence
-inspection, per-item revalidation, bulk approve/reject with partial success, and
-rejection back into the existing Talent correction lifecycle.
+prior checkpoint history.
 
-The Contacts & WhatsApp Mapping wave P19–P22 is now implemented and checkpointed.
+P15–P18 delivered the PMO Payroll review queue, evidence inspection, per-item
+revalidation, bulk approve/reject with partial success, and rejection back into
+the existing Talent correction lifecycle.
+
+P19–P22 delivered the Contacts & WhatsApp Mapping wave:
+
+- real group/member discovery through the active `whatsapp-web-session` runtime,
+- Talent↔WhatsApp mapping using existing `wa_identity`,
+- Contacts & WhatsApp operational UI,
+- one stable configured Payroll closing-group JID,
+- no provider migration, fuzzy identity inference, or group outbound cutover.
+
+P23–P27 delivered the Reminder Automation Foundations wave described below.
 
 ---
 
-## Wave 4 — Contacts & WhatsApp Mapping (P19–P22)
+## Wave 5 — Reminder Automation Foundations (P23–P27)
 
 Status: `DONE`
 
 Baseline before this wave:
 
-- `63b210f83e7987af2d3815b13cfb28b1c376dd33`
+- `0703ddd9c8c94414bc8bb523fdf65e99a675dcab`
 
 Pre-checkpoint implementation head:
 
-- `0703ddd9c8c94414bc8bb523fdf65e99a675dcab`
+- `73e4200001cf4d2027cae9d4d25cbaf4c7819094`
 
-The compare from the P18 baseline to the pre-checkpoint head is 20 commits ahead,
-0 behind, and limited to the WhatsApp discovery/directory/mapping/settings UI,
-additive closing-group migration, and focused tests. No attendance truth, CSV, BAST,
-review authority, scheduler, or transport migration was introduced by this wave.
+Comparison from the P22 checkpoint baseline to the P27 pre-checkpoint head:
 
-### P19 — Group/member discovery
+- 31 commits ahead,
+- 0 commits behind,
+- 20 changed files,
+- scope limited to Payroll closing policy/settings, reminder scheduling/runtime,
+  durable delivery lifecycle, response correlation, UI/API, additive migrations,
+  and focused tests.
 
-Delivered:
+No legacy attendance CSV contract, raw attendance authority, BAST monthly/calendar
+semantics, or active WhatsApp provider was replaced by this wave.
 
-- Reused the active `whatsapp-web-session` / `whatsapp-web.js` runtime instead of
-  introducing another WhatsApp provider or discovery service.
-- Added authenticated read-only bridge endpoint:
-  `GET /internal/v1/groups` using the existing `x-bridge-token` boundary.
-- Discovery returns real joined group facts available from the runtime:
-  - group JID,
-  - subject,
-  - member count,
-  - participant JID,
-  - admin/super-admin flags,
-  - contact display name, number, and `is_my_contact` only when the current session
-    can actually resolve those fields.
-- Participant identities are preserved as provider identities such as `@c.us` or
-  `@lid`; the system never infers an employee from a display name.
-- If contact metadata is unavailable, raw JID remains visible rather than being
-  guessed or hidden.
-- Discovery does not authorize a group for sending, does not change pairing, and
-  does not alter the existing direct-message outbound contract.
+### P23 — Closing settings migration/control model
 
-Typed gateway additions in
-`src/digital_bast/infrastructure/whatsapp_outbound.py`:
-
-- `WhatsAppGroupParticipant`
-- `WhatsAppGroup`
-- `WhatsAppGroupDirectory`
-- `BotBridgeWhatsAppOutboundGateway.get_groups()`
-
-The gateway fails closed to `ready=false / connection=unavailable` on bridge or
-response failure.
-
-### P20 — Identity/mapping API
+Status: `DONE`
 
 Delivered:
 
-- Reused existing `wa_identity` as the sole durable Talent↔WhatsApp authority.
-  No second Talent phonebook/mapping table was created.
-- Kept PMO/operator WhatsApp identity separate in the existing
-  `wa_operator_identity`; this wave does not conflate Talent and operator identity.
-- Added `src/digital_bast/infrastructure/whatsapp_directory.py` and
-  `src/digital_bast/web/whatsapp_directory_router.py`.
-- Added API under `/api/talentops/v1/whatsapp-directory` to expose live discovery
-  joined with canonical active Talent rows and existing durable mappings.
-- Exact JID matching is the only automatic correlation rule.
-- Admin mapping mutation accepts only direct `@c.us` / `@lid` identities.
-- Mapping is fail-closed:
-  - an employee already bound to a different JID is not silently changed,
-  - a JID already bound to another employee is not silently reassigned,
-  - operator must explicitly unlink before deliberate reassignment.
-- CSRF and owner/admin authorization are required for mutations.
-- PMO can inspect mapping state but cannot mutate it.
+- Added migration `20260919_0024_payroll_closing_policy` after P22 migration
+  `0023`.
+- Extended the existing `workflow_notification_settings` control-plane instead of
+  creating another workflow/settings database.
+- Added an independent typed Payroll closing policy with:
+  - enabled state,
+  - pause state,
+  - closing day,
+  - reminder hour,
+  - H-N reminder offsets,
+  - target Talent roles,
+  - next-day evaluation-ready hour,
+  - desired policy version,
+  - applied policy version,
+  - updated-by audit identity.
+- Payroll closing settings do **not** reuse legacy BAST `talent_reminder_days`.
+  The two concepts retain separate semantics.
+- Migration/default policy is `enabled=false`, so applying schema alone cannot
+  unexpectedly start a Payroll reminder campaign.
+- The configured next-day ready hour is wired into Closing Projection evaluation;
+  it is not a display-only setting.
+- Validation remains fail-closed for unsupported roles, invalid closing day/hour,
+  invalid reminder offsets, and invalid desired/applied version relationships.
 
-Primary bind outcomes remain explicit:
+Primary files:
 
-- `bound`
-- `unchanged`
-- `invalid_jid`
-- `employee_not_found`
-- `employee_already_bound`
-- `jid_already_bound`
+- `migrations/versions/20260919_0024_payroll_closing_policy.py`
+- `src/digital_bast/application/payroll_closing_settings.py`
+- `src/digital_bast/infrastructure/payroll_closing_settings.py`
+- `src/digital_bast/application/payroll_read.py`
+- `tests/unit/application/test_payroll_closing_settings.py`
 
-### P21 — Contacts & WhatsApp UI
+### P24 — Reminder settings UI + preview
 
-Delivered:
-
-- Added an operational **Contacts & WhatsApp** control surface in existing
-  TalentOps Settings rather than creating another application/address book.
-- Main component:
-  `frontend/src/components/WhatsAppDirectorySettings.tsx`.
-- UI can:
-  - refresh the current WhatsApp discovery snapshot,
-  - show bridge/session readiness,
-  - inspect discovered groups and participant identities,
-  - show real contact display metadata when available,
-  - show raw provider JID when metadata is unavailable,
-  - distinguish mapped and unmapped Talent identities,
-  - explicitly bind/unbind a Talent where authorized,
-  - select the configured Payroll closing group.
-- The UI does not perform display-name fuzzy matching or automatic reassignment.
-- Supporting API types/client and isolated responsive styling were added without
-  changing existing Payroll summary/review behavior.
-
-### P22 — Allowed Payroll closing group
+Status: `DONE`
 
 Delivered:
 
-- Added migration `20260919_0023_payroll_closing_group` on top of `0022`.
-- Extended existing `workflow_notification_settings` with one additive field:
-  `payroll_closing_group_jid`.
-- Added a DB constraint requiring a valid WhatsApp group JID form ending in
-  `@g.us` when configured.
-- Group selection is stored by stable JID, so a group rename does not become the
-  routing authority.
-- When the bridge is ready, a newly selected group must exist in the current live
-  discovery snapshot; arbitrary ready-state `@g.us` input is rejected.
-- If WhatsApp is temporarily unavailable, a syntactically valid configured group
-  can remain/still be stored but is returned as `verified=false`; no false runtime
-  verification is invented.
-- Closing-group configuration is context only. It does not change Payroll closing
-  status, attendance approval state, or any raw attendance data.
-- Scheduled/group outbound is deliberately **not** enabled here; PMO group digest
-  sending remains a later card.
+- Added typed Payroll closing settings API under the existing Payroll router.
+- Added compact Settings UI component:
+  `frontend/src/components/PayrollClosingPolicySettings.tsx`.
+- Operators can inspect/edit the supported policy without a generic workflow
+  designer.
+- Preview is computed from the same cycle/policy/projection authority and exposes:
+  - current Payroll cycle,
+  - H-N milestone dates,
+  - estimated actionable Talent audience,
+  - estimated technically unverified Talent count,
+  - desired/applied policy version.
+- Source-unverified attendance is kept separate from Talent-action audience and is
+  not presented as Talent fault.
+- Save remains CSRF-protected and owner/admin-authorized.
 
-### Main implementation files
+Primary files:
 
-Bridge/backend:
-
-- `whatsapp-web-session/server.js`
-- `src/digital_bast/infrastructure/whatsapp_outbound.py`
-- `src/digital_bast/infrastructure/whatsapp_directory.py`
-- `src/digital_bast/web/whatsapp_directory_router.py`
-- `src/digital_bast/web/app.py`
-- `migrations/versions/20260919_0023_payroll_closing_group.py`
-- `tests/unit/infrastructure/test_whatsapp_outbound.py`
-- `tests/unit/web/test_whatsapp_directory_routes.py`
-
-Frontend:
-
-- `frontend/src/components/WhatsAppDirectorySettings.tsx`
-- `frontend/src/components/WhatsAppDirectorySettings.test.tsx`
+- `src/digital_bast/web/payroll_contracts.py`
+- `src/digital_bast/web/payroll_router.py`
+- `frontend/src/api/payroll.ts`
+- `frontend/src/components/PayrollClosingPolicySettings.tsx`
 - `frontend/src/pages/SettingsPage.tsx`
-- `frontend/src/styles/whatsapp-directory.css`
-- `frontend/src/main.tsx`
-- existing TalentOps API client/types extended for directory/mapping/group contracts.
 
-### Focused hardening commits near wave close
+### P25 — Durable logical delivery reservation
 
-- `5ab8321cd4ca4e9980ffa466f9a3b1b9dc9a4211` — enrich real discovered contact metadata.
-- `4ff901b72b737b169c0c0c297a8fe2a85e23a0dc` — expose contact metadata through the typed web contract.
-- `1350f516aab44f5912f329c0a9f7e821775c0772` — group-directory gateway regression coverage.
-- `3abcb330700d72be17fbc2ab312a3bf4f9924852` — Contacts & WhatsApp UI action coverage.
-- `e8ca7e049475ccf3b82b2da5d9944f300886cce9` — directory infrastructure lint hardening.
-- `6053502a08591fa8cdef0b75fd5de827dee3c711` — group-directory gateway lint hardening.
-- `202d9f5666af9b1e26578c6b6486878f1b6ebebc` — directory router lint hardening.
-- `0703ddd9c8c94414bc8bb523fdf65e99a675dcab` — route-test lint cleanup.
+Status: `DONE`
+
+Delivered:
+
+- Added migration `20260919_0025_payroll_delivery_lifecycle` after `0024`.
+- Reused existing `talentops_followups` as the durable logical-delivery ledger;
+  no separate reminder queue/event bus was introduced.
+- Added explicit Payroll delivery lifecycle:
+  - `RESERVED`
+  - `SENDING`
+  - `SENT`
+  - `FAILED_RETRYABLE`
+  - `FAILED_FINAL`
+  - `UNKNOWN`
+- Reservation uses a stable idempotency key per scope/cycle/milestone/Talent.
+- Retryable transport failure reuses the same logical delivery and increments an
+  attempt count instead of creating duplicate follow-up rows.
+- A process interruption after delivery claim is handled conservatively: a
+  pre-existing `SENDING` state encountered on a later run becomes `UNKNOWN` and is
+  **not** blindly resent.
+- Provider receipt/error facts, context identity, cycle, milestone, timestamps,
+  and response-correlation fields are retained on the ledger.
+- SQL statements remain static with bound values; the final adapter no longer
+  relies on concatenated query construction.
+
+Primary files:
+
+- `migrations/versions/20260919_0025_payroll_delivery_lifecycle.py`
+- `src/digital_bast/application/payroll_reminder_delivery.py`
+- `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
+- `tests/unit/application/test_payroll_reminders.py`
+
+### P26 — Scheduled Talent reminder cutover
+
+Status: `DONE`
+
+Delivered:
+
+- Kept the existing scheduler/Prefect cadence; no new scheduling service was
+  introduced.
+- Added `PayrollTalentReminderService` over the canonical Closing Projection,
+  current configured policy, existing WhatsApp identity binding, stable reminder
+  context, existing outbound gateway, and durable delivery ledger.
+- Only current Talent rows with real `talent_action_required=true` are eligible.
+- WAITING, COMPLETE, technically unverified-only, and unsafe/no-stable-attendance-
+  identity cases are not silently converted into Talent action.
+- Stable P07 attendance context is persisted before outbound so user-visible
+  numbering remains bound to the exact ordered attendance identities sent.
+- Unbound Talent is recorded as a final non-deliverable outcome rather than being
+  guessed from names/numbers.
+- While Payroll policy is disabled, the legacy BAST Talent reminder path continues
+  unchanged.
+- Once Payroll policy is enabled, Payroll becomes the scheduled Talent reminder
+  authority for that scope, including when the Payroll policy is paused. This
+  prevents a paused Payroll campaign from silently falling back to the legacy path
+  and double-sending.
+- Active WhatsApp transport remains the existing `whatsapp-web-session` /
+  `whatsapp-web.js` bridge.
+
+Primary files:
+
+- `src/digital_bast/application/payroll_reminders.py`
+- `src/digital_bast/payroll_runtime.py`
+- `src/digital_bast/bot/attendance_reminder_runtime.py`
+- `src/digital_bast/flows/notifications.py`
+- `tests/unit/application/test_payroll_reminders.py`
+
+### P27 — Correlated response tracking
+
+Status: `DONE`
+
+Delivered:
+
+- Added response correlation against the specific successful Payroll reminder
+  context/delivery.
+- `responded_at` is written only after a subsequent attendance interaction that
+  successfully routes into the Payroll attendance action flow.
+- Generic DM traffic, navigation, `Nanti`, and generic conversation
+  `bot_conversations.updated_at` do not count as a Payroll attendance response.
+- Correlation requires matching stable reminder context + employee identity and a
+  `SENT` logical delivery.
+- This creates the required source for later `unresponded` projections without
+  inventing engagement from unrelated chat activity.
+
+Primary files:
+
+- `src/digital_bast/bot/attendance_reminder_runtime.py`
+- `src/digital_bast/application/payroll_reminder_delivery.py`
+- `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
+- `tests/unit/bot/test_attendance_reminder_response_tracking.py`
 
 ### Validation truth
 
-Latest validation PR #73 CI run `#493` / `35451732109` on pre-checkpoint head
-`0703ddd9...`:
+Validation PR #73 CI run `#505` / `35454927546` on pre-checkpoint head
+`73e4200001cf4d2027cae9d4d25cbaf4c7819094`:
 
 - `uv sync --all-groups`: **PASS**.
 - `uv run python -m compileall -q src tests`: **PASS**.
@@ -195,89 +233,101 @@ Latest validation PR #73 CI run `#493` / `35451732109` on pre-checkpoint head
   - migration idempotency gate: PASS,
   - smoke/shadow gate: PASS.
 - `gitleaks`: **PASS**.
-- repository-wide `uv run ruff check .`: **FAIL**, reporting 109 findings from
-  earlier Payroll cards and unrelated legacy/BAST/infrastructure code.
-- After the P19–P22 lint cleanup, none of these current-wave Python files appears
-  in the Ruff failure list:
-  - `src/digital_bast/infrastructure/whatsapp_directory.py`
-  - `src/digital_bast/infrastructure/whatsapp_outbound.py`
-  - `src/digital_bast/web/whatsapp_directory_router.py`
-  - `tests/unit/web/test_whatsapp_directory_routes.py`
+- repository-wide `uv run ruff check .`: **FAIL** with 108 existing findings.
+- After the final P23–P27 lint cleanup, none of the new P23–P27 implementation
+  files appears in the current Ruff failure list, including:
+  - `src/digital_bast/application/payroll_closing_settings.py`
+  - `src/digital_bast/application/payroll_reminder_delivery.py`
+  - `src/digital_bast/application/payroll_reminders.py`
+  - `src/digital_bast/infrastructure/payroll_closing_settings.py`
+  - `src/digital_bast/infrastructure/payroll_reminder_delivery.py`
+  - `src/digital_bast/payroll_runtime.py`
+  - `src/digital_bast/web/payroll_router.py`
+  - `tests/unit/application/test_payroll_closing_settings.py`
+  - `tests/unit/application/test_payroll_reminders.py`
+  - `tests/unit/bot/test_attendance_reminder_response_tracking.py`
+- Remaining Ruff findings are branch-wide debt from earlier Payroll cards and
+  unrelated legacy/BAST/infrastructure code. They intentionally were not swept
+  into this wave.
 - Because repository-wide Ruff fails first, the quality job does **not** reach
   `basedpyright`, `pytest`, or `scripts/check-ops.sh`; a full green quality job is
   therefore not claimed.
-- Frontend component tests were added, but the current repository CI workflow does
-  not run the frontend npm test/typecheck suite. Their execution is not claimed.
-- Container job failure is infrastructure/setup-only: GitHub Actions cannot resolve
-  `aquasecurity/trivy-action@0.30.0`; the job fails before checkout/build and does
-  not execute application code.
+- The container job failure is infrastructure/setup-only: GitHub Actions cannot
+  resolve `aquasecurity/trivy-action@0.30.0`. It fails in job setup before checkout
+  or image build, so it does not execute or invalidate P23–P27 application code.
+- Frontend component behavior is implemented, but this repository CI does not run
+  the frontend npm test/typecheck suite; a frontend green suite is not claimed.
 
-PR #73 exists only as a CI validation trigger for the long-lived working branch.
+PR #73 is used only as a CI validation trigger for the long-lived working branch.
 It is **not** a merge/release candidate and must not be merged into `main`.
 
 ### Wave acceptance result
 
-The implemented contract now supports:
+The system now has the following end-to-end reminder foundation:
 
 ```text
-Existing WhatsApp session
-  -> discover real joined groups + participant provider identities
-  -> expose real contact metadata when available
-  -> inspect mapped / unmapped Talent identities
-  -> explicitly bind / unbind against existing wa_identity
-  -> select one stable Payroll closing-group JID
+Payroll closing policy (disabled by default)
+  -> real 21–20 cycle + H-N milestone evaluation
+  -> canonical Closing Projection
+  -> current actionable Talent audience only
+  -> stable attendance reminder context
+  -> durable logical delivery reservation
+  -> existing WhatsApp outbound transport
+  -> SENT / retryable / final / UNKNOWN receipt state
+  -> subsequent attendance action correlated back to the exact reminder
 ```
 
-without changing the active WA transport, guessing identity from names, sending a
-closing-group message, or changing Payroll/attendance truth.
+without converting evidence into approval truth, storing a synthetic
+`payroll_ready` flag, changing the legacy CSV contract, adding a new transport,
+or using generic conversation timestamps as response evidence.
 
 ---
 
-## Next execution wave — Reminder Automation Foundations (P23–P27)
+## Next execution wave — PMO Closing Digest & Follow-up (P28–P30)
 
-Execute P23–P27 continuously as one integration wave unless an implementation
+Execute P28–P30 continuously as one integration wave unless an implementation
 finding creates a genuine source-of-truth conflict.
 
-### P23 — Closing settings migration/control model
+### P28 — Digest projection
 
 Status: `TODO`
 
-Add typed, additive closing configuration for enabled state, closing day,
-milestone mode/offsets, final assessment/shift grace, pause state, and version/audit.
-Preserve legacy reminder-day semantics during migration/cutover.
+Build the PMO-facing closing digest projection from existing Payroll truth and
+P25/P27 delivery facts. Keep business status to the locked three primary states;
+`unverified`, delivery failure, and `unresponded` remain operational dimensions,
+not new Payroll readiness states.
 
-### P24 — Reminder settings UI + preview
+Expected digest dimensions include current cycle summary, actionable Talent,
+waiting submissions, technical-unverified cases, delivery failures/UNKNOWN, and
+Talent who received a successful reminder but have not subsequently entered the
+attendance action flow.
 
-Status: `TODO`
-
-Add a compact typed form with real Payroll cycle/milestone date preview, estimated
-audience, and desired/applied version visibility. Do not create a workflow designer.
-
-### P25 — Durable logical delivery reservation
-
-Status: `TODO`
-
-Use the existing follow-up ledger as the authoritative logical-delivery state.
-Add atomic reserve/claim and delivery lifecycle such as RESERVED/SENDING/SENT/
-FAILED_RETRYABLE/FAILED_FINAL/UNKNOWN, with failure-injection coverage. `UNKNOWN`
-must never be blindly resent.
-
-### P26 — Scheduled Talent reminder cutover
+### P29 — Group digest outbound
 
 Status: `TODO`
 
-Keep the existing Prefect cadence, but evaluate the new closing policy against the
-canonical Closing Projection. Only current `NEEDS_TALENT_ACTION` recipients are
-eligible; WAITING/COMPLETE/unbound cases must be skipped truthfully. Disable the
-duplicate legacy closing-reminder path for the same audience when cutover occurs.
+Use the configured P22 Payroll closing-group JID and existing WhatsApp session to
+send PMO digest messages only at the intended closing milestones/final/incident
+conditions. Do not send per-Talent correction submissions to the PMO group.
 
-### P27 — Correlated response tracking
+Group delivery must use durable/idempotent delivery semantics and must not alter
+Talent reminder authority or attendance truth.
+
+### P30 — Follow-up panel actions
 
 Status: `TODO`
 
-Record response timestamp/kind against the specific reminder/context. Only a
-subsequent attendance interaction counts as a response; generic conversation
-`updated_at` is not sufficient for `unresponded` logic.
+Expose the digest/follow-up projection on the PMO web surface with operational
+actions for items that need attention. Reuse current review/mapping/reminder
+contracts rather than creating a second task system.
+
+The panel should make it easy to distinguish:
+
+- Talent still needing attendance action,
+- Talent already submitted/waiting review,
+- source-unverified technical cases,
+- reminder delivery failures/UNKNOWN,
+- successfully reminded but genuinely unresponded Talent.
 
 ### Continuation instructions
 
@@ -287,5 +337,5 @@ For a new session:
 2. Read `docs/payroll-attendance-implementation-plan.md`.
 3. Read this rolling checkpoint.
 4. Verify branch HEAD and inspect any commits after this checkpoint before editing.
-5. Continue with the full P23–P27 wave without redesigning the locked Payroll or
-   WhatsApp source-of-truth boundaries.
+5. Continue with P28–P30 as one integration wave without redesigning the locked
+   Payroll, review, identity, delivery, or WhatsApp source-of-truth boundaries.
