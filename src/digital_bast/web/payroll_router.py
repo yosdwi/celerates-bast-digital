@@ -3,12 +3,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
+from pydantic import ValidationError
 
-from digital_bast.application.attendance_closing_policy import payroll_cycle, payroll_cycle_for
+from digital_bast.application.attendance_closing_policy import (
+    payroll_cycle,
+    payroll_cycle_for,
+    reminder_milestones,
+)
 from digital_bast.application.payroll_review import PayrollReviewService
 from digital_bast.application.workflow_control import WorkflowRole
+from digital_bast.config import SettingsConfigurationError, get_settings
 from digital_bast.domain.time import JAKARTA
+from digital_bast.infrastructure.payroll_closing_settings import (
+    PostgresPayrollClosingSettingsStore,
+)
 from digital_bast.web.payroll_contracts import (
+    PayrollClosingMilestoneResponse,
+    PayrollClosingPreviewResponse,
+    PayrollClosingSettingsInput,
+    PayrollClosingSettingsResponse,
     PayrollCycleResponse,
     PayrollCyclesResponse,
     PayrollDayResponse,
@@ -28,6 +41,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
+    from digital_bast.application.payroll_closing_settings import (
+        PayrollClosingSettings,
+        PayrollClosingSettingsStore,
+    )
     from digital_bast.application.payroll_read import PayrollOverview, PayrollReadService
     from digital_bast.application.workflow_control import WorkflowOperator
     from digital_bast.web.contracts import SessionRecord
@@ -103,6 +120,24 @@ async def _authorized_attendance_reviewer(
     return operator
 
 
+def _require_admin(record: SessionRecord) -> None:
+    if record.user.role.casefold() not in _ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access is required",
+        )
+
+
+def _configured_settings_store() -> PayrollClosingSettingsStore | None:
+    try:
+        settings = get_settings()
+    except (OSError, ValidationError, SettingsConfigurationError):
+        return None
+    if settings.database_dsn is None:
+        return None
+    return PostgresPayrollClosingSettingsStore(settings.database_dsn.get_secret_value())
+
+
 def _selected_cycle(
     year: int | None,
     month: int | None,
@@ -144,8 +179,69 @@ def _overview_response(view: PayrollOverview) -> PayrollOverviewResponse:
     )
 
 
-def payroll_router(deps: WebDependencies) -> APIRouter:
+async def _closing_settings_response(
+    deps: WebDependencies,
+    settings: PayrollClosingSettings,
+) -> PayrollClosingSettingsResponse:
+    now = deps.now()
+    cycle = payroll_cycle_for(
+        now.astimezone(JAKARTA).date(),
+        settings.closing_day,
+    )
+    overview = await _service(deps).overview(
+        cycle,
+        now=now,
+        next_day_ready_hour=settings.next_day_ready_hour,
+    )
+    in_audience = tuple(
+        talent for talent in overview.talents if talent.role in settings.target_roles
+    )
+    return PayrollClosingSettingsResponse(
+        scope_key=settings.scope_key,
+        enabled=settings.enabled,
+        paused=settings.paused,
+        closing_day=settings.closing_day,
+        reminder_hour=settings.reminder_hour,
+        reminder_offsets=settings.reminder_offsets,
+        target_roles=settings.target_roles,
+        next_day_ready_hour=settings.next_day_ready_hour,
+        desired_version=settings.desired_version,
+        applied_version=settings.applied_version,
+        updated_by=settings.updated_by,
+        preview=PayrollClosingPreviewResponse(
+            cycle=_cycle_response(cycle),
+            milestones=tuple(
+                PayrollClosingMilestoneResponse(
+                    label=item.label,
+                    days_before=item.days_before,
+                    work_date=item.work_date,
+                )
+                for item in reminder_milestones(cycle, settings.reminder_offsets)
+            ),
+            estimated_actionable_talents=sum(
+                talent.talent_action_required for talent in in_audience
+            ),
+            estimated_unverified_talents=sum(
+                talent.unverified_days > 0 for talent in in_audience
+            ),
+        ),
+    )
+
+
+def payroll_router(
+    deps: WebDependencies,
+    settings_store: PayrollClosingSettingsStore | None = None,
+) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX, tags=["payroll"])
+
+    def closing_store() -> PayrollClosingSettingsStore:
+        selected = settings_store or _configured_settings_store()
+        if selected is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Payroll closing settings storage is unavailable",
+            )
+        return selected
 
     async def cycles(request: Request) -> PayrollCyclesResponse:
         _, record = await require_session(
@@ -182,6 +278,58 @@ def payroll_router(deps: WebDependencies) -> APIRouter:
         cycle = _selected_cycle(year, month, now)
         view = await _service(deps).overview(cycle, now=now)
         return _overview_response(view)
+
+    async def closing_settings(
+        request: Request,
+        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
+    ) -> PayrollClosingSettingsResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        operator = await _authorized_operator(deps, record)
+        selected_scope = scope_key if operator is None else operator.scope_key
+        settings = await closing_store().load(selected_scope)
+        return await _closing_settings_response(deps, settings)
+
+    async def save_closing_settings(
+        request: Request,
+        payload: PayrollClosingSettingsInput,
+        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
+        csrf_token: HeaderCsrf = None,
+    ) -> PayrollClosingSettingsResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        _require_admin(record)
+        store = closing_store()
+        current = await store.load(scope_key)
+        try:
+            desired = current.with_desired_update(
+                enabled=payload.enabled,
+                paused=payload.paused,
+                closing_day=payload.closing_day,
+                reminder_hour=payload.reminder_hour,
+                reminder_offsets=payload.reminder_offsets,
+                target_roles=payload.target_roles,
+                next_day_ready_hour=payload.next_day_ready_hour,
+                actor=record.user.email,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        saved = await store.save(desired)
+        return await _closing_settings_response(deps, saved)
 
     async def talent_detail(
         request: Request,
@@ -284,6 +432,18 @@ def payroll_router(deps: WebDependencies) -> APIRouter:
         overview,
         methods=["GET"],
         response_model=PayrollOverviewResponse,
+    )
+    router.add_api_route(
+        "/settings",
+        closing_settings,
+        methods=["GET"],
+        response_model=PayrollClosingSettingsResponse,
+    )
+    router.add_api_route(
+        "/settings",
+        save_closing_settings,
+        methods=["PUT"],
+        response_model=PayrollClosingSettingsResponse,
     )
     router.add_api_route(
         "/talents/{employee_id}",
