@@ -42,6 +42,12 @@ _MONTH_LABELS: Final = (
     "Nov",
     "Des",
 )
+_REJECTED_ACTION_LABELS: Final = {
+    "missing_clock_in": "Clock In perlu diperbaiki",
+    "missing_clock_out": "Clock Out perlu diperbaiki",
+    "missing_both_worked": "Clock In & Clock Out perlu diperbaiki",
+    "absence": "Pengajuan ketidakhadiran perlu diperbaiki",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +86,12 @@ def _is_missing(value: str | None) -> bool:
 
 
 def _rejected_action(day: PayrollDayView) -> str:
-    return {
-        "missing_clock_in": "Clock In perlu diperbaiki",
-        "missing_clock_out": "Clock Out perlu diperbaiki",
-        "missing_both_worked": "Clock In & Clock Out perlu diperbaiki",
-        "absence": "Pengajuan ketidakhadiran perlu diperbaiki",
-    }.get(day.resolution_type, "Attendance perlu diperbaiki")
+    if day.resolution_type is None:
+        return "Attendance perlu diperbaiki"
+    return _REJECTED_ACTION_LABELS.get(
+        day.resolution_type,
+        "Attendance perlu diperbaiki",
+    )
 
 
 def _action_label(day: PayrollDayView) -> str:
