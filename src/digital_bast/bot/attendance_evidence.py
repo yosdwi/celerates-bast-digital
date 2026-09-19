@@ -5,6 +5,9 @@ EmployeeCompletion.log_1_pama_evidence_days already excludes off-days and days
 with no attendance row at all -- see that field's docstring). Candidate
 selection (by index or caption) and the stashed-photo-before-pick flow reuse
 bot/evidence.py's helpers directly rather than duplicating them.
+
+Attendance evidence accepts the existing PNG/JPEG/WebP formats plus PDF. PDF is
+attendance-only: the shared Task & Evidence content sniffer remains image-only.
 """
 
 from __future__ import annotations
@@ -29,6 +32,16 @@ from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
     from datetime import date, time
+
+
+def sniff_attendance_content_type(data: bytes) -> str | None:
+    """Detect supported attendance evidence by signature, never filename."""
+    image_content_type = sniff_content_type(data)
+    if image_content_type is not None:
+        return image_content_type
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,7 +317,7 @@ class AttendanceEvidenceService:
     ) -> UploadResult:
         if len(image) > MAX_IMAGE_BYTES:
             return UploadResult(UploadOutcome.TOO_LARGE)
-        content_type = sniff_content_type(image)
+        content_type = sniff_attendance_content_type(image)
         if content_type is None:
             return UploadResult(UploadOutcome.UNSUPPORTED_TYPE)
         digest = hashlib.sha256(image).hexdigest()
