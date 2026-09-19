@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
-from uuid import UUID
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from uuid import UUID
 
     from digital_bast.domain.completion import DateRange
 
@@ -47,7 +47,7 @@ class PayrollDeliveryReservation:
 
 
 class PayrollReminderDeliveryStore(Protocol):
-    async def reserve(
+    async def reserve(  # noqa: PLR0913 - logical delivery identity is explicit
         self,
         *,
         idempotency_key: str,
