@@ -19,9 +19,10 @@ from digital_bast.bot.attendance_resolution import SubmitOutcome
 from digital_bast.bot.payroll_attendance_draft import render_payroll_draft_prompt
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import datetime, time
 
     from digital_bast.bot.attendance_context import AttendanceReminderContext
+    from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteResult
     from digital_bast.bot.attendance_resolution import (
         AbsenceType,
         ResolutionType,
@@ -38,8 +39,8 @@ class AttendanceResolutionSubmitter(Protocol):
         requested_by_jid: str,
         resolution_type: ResolutionType,
         *,
-        proposed_check_in: object | None = None,
-        proposed_check_out: object | None = None,
+        proposed_check_in: time | None = None,
+        proposed_check_out: time | None = None,
         absence_type: AbsenceType | None = None,
     ) -> SubmitResult: ...
 
@@ -66,7 +67,7 @@ class AttendanceNextGapRouter(Protocol):
         *,
         employee_id: str,
         now: datetime,
-    ) -> object: ...
+    ) -> AttendanceReminderRouteResult: ...
 
 
 async def edit_payroll_attendance_draft(
@@ -105,10 +106,11 @@ async def _continue_to_next_gap(
         employee_id=employee_id,
         now=now,
     )
-    status = getattr(routed, "status", None)
-    selection = getattr(routed, "selection", None)
-    if status is AttendanceReminderRouteStatus.OPEN and selection is not None:
-        attendance_key = selection.day.attendance_key
+    if (
+        routed.status is AttendanceReminderRouteStatus.OPEN
+        and routed.selection is not None
+    ):
+        attendance_key = routed.selection.day.attendance_key
         if attendance_key is None:
             await context_store.clear(jid)
             return (
@@ -122,10 +124,13 @@ async def _continue_to_next_gap(
                 "Data attendance berikutnya baru berubah. "
                 "Balas `lengkapi` untuk memuat kondisi terbaru."
             )
-        return f"{prefix}\n\nSelanjutnya:\n{render_attendance_gap_prompt(selection)}"
+        return (
+            f"{prefix}\n\n"
+            f"Selanjutnya:\n{render_attendance_gap_prompt(routed.selection)}"
+        )
 
     await context_store.clear(jid)
-    if status is AttendanceReminderRouteStatus.NO_ACTION:
+    if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
         return (
             f"{prefix}\n\n"
             "Semua attendance dari reminder ini sudah ditangani. "
