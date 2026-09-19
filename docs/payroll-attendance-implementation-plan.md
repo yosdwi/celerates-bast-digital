@@ -592,9 +592,15 @@ Validation note: source imports were aligned with strict type-only import rules.
 
 #### P03 — Payroll read API
 
-Status: `TODO`  
-Files: `web/payroll_contracts.py`, `web/payroll_router.py`, wiring + API tests.  
-Scope: cycle list/current cycle, summary, Talent rows, day detail. Read-only.
+Status: `DONE`  
+Commits: `9566fdda8472e28e8a1779c0bd1a84a11d78cd34`, `60e250a63490d25f8e959e688fe96d1a044c02ff`, `6726a2fa7a38bb321f35a5125653447ee1aa6cce`, `dd71fcfc147954f2799b0fbf519775b4d838eddc`, `6cf6de6396400d6c46b2a70a424f70acb70a65ac`, `5a69dbef93717f244868cc4950470278f862fda9`, `94ebbedc42ab4ba5ac91353fc75868b6ed104568`, `ef489e04a4614d1ceac9efdd0263cd2fb4d73d1b`, `ca6b11119fc75cf14abe3854993a9281e13ea38f`, `9318f3513f93d3d9ce06ee941bb51c9eaf1de33d`, `386c552862b3dd3bb3333cac75aa20c81bcd9e7b`, `0f891ca53dd866aac569635009ddac34a0b82e38`, `2e2f07a38d975a604d4934165096ed3cefdfa725`, `985489a6d663703ee75ed2134dc03abb51020cdc`, `aee5cd19dde7b9b8c294ef270adbc40f8d8252e0`, `9dd36d998549f03f5654e202754fbfdead1dac3c`.  
+Files: `src/digital_bast/application/attendance_closing.py`, `src/digital_bast/application/payroll_read.py`, `src/digital_bast/infrastructure/payroll_attendance.py`, `src/digital_bast/web/payroll_contracts.py`, `src/digital_bast/web/payroll_router.py`, `src/digital_bast/web/dependencies.py`, `src/digital_bast/web/app.py`, `src/digital_bast/web/production.py`, `tests/unit/application/test_attendance_closing.py`, `tests/unit/application/test_payroll_read.py`, `tests/unit/web/test_payroll_routes.py`.  
+Scope delivered: current/history cycle API, read-only Payroll overview summary, per-Talent rows, day detail, bulk attendance/correction/evidence reader, production DI, and API registration independent from Command Center/BAST report loading.  
+Source semantics: canonical employee ID remains text; missing source has no fabricated attendance ID; approved correction wins over pending/rejected history to match legacy export; pending produces WAITING only when it covers the current raw gap; raw complete supersedes historical request state; `evidence_note` and uploaded attendance evidence both count as supporting evidence.  
+OFF/source rule: Developer holiday/weekend follows existing resolver; IoT missing schedule + missing timesheet is treated as unverified rather than silently OFF; source-unavailable rows are fail-closed and explicitly `talent_action_required=false`, so they are not eligible reminder work.  
+Evaluation rule: P03 uses a conservative next-day `06:00 Asia/Jakarta` read boundary until configurable final-assessment/shift-grace settings land in P23.  
+Targeted validation: sandbox contract runtime tests -> application service `2 passed`; FastAPI router scenario suite `1 passed` covering current 21–20 cycle, overview without BAST report backend, Talent detail, 422 partial cycle selector, and 404 unknown Talent. Repository-local full `pytest/ruff/basedpyright` was not runnable in the tool container because external DNS/package checkout is unavailable. CI configuration confirms full quality gate runs on PR or push to `main`, so full CI is intentionally not claimed at this branch-only checkpoint.  
+No migration or write path was added in P03.
 
 ### Phase B — Payroll UI shell
 
@@ -893,10 +899,12 @@ The final user-facing test sheet should cover at least:
 
 ## 22. Current checkpoint
 
-Phase A deterministic foundation is complete through **P02 — Closing projection model**.
+Implementation is complete through **P03 — Payroll read API**.
 
-Current implementation HEAD before this docs-only checkpoint: `22c8bd20b62ec898f57e6b6ae050777b99fd4df7`.
+Current implementation HEAD before this docs-only checkpoint: `9dd36d998549f03f5654e202754fbfdead1dac3c`.
 
-Verified P02 behavior: `12 passed` targeted projection tests. Full repository CI remains a later PR/merge gate; it is not claimed as executed on this branch-only checkpoint.
+P03 exposes read-only `/api/talentops/v1/payroll/cycles`, `/overview`, and `/talents/{employee_id}` from existing roster/attendance/schedule/timesheet/evidence/correction source truth. It does not depend on Command Center/BAST report loading and adds no payroll truth table.
 
-The next implementation card is **P03 — Payroll read API**. It must adapt existing attendance/correction/schedule source truth into `AttendanceClosingService` without creating a second lifecycle or mutating raw attendance.
+Targeted sandbox contract runtime validation: application service `2 passed`; FastAPI router scenario suite `1 passed`. Full repository `compileall + ruff + basedpyright + pytest + ops` remains the PR/main CI gate and is not claimed as executed on this branch-only checkpoint.
+
+The next implementation card is **P04 — Payroll route independent bootstrap**. It should add the frontend `/admin/talentops/payroll` route and Payroll API client without making the route depend on the existing Command Center bootstrap.
