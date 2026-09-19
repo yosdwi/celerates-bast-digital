@@ -142,7 +142,9 @@ class _Contexts:
 
 class _Outbound:
     def __init__(self, receipts: list[WhatsAppSendReceipt] | None = None) -> None:
-        self.receipts = receipts or [WhatsAppSendReceipt(status="sent", provider_message_id="wa-1")]
+        self.receipts = receipts or [
+            WhatsAppSendReceipt(status="sent", provider_message_id="wa-1")
+        ]
         self.calls: list[tuple[str, str, str]] = []
 
     async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt:
@@ -171,7 +173,7 @@ class _Deliveries:
         _ = (period, created_by)
         existing = self.records.get(idempotency_key)
         if existing is not None:
-            return PayrollDeliveryReservation(existing, False)
+            return PayrollDeliveryReservation(record=existing, created=False)
         record = PayrollDeliveryRecord(
             id="fu-1",
             idempotency_key=idempotency_key,
@@ -185,7 +187,7 @@ class _Deliveries:
             attempt_count=0,
         )
         self.records[idempotency_key] = record
-        return PayrollDeliveryReservation(record, True)
+        return PayrollDeliveryReservation(record=record, created=True)
 
     async def refresh_retryable(
         self,
@@ -195,7 +197,11 @@ class _Deliveries:
         context_id: UUID,
     ) -> PayrollDeliveryRecord | None:
         record = self.records[idempotency_key]
-        if record.state not in {PayrollDeliveryState.RESERVED, PayrollDeliveryState.FAILED_RETRYABLE}:
+        retryable_states = {
+            PayrollDeliveryState.RESERVED,
+            PayrollDeliveryState.FAILED_RETRYABLE,
+        }
+        if record.state not in retryable_states:
             return None
         updated = replace(
             record,
