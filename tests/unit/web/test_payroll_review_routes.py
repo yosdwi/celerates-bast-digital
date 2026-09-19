@@ -36,6 +36,7 @@ _REQUEST_ID = UUID("00000000-0000-0000-0000-000000000401")
 _EVIDENCE_ID = UUID("00000000-0000-0000-0000-000000000402")
 _NOW = datetime(2026, 9, 19, 9, 0, tzinfo=UTC)
 _CYCLE = payroll_cycle(2026, 9)
+_CSRF_TOKEN = "csrf-payroll-review-test-token"
 
 
 class _Authenticator:
@@ -172,7 +173,6 @@ class _AttendanceReview:
         return await _Evidence().metadata(request_id)
 
 
-
 def _client() -> tuple[TestClient, _Resolutions]:
     record = SessionRecord(
         user=AuthenticatedUser(
@@ -181,7 +181,7 @@ def _client() -> tuple[TestClient, _Resolutions]:
             name="Owner",
             role="owner",
         ),
-        csrf_token="csrf",
+        csrf_token=_CSRF_TOKEN,
         created_at=_NOW,
         expires_at=datetime(2026, 9, 20, 9, 0, tzinfo=UTC),
     )
@@ -232,7 +232,7 @@ def test_bulk_decision_requires_csrf_and_returns_item_result() -> None:
     approved = client.post(
         "/api/talentops/v1/payroll/review-queue/decide?year=2026&month=9",
         json=body,
-        headers={"X-CSRF-Token": "csrf"},
+        headers={"X-CSRF-Token": _CSRF_TOKEN},
     )
 
     assert forbidden.status_code == 403
@@ -248,7 +248,7 @@ def test_reject_without_reason_is_rejected_before_mutation() -> None:
     response = client.post(
         "/api/talentops/v1/payroll/review-queue/decide?year=2026&month=9",
         json={"request_ids": [str(_REQUEST_ID)], "decision": "reject"},
-        headers={"X-CSRF-Token": "csrf"},
+        headers={"X-CSRF-Token": _CSRF_TOKEN},
     )
 
     assert response.status_code == 422
