@@ -1,9 +1,9 @@
-"""Scheduled Payroll attendance reminders over closing projection + durable delivery."""
+"""Scheduled and explicit Payroll attendance reminders over current closing truth."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol, final
 from uuid import NAMESPACE_URL, uuid5
 
@@ -13,10 +13,18 @@ from digital_bast.bot.attendance_reminder import compose_attendance_reminder
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from digital_bast.application.attendance_closing_policy import PayrollCycle
-    from digital_bast.application.payroll_closing_settings import PayrollClosingSettingsStore
+    from digital_bast.application.payroll_closing_settings import (
+        PayrollClosingSettings,
+        PayrollClosingSettingsStore,
+    )
     from digital_bast.application.payroll_read import PayrollOverview, PayrollTalentView
-    from digital_bast.application.payroll_reminder_delivery import PayrollReminderDeliveryStore
+    from digital_bast.application.payroll_reminder_delivery import (
+        PayrollDeliveryRecord,
+        PayrollReminderDeliveryStore,
+    )
     from digital_bast.application.talentops_followups import (
         WhatsAppIdentityResolver,
         WhatsAppOutboundGateway,
@@ -24,7 +32,8 @@ if TYPE_CHECKING:
     from digital_bast.bot.attendance_context import AttendanceReminderContext
 
 _CONTEXT_TTL = timedelta(days=7)
-_CREATED_BY = "payroll-scheduler"
+_SCHEDULED_BY = "payroll-scheduler"
+_MANUAL_BY = "payroll-manual"
 
 
 class PayrollOverviewReader(Protocol):
@@ -56,6 +65,27 @@ class PayrollReminderRunSummary:
     final_failed: int = 0
     unknown: int = 0
     unsafe_skipped: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class PayrollManualReminderPreview:
+    employee_id: str
+    eligible: bool
+    outcome: str
+    actionable_days: int = 0
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PayrollManualReminderResult:
+    employee_id: str
+    outcome: str
+    sent: bool
+
+
+def _delivery_order(record: PayrollDeliveryRecord) -> tuple[datetime, datetime, str]:
+    minimum = datetime.min.replace(tzinfo=UTC)
+    return record.reserved_at or minimum, record.sent_at or minimum, record.id
 
 
 @final
@@ -136,6 +166,11 @@ class PayrollTalentReminderService:
                 cycle=cycle,
                 milestone=milestone.label,
                 now=instant,
+                idempotency_key=(
+                    f"payroll-reminder:{self._scope_key}:{cycle.cycle_id}:"
+                    f"{milestone.label}:{talent.employee_id}"
+                ),
+                created_by=_SCHEDULED_BY,
             )
             counts[outcome] += 1
 
@@ -149,18 +184,132 @@ class PayrollTalentReminderService:
             **counts,
         )
 
-    async def _send_one(  # noqa: C901, PLR0911 - explicit delivery state machine
+    async def preview_manual(
+        self,
+        employee_id: str,
+        cycle: PayrollCycle,
+        *,
+        now: datetime,
+    ) -> PayrollManualReminderPreview:
+        policy, talent, outcome = await self._current_talent(employee_id, cycle, now)
+        if talent is None:
+            return PayrollManualReminderPreview(employee_id, False, outcome)
+        context_id = uuid5(
+            NAMESPACE_URL,
+            f"payroll-preview:{self._scope_key}:{cycle.cycle_id}:{employee_id}",
+        )
+        draft = compose_attendance_reminder(
+            talent,
+            cycle,
+            expires_at=now + _CONTEXT_TTL,
+            context_id=context_id,
+        )
+        if draft is None:
+            return PayrollManualReminderPreview(
+                employee_id,
+                False,
+                "unsafe_skipped",
+                actionable_days=talent.actionable_days,
+            )
+        _ = policy
+        return PayrollManualReminderPreview(
+            employee_id,
+            True,
+            "ready",
+            actionable_days=talent.actionable_days,
+            message=draft.as_plain_text(),
+        )
+
+    async def send_manual(
+        self,
+        employee_id: str,
+        cycle: PayrollCycle,
+        request_id: UUID,
+        *,
+        now: datetime,
+    ) -> PayrollManualReminderResult:
+        _, talent, outcome = await self._current_talent(employee_id, cycle, now)
+        if talent is None:
+            return PayrollManualReminderResult(employee_id, outcome, False)
+
+        latest = await self._latest_delivery(employee_id, cycle)
+        if latest is not None and latest.state in {
+            PayrollDeliveryState.UNKNOWN,
+            PayrollDeliveryState.RESERVED,
+            PayrollDeliveryState.SENDING,
+            PayrollDeliveryState.FAILED_RETRYABLE,
+        }:
+            blocked = {
+                PayrollDeliveryState.UNKNOWN: "unknown_blocked",
+                PayrollDeliveryState.RESERVED: "delivery_in_progress",
+                PayrollDeliveryState.SENDING: "delivery_in_progress",
+                PayrollDeliveryState.FAILED_RETRYABLE: "retry_pending",
+            }[latest.state]
+            return PayrollManualReminderResult(employee_id, blocked, False)
+
+        idempotency_key = (
+            f"payroll-manual:{self._scope_key}:{cycle.cycle_id}:"
+            f"{request_id}:{employee_id}"
+        )
+        result = await self._send_one(
+            talent=talent,
+            cycle=cycle,
+            milestone="MANUAL",
+            now=now,
+            idempotency_key=idempotency_key,
+            created_by=_MANUAL_BY,
+        )
+        return PayrollManualReminderResult(employee_id, result, result == "sent")
+
+    async def _current_talent(
+        self,
+        employee_id: str,
+        cycle: PayrollCycle,
+        now: datetime,
+    ) -> tuple[PayrollClosingSettings, PayrollTalentView | None, str]:
+        policy = await self._settings.load(self._scope_key)
+        overview = await self._payroll.overview(
+            cycle,
+            now=now,
+            next_day_ready_hour=policy.next_day_ready_hour,
+        )
+        talent = next(
+            (item for item in overview.talents if item.employee_id == employee_id),
+            None,
+        )
+        if talent is None:
+            return policy, None, "talent_not_found"
+        if talent.role not in policy.target_roles:
+            return policy, None, "not_in_audience"
+        if not talent.talent_action_required:
+            return policy, None, "not_actionable"
+        return policy, talent, "ready"
+
+    async def _latest_delivery(
+        self,
+        employee_id: str,
+        cycle: PayrollCycle,
+    ) -> PayrollDeliveryRecord | None:
+        records = tuple(
+            record
+            for record in await self._deliveries.list_cycle(
+                scope_key=self._scope_key,
+                cycle_id=cycle.cycle_id,
+            )
+            if record.employee_id == employee_id
+        )
+        return None if not records else max(records, key=_delivery_order)
+
+    async def _send_one(  # noqa: C901, PLR0911, PLR0913 - explicit delivery state machine
         self,
         *,
         talent: PayrollTalentView,
         cycle: PayrollCycle,
         milestone: str,
         now: datetime,
+        idempotency_key: str,
+        created_by: str,
     ) -> str:
-        idempotency_key = (
-            f"payroll-reminder:{self._scope_key}:{cycle.cycle_id}:"
-            f"{milestone}:{talent.employee_id}"
-        )
         context_id = uuid5(NAMESPACE_URL, idempotency_key)
         draft = compose_attendance_reminder(
             talent,
@@ -180,7 +329,7 @@ class PayrollTalentReminderService:
             cycle_id=cycle.cycle_id,
             milestone=milestone,
             context_id=context_id,
-            created_by=_CREATED_BY,
+            created_by=created_by,
         )
         record = reservation.record
         if record.state is PayrollDeliveryState.SENT:
