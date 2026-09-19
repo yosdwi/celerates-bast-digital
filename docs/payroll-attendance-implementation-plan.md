@@ -617,9 +617,14 @@ UI boundary: P04 intentionally renders only a read-only Payroll shell proving ro
 
 #### P05 — Payroll mobile-friendly summary
 
-Status: `TODO`  
-Files: new `PayrollPage.tsx` + current style system/tests.  
-Scope: cycle header, evaluated-through, 3 business counts, Review Queue card, Talent Follow-up card, searchable Talent table/list.
+Status: `DONE`  
+Commits: `31ef8365ba027570d8506fa883097da50d301847`, `f36e2d33d0594b5083b428db7fca578c2d588655`, `51ab7b75affd1a53a997ee59cfde27209fb46255`, `449a651214e5cdd90eadc2caf4e1581c91f8a273`, `8d66e4a1dfe5b8fff0a338222987cf471a72d46c`, `c70376dd47be28c901c69b328167e095cc95f9ab`, `e48dc8d0135544cc7d89bcff1e141d777c612b33`.  
+Files: `frontend/src/pages/PayrollPage.tsx`, `frontend/src/pages/PayrollPage.test.tsx`, `frontend/src/styles/payroll.css`, `frontend/src/main.tsx`, `frontend/src/app/App.tsx`, `frontend/src/components/WorkspaceFrame.tsx`.  
+Scope delivered: mobile-friendly Payroll header with 21–20 cycle/evaluated-through context, the three locked business counts (`Complete`, `Perlu Talent`, `Menunggu review`), read-only Review Queue and Talent Follow-up workload cards, searchable/filterable Talent list, compact mobile Talent cards, and explicit source-unverified notice kept separate from Talent action.  
+Implementation note: P03 overview intentionally does not carry per-day resolution detail for every Talent, so P05 does not invent Clock In/Clock Out/absence breakdowns. Review Queue shows truthful waiting-Talent/day workload only; typed queue breakdown is deferred to P15/P16. AI action is hidden on Payroll until the dedicated closing-query layer lands in P37, avoiding a dead control.  
+Parallel-change note: `App.tsx` changed during P05. The implementation re-fetched the branch blob and preserved the existing P04 navigation/loading fixes before wiring `PayrollPage`; no blind overwrite was performed.  
+Tests added: `PayrollPage.test.tsx` locks concise summary rendering, source-unverified separation, status filtering and global Talent/NRP search. Existing P04 App test continues to lock independent Payroll bootstrap.  
+Validation note: full `npm test` / `npm run typecheck` could not run because the tool container still cannot resolve `github.com` for branch checkout/package setup. No passing frontend runner result is claimed; frontend build/typecheck remains the PR/main CI gate.
 
 #### P06 — Payroll day detail drawer
 
@@ -904,12 +909,12 @@ The final user-facing test sheet should cover at least:
 
 ## 22. Current checkpoint
 
-Implementation is complete through **P04 — Payroll route independent bootstrap**.
+Implementation is complete through **P05 — Payroll mobile-friendly summary**.
 
-Current implementation HEAD before this docs-only checkpoint: `d5357515d073c17c7cad7b43203a1e348fd4ee84`.
+Current implementation HEAD before this docs-only checkpoint: `e48dc8d0135544cc7d89bcff1e141d777c612b33`.
 
-P04 adds the typed frontend Payroll API client, a discoverable `/admin/talentops/payroll` SPA route, and a route-aware bootstrap that loads session + Payroll overview without calling Command Center. Existing FastAPI wildcard routing already supports direct refresh of the client route.
+P05 replaces the temporary Payroll shell with the operational read-only workspace: 21–20 cycle/evaluated-through context, the three locked business counts, truthful review/follow-up workload cards, separate source-unverified warning, status filters/search, and desktop/mobile Talent lists. It consumes only P03/P04 read contracts; no review mutation or reminder side effect was added.
 
-Regression tests were added for independent Payroll bootstrap and API URL contracts. Repository-local `npm test` and `npm run typecheck` could not run in the tool container because external DNS prevents GitHub/npm checkout, so no frontend runner result is claimed at this checkpoint.
+Frontend tests were added for summary semantics, unverified-vs-Talent-action separation, status filtering and search. Full `npm test` / `npm run typecheck` could not run in the tool container because DNS still prevents repository/package checkout, so no passing frontend runner result is claimed. Full frontend CI remains the PR/main gate.
 
-The next implementation card is **P05 — Payroll mobile-friendly summary**. It should replace the temporary read-only shell with the real operational summary, Review Queue/Talent Follow-up cards, filters/search and mobile-friendly Talent list while continuing to consume the P03/P04 read-only contracts.
+The next implementation card is **P06 — Payroll day detail drawer**. It should fetch `/api/talentops/v1/payroll/talents/{employee_id}` on demand and expose actual/proposed values, evidence presence, status/reason and current request metadata in a mobile-friendly read-only drawer without introducing review actions yet.
