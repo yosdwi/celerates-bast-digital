@@ -16,6 +16,7 @@ import "./styles/task-evidence.css";
 import "./styles/talent-mobile.css";
 import "./styles/talent-urls.css";
 import "./styles/attendance-gaps.css";
+import "./styles/payroll.css";
 
 const root = document.getElementById("root");
 if (!root) {
