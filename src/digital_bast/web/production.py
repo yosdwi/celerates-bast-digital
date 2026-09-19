@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 from digital_bast.application.attendance_review import AttendanceReviewService
 from digital_bast.application.bast_generation_jobs import BastGenerationJobService
 from digital_bast.application.bast_workflow import BastWorkflowService
+from digital_bast.application.payroll_read import PayrollReadService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
@@ -24,6 +25,7 @@ from digital_bast.infrastructure.local_completion_source import (
     PostgresTaskEvidenceReader,
 )
 from digital_bast.infrastructure.ollama_chat import OllamaChatClient
+from digital_bast.infrastructure.payroll_attendance import PostgresPayrollAttendanceReader
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.redis_url import parse_redis_url
 from digital_bast.infrastructure.repositories import (
@@ -172,6 +174,7 @@ def production_dependencies() -> WebDependencies:
 
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
+    payroll_read: PayrollReadService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
     task_evidence_review: TaskEvidenceReviewService | None = None
@@ -193,6 +196,11 @@ def production_dependencies() -> WebDependencies:
             records,
             PostgresAttendanceFactReader(app_dsn),
             PostgresTaskEvidenceReader(app_dsn),
+        )
+        payroll_read = PayrollReadService(
+            employees,
+            records,
+            PostgresPayrollAttendanceReader(app_dsn),
         )
         source_sync_state = PostgresSourceSyncStateStore(app_dsn)
         task_status_history = PostgresTaskStatusHistoryReader(app_dsn)
@@ -257,6 +265,7 @@ def production_dependencies() -> WebDependencies:
         backend=backend,
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
+        payroll_read=payroll_read,
         talentops_ai=talentops_ai,
         talentops_followups=talentops_followups,
         task_evidence_review=task_evidence_review,
