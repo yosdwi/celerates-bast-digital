@@ -36,7 +36,7 @@ _REQUEST_ID = UUID("00000000-0000-0000-0000-000000000401")
 _EVIDENCE_ID = UUID("00000000-0000-0000-0000-000000000402")
 _NOW = datetime(2026, 9, 19, 9, 0, tzinfo=UTC)
 _CYCLE = payroll_cycle(2026, 9)
-_CSRF_TOKEN = "csrf-payroll-review-test-token"
+_CSRF_TOKEN = "csrf-payroll-review-test-token"  # noqa: S105 - synthetic test value
 
 
 class _Authenticator:
