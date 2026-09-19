@@ -110,7 +110,7 @@ class _Deliveries:
         assert created_by == "payroll-scheduler"
         existing = self.records.get(idempotency_key)
         if existing is not None:
-            return PayrollGroupDigestReservation(existing, False)
+            return PayrollGroupDigestReservation(record=existing, created=False)
         record = PayrollGroupDigestDelivery(
             idempotency_key=idempotency_key,
             scope_key=scope_key,
@@ -122,7 +122,7 @@ class _Deliveries:
             attempt_count=0,
         )
         self.records[idempotency_key] = record
-        return PayrollGroupDigestReservation(record, True)
+        return PayrollGroupDigestReservation(record=record, created=True)
 
     async def refresh_retryable(
         self,
@@ -132,7 +132,10 @@ class _Deliveries:
         message: str,
     ) -> PayrollGroupDigestDelivery | None:
         record = self.records[idempotency_key]
-        if record.state not in {PayrollDeliveryState.RESERVED, PayrollDeliveryState.FAILED_RETRYABLE}:
+        if record.state not in {
+            PayrollDeliveryState.RESERVED,
+            PayrollDeliveryState.FAILED_RETRYABLE,
+        }:
             return None
         updated = replace(
             record,
