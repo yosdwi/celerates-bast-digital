@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Protocol, final
 from uuid import NAMESPACE_URL, uuid5
 
 from digital_bast.application.attendance_closing_policy import due_milestone, payroll_cycle_for
-from digital_bast.application.payroll_reminder_delivery import PayrollDeliveryState
+from digital_bast.application.payroll_reminder_delivery import (
+    PayrollDeliveryState,
+    payroll_bridge_request_id,
+)
 from digital_bast.bot.attendance_reminder import compose_attendance_reminder
 from digital_bast.domain.time import JAKARTA
 
@@ -372,7 +375,11 @@ class PayrollTalentReminderService:
         if claimed is None:
             return "unsafe_skipped"
 
-        receipt = await self._outbound.send(jid, message, idempotency_key)
+        receipt = await self._outbound.send(
+            jid,
+            message,
+            payroll_bridge_request_id(idempotency_key),
+        )
         if receipt.status == "sent":
             await self._deliveries.finish(
                 idempotency_key,
