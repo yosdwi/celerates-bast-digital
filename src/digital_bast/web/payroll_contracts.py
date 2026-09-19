@@ -152,3 +152,45 @@ class PayrollReviewDecisionResponse(_FrozenModel):
     skipped: int
     failed: int
     items: tuple[PayrollReviewDecisionItemResponse, ...]
+
+
+class PayrollClosingMilestoneResponse(_FrozenModel):
+    label: str
+    days_before: int
+    work_date: date
+
+
+class PayrollClosingPreviewResponse(_FrozenModel):
+    cycle: PayrollCycleResponse
+    milestones: tuple[PayrollClosingMilestoneResponse, ...]
+    estimated_actionable_talents: int
+    estimated_unverified_talents: int
+
+
+class PayrollClosingSettingsResponse(_FrozenModel):
+    scope_key: str
+    enabled: bool
+    paused: bool
+    closing_day: int
+    reminder_hour: int
+    reminder_offsets: tuple[int, ...]
+    target_roles: tuple[str, ...]
+    next_day_ready_hour: int
+    desired_version: int
+    applied_version: int
+    updated_by: str | None
+    preview: PayrollClosingPreviewResponse
+
+
+class PayrollClosingSettingsInput(BaseModel):
+    enabled: bool = False
+    paused: bool = False
+    closing_day: int = Field(default=20, ge=1, le=31)
+    reminder_hour: int = Field(default=9, ge=0, le=23)
+    reminder_offsets: tuple[int, ...] = Field(default=(5, 3, 1), min_length=1, max_length=10)
+    target_roles: tuple[str, ...] = Field(
+        default=("Developer", "IoT Operations"),
+        min_length=1,
+        max_length=10,
+    )
+    next_day_ready_hour: int = Field(default=6, ge=0, le=23)
