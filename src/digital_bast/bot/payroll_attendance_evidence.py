@@ -2,8 +2,9 @@
 
 P11 deliberately bypasses legacy candidate selection once a stable Payroll draft
 is active: the draft already carries the canonical attendance identity and owner.
-This module stores image evidence, refreshes the durable draft, and never submits
-a PMO request. PDF support is intentionally deferred to P12.
+This module stores attendance evidence, refreshes the durable draft, and never
+submits a PMO request. P12 extends the same authority to PDF without changing the
+workflow state machine.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ _OUTCOME_REPLY = {
     UploadOutcome.NOT_OWNED: "Attendance ini bukan milik kamu.",
     UploadOutcome.TOO_LARGE: "Ukuran file lebih dari 5 MB.",
     UploadOutcome.UNSUPPORTED_TYPE: (
-        "Format file belum didukung. Kirim PNG, JPEG, atau WebP."
+        "Format file belum didukung. Kirim PNG, JPEG, WebP, atau PDF."
     ),
 }
 
