@@ -91,6 +91,32 @@ async def test_image_is_attached_to_exact_active_draft_and_keeps_clock(
 
 
 @pytest.mark.asyncio
+async def test_pdf_payload_follows_same_active_draft_flow(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "bukti.pdf"
+    file_path.write_bytes(b"%PDF-1.7\nattendance")
+    evidence = _Evidence(UploadOutcome.STORED)
+    state = _State(_draft(has_evidence=True))
+
+    response = await attach_payroll_attendance_evidence(
+        jid=_JID,
+        draft=_draft(),
+        file_path=file_path,
+        caption="surat pendukung",
+        evidence=evidence,
+        state=state,
+    )
+
+    assert evidence.calls == [
+        (_EMPLOYEE_ID, _ATTENDANCE_KEY, b"%PDF-1.7\nattendance", "surat pendukung")
+    ]
+    assert "Bukti attendance sudah tersimpan" in response
+    assert "Bukti: ✓" in response
+    assert "Belum diajukan ke PMO" in response
+
+
+@pytest.mark.asyncio
 async def test_duplicate_media_refreshes_existing_evidence_without_pmo_submit(
     tmp_path: Path,
 ) -> None:
@@ -117,8 +143,8 @@ async def test_duplicate_media_refreshes_existing_evidence_without_pmo_submit(
 async def test_unsupported_media_does_not_mark_draft_evidence_ready(
     tmp_path: Path,
 ) -> None:
-    file_path = tmp_path / "bukti.pdf"
-    file_path.write_bytes(b"%PDF-1.7")
+    file_path = tmp_path / "bukti.txt"
+    file_path.write_bytes(b"not-supported")
     state = _State(_draft(has_evidence=True))
 
     response = await attach_payroll_attendance_evidence(
@@ -131,7 +157,7 @@ async def test_unsupported_media_does_not_mark_draft_evidence_ready(
     )
 
     assert "belum didukung" in response
-    assert "PNG, JPEG, atau WebP" in response
+    assert "PNG, JPEG, WebP, atau PDF" in response
     assert state.calls == []
     assert state.cleared is False
 
