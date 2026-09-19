@@ -14,7 +14,10 @@ from digital_bast.infrastructure.whatsapp_directory import (
     TalentWhatsAppBindResult,
     TalentWhatsAppDirectoryRow,
 )
-from digital_bast.infrastructure.whatsapp_outbound import WhatsAppGroupDirectory
+from digital_bast.infrastructure.whatsapp_outbound import (
+    WhatsAppGroupDirectory,
+    WhatsAppGroupParticipant,
+)
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 
@@ -63,6 +66,9 @@ class TalentDirectoryResponse(BaseModel):
 
 class GroupParticipantResponse(BaseModel):
     jid: str
+    display_name: str
+    number: str
+    is_my_contact: bool
     is_admin: bool
     is_super_admin: bool
     employee_id: str | None = None
@@ -123,6 +129,24 @@ async def _groups(deps: WebDependencies) -> WhatsAppGroupDirectory:
     return await deps.bot_bridge_status.get_groups()
 
 
+def _participant_response(
+    participant: WhatsAppGroupParticipant,
+    talent_by_jid: dict[str, TalentWhatsAppDirectoryRow],
+) -> GroupParticipantResponse:
+    mapped = talent_by_jid.get(participant.jid)
+    return GroupParticipantResponse(
+        jid=participant.jid,
+        display_name=participant.display_name,
+        number=participant.number,
+        is_my_contact=participant.is_my_contact,
+        is_admin=participant.is_admin,
+        is_super_admin=participant.is_super_admin,
+        employee_id=None if mapped is None else mapped.employee_id,
+        nrp=None if mapped is None else mapped.nrp,
+        full_name=None if mapped is None else mapped.full_name,
+    )
+
+
 def _closing_response(
     setting: PayrollClosingGroupSetting,
     directory: WhatsAppGroupDirectory,
@@ -156,7 +180,11 @@ def whatsapp_directory_router(
         _ = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
         talents = await selected_store().list_talents()
         groups = await _groups(deps)
-        talent_by_jid = {talent.wa_jid: talent for talent in talents if talent.wa_jid is not None}
+        talent_by_jid = {
+            talent.wa_jid: talent
+            for talent in talents
+            if talent.wa_jid is not None
+        }
         discovered_jids = {
             participant.jid
             for group in groups.groups
@@ -172,14 +200,7 @@ def whatsapp_directory_router(
                     subject=group.subject,
                     member_count=group.member_count,
                     participants=tuple(
-                        GroupParticipantResponse(
-                            jid=participant.jid,
-                            is_admin=participant.is_admin,
-                            is_super_admin=participant.is_super_admin,
-                            employee_id=(mapped.employee_id if (mapped := talent_by_jid.get(participant.jid)) else None),
-                            nrp=None if mapped is None else mapped.nrp,
-                            full_name=None if mapped is None else mapped.full_name,
-                        )
+                        _participant_response(participant, talent_by_jid)
                         for participant in group.participants
                     ),
                 )
@@ -205,7 +226,13 @@ def whatsapp_directory_router(
         payload: WhatsAppMappingInput,
         csrf_token: HeaderCsrf = None,
     ) -> WhatsAppMappingResponse:
-        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
         verify_csrf(record, csrf_token)
         _require_admin(record.user.role)
         result = await selected_store().bind(employee_id, payload.wa_jid)
@@ -215,7 +242,10 @@ def whatsapp_directory_router(
                 detail="Talent WhatsApp identity must be a direct @c.us or @lid JID",
             )
         if result.outcome is TalentWhatsAppBindOutcome.EMPLOYEE_NOT_FOUND:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active Talent not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active Talent not found",
+            )
         if result.outcome in {
             TalentWhatsAppBindOutcome.EMPLOYEE_ALREADY_BOUND,
             TalentWhatsAppBindOutcome.JID_ALREADY_BOUND,
@@ -235,7 +265,13 @@ def whatsapp_directory_router(
         employee_id: str,
         csrf_token: HeaderCsrf = None,
     ) -> WhatsAppMappingResponse:
-        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
         verify_csrf(record, csrf_token)
         _require_admin(record.user.role)
         removed = await selected_store().unbind(employee_id)
@@ -259,12 +295,26 @@ def whatsapp_directory_router(
         scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
         csrf_token: HeaderCsrf = None,
     ) -> PayrollClosingGroupResponse:
-        _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
         verify_csrf(record, csrf_token)
         _require_admin(record.user.role)
-        group_jid = None if payload.group_jid is None or not payload.group_jid.strip() else payload.group_jid.strip()
+        group_jid = (
+            None
+            if payload.group_jid is None or not payload.group_jid.strip()
+            else payload.group_jid.strip()
+        )
         groups = await _groups(deps)
-        if group_jid is not None and groups.ready and all(group.jid != group_jid for group in groups.groups):
+        if (
+            group_jid is not None
+            and groups.ready
+            and all(group.jid != group_jid for group in groups.groups)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Selected WhatsApp group is not present in the current discovery snapshot",
@@ -282,7 +332,12 @@ def whatsapp_directory_router(
             ) from error
         return _closing_response(setting, groups)
 
-    router.add_api_route("", directory, methods=["GET"], response_model=WhatsAppDirectoryResponse)
+    router.add_api_route(
+        "",
+        directory,
+        methods=["GET"],
+        response_model=WhatsAppDirectoryResponse,
+    )
     router.add_api_route(
         "/mappings/{employee_id}",
         bind_mapping,
