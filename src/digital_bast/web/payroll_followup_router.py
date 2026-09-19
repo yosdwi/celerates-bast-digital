@@ -99,7 +99,7 @@ def _selected_cycle(
     return payroll_cycle(year, month, closing_day)
 
 
-def payroll_followup_router(  # noqa: C901 - cohesive follow-up API factory
+def payroll_followup_router(
     deps: WebDependencies,
     digest_service: PayrollDigestService | None = None,
     reminder_service: PayrollTalentReminderService | None = None,
@@ -177,7 +177,7 @@ def payroll_followup_router(  # noqa: C901 - cohesive follow-up API factory
         )
         return PayrollManualReminderPreviewResponse.model_validate(preview)
 
-    async def send_reminder(
+    async def send_reminder(  # noqa: PLR0913, PLR0917 - FastAPI route contract
         request: Request,
         employee_id: str,
         payload: PayrollManualReminderInput,
