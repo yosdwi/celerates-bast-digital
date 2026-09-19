@@ -22,7 +22,7 @@ BASE_ROW = AttendanceClosingDayInput(
 
 def test_missing_clock_in_requires_talent_action() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[replace(BASE_ROW, clock_in_local=None)],
         evaluated_through=date(2026, 9, 20),
     )
@@ -37,7 +37,7 @@ def test_missing_clock_in_requires_talent_action() -> None:
 
 def test_submitted_request_covering_full_gap_waits_for_approval() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -59,7 +59,7 @@ def test_submitted_request_covering_full_gap_waits_for_approval() -> None:
 
 def test_approved_correction_covering_full_gap_is_complete() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -83,7 +83,7 @@ def test_approved_correction_covering_full_gap_is_complete() -> None:
 
 def test_future_day_after_evaluated_through_is_ignored() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(BASE_ROW, attendance_id=1, attendance_date=date(2026, 9, 19)),
             replace(
@@ -102,7 +102,7 @@ def test_future_day_after_evaluated_through_is_ignored() -> None:
 
 def test_evidence_only_does_not_cover_missing_attendance() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -120,7 +120,7 @@ def test_evidence_only_does_not_cover_missing_attendance() -> None:
 
 def test_partial_correction_does_not_cover_a_two_sided_gap() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -138,7 +138,7 @@ def test_partial_correction_does_not_cover_a_two_sided_gap() -> None:
 
 def test_raw_complete_attendance_is_complete_without_request() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[BASE_ROW],
         evaluated_through=date(2026, 9, 20),
     )
@@ -149,7 +149,7 @@ def test_raw_complete_attendance_is_complete_without_request() -> None:
 
 def test_uncovered_gap_has_precedence_over_waiting_submission() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -174,7 +174,7 @@ def test_uncovered_gap_has_precedence_over_waiting_submission() -> None:
 
 def test_rejected_correction_returns_to_actionable() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -192,7 +192,7 @@ def test_rejected_correction_returns_to_actionable() -> None:
 
 def test_scheduled_off_is_complete_without_clock_values() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
@@ -210,10 +210,11 @@ def test_scheduled_off_is_complete_without_clock_values() -> None:
 
 def test_unavailable_source_never_becomes_complete() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[
             replace(
                 BASE_ROW,
+                attendance_id=None,
                 clock_in_local=None,
                 clock_out_local=None,
                 schedule_state=AttendanceScheduleState.OFF,
@@ -224,12 +225,13 @@ def test_unavailable_source_never_becomes_complete() -> None:
     )
 
     assert result.status is AttendanceClosingStatus.NEEDS_TALENT_ACTION
+    assert result.days[0].attendance_id is None
     assert result.days[0].reason is AttendanceClosingReason.SOURCE_UNAVAILABLE
 
 
 def test_empty_source_rows_never_become_complete() -> None:
     result = AttendanceClosingService().evaluate(
-        employee_id=101,
+        employee_id="emp-101",
         rows=[],
         evaluated_through=date(2026, 9, 20),
     )
