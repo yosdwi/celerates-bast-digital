@@ -122,9 +122,12 @@ class _AttendanceContextRow:
 def _keys_from_json(value: object) -> tuple[str, ...] | None:
     if not isinstance(value, list):
         return None
-    if any(not isinstance(item, str) for item in value):
-        return None
-    return tuple(value)
+    keys: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        keys.append(item)
+    return tuple(keys)
 
 
 @final
