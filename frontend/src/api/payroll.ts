@@ -157,6 +157,45 @@ export interface PayrollReviewDecisionResponse {
   items: PayrollReviewDecisionItem[];
 }
 
+export interface PayrollClosingMilestone {
+  label: string;
+  days_before: number;
+  work_date: string;
+}
+
+export interface PayrollClosingPreview {
+  cycle: PayrollCycle;
+  milestones: PayrollClosingMilestone[];
+  estimated_actionable_talents: number;
+  estimated_unverified_talents: number;
+}
+
+export interface PayrollClosingSettings {
+  scope_key: string;
+  enabled: boolean;
+  paused: boolean;
+  closing_day: number;
+  reminder_hour: number;
+  reminder_offsets: number[];
+  target_roles: string[];
+  next_day_ready_hour: number;
+  desired_version: number;
+  applied_version: number;
+  updated_by: string | null;
+  preview: PayrollClosingPreview;
+}
+
+export type PayrollClosingSettingsInput = Pick<
+  PayrollClosingSettings,
+  | "enabled"
+  | "paused"
+  | "closing_day"
+  | "reminder_hour"
+  | "reminder_offsets"
+  | "target_roles"
+  | "next_day_ready_hour"
+>;
+
 function cycleQuery(year?: number, month?: number): string {
   if (year === undefined || month === undefined) return "";
   return `?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
@@ -212,6 +251,31 @@ export async function decidePayrollReviewQueue(
         decision,
         rejection_reason: rejectionReason?.trim() || null,
       }),
+    },
+  );
+}
+
+export async function getPayrollClosingSettings(
+  scopeKey = "default",
+): Promise<PayrollClosingSettings> {
+  const query = new URLSearchParams({ scope_key: scopeKey });
+  return apiFetch<PayrollClosingSettings>(
+    `/api/talentops/v1/payroll/settings?${query.toString()}`,
+  );
+}
+
+export async function savePayrollClosingSettings(
+  csrfToken: string,
+  input: PayrollClosingSettingsInput,
+  scopeKey = "default",
+): Promise<PayrollClosingSettings> {
+  const query = new URLSearchParams({ scope_key: scopeKey });
+  return apiFetch<PayrollClosingSettings>(
+    `/api/talentops/v1/payroll/settings?${query.toString()}`,
+    {
+      method: "PUT",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify(input),
     },
   );
 }
