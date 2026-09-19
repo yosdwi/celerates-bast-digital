@@ -45,4 +45,11 @@ grep -q 'flock -n' scripts/deploy-wa-session.sh
 # coupling is exactly what caused WhatsApp to revoke the session in the
 # first place. Keep this a standing guard against it regressing silently.
 ! grep -q 'wa-session' scripts/deploy.sh
+grep -q '^USER 10001:10001$' whatsapp-web-session/Dockerfile
+grep -q 'flock -n' scripts/deploy-whatsapp-web-session.sh
+# Same guard as wa-session above, for the candidate whatsapp-web.js
+# transport -- see docs/wa-session-whatsapp-web-js-migration-plan.md. It
+# must never be touched by the automated blue/green flow either, for the
+# identical anti-abuse-penalty reason.
+! grep -q 'whatsapp-web-session' scripts/deploy.sh
 printf '%s\n' "operations static checks passed"

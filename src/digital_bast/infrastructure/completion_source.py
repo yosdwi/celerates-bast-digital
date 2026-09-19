@@ -91,6 +91,11 @@ class CompletionSource:
                         for record in schedules
                         if record.employee_id == person.id
                     },
+                    {
+                        record.work_date: record
+                        for record in timesheets
+                        if record.employee_id == person.id
+                    },
                 ),
                 attendance=tuple(
                     fact
@@ -108,6 +113,7 @@ class CompletionSource:
                         record.title,
                         record.status,
                         evidence.get(str(record.key), 0),
+                        record_key=str(record.key),
                     )
                     for record in tasks
                     if record.employee_id == person.id

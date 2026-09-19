@@ -45,6 +45,7 @@ def test_talent_signals_capture_cross_domain_dependencies() -> None:
         ),
         (
             TalentTask(
+                record_key="task:2026-08-10:EMP-1:abc123",
                 work_date=date(2026, 8, 10),
                 title="Close deployment task",
                 status="Closed",

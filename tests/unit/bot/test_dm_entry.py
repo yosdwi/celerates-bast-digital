@@ -280,11 +280,20 @@ async def test_bare_digit_stays_with_legacy_evidence_selection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     draft_state = _DraftState()
+    activation = _Activation()
+
+    class _ActiveEvidence:
+        async def active_kind(self, jid: str) -> str:
+            assert jid == _JID
+            return "attendance"
+
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
         lambda: draft_state,
     )
+    monkeypatch.setattr(dm_entry, "create_activation_service", lambda: activation)
+    monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: _ActiveEvidence())
 
     async def legacy(text: str, jid: str) -> str:
         assert text == "1"

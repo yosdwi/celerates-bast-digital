@@ -166,7 +166,86 @@
   margin-top: 10px;
 }
 
+.bast-history-panel {
+  margin-bottom: 12px;
+}
+
+.bast-history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.bast-history-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft, #eef0f2);
+}
+
+.bast-history-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bast-history-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bast-history-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.bast-history-status.succeeded .bast-history-status-dot {
+  background: #16a34a;
+}
+
+.bast-history-status.succeeded {
+  color: #16a34a;
+}
+
+.bast-history-status.failed .bast-history-status-dot,
+.bast-history-status.cancelled .bast-history-status-dot {
+  background: #dc2626;
+}
+
+.bast-history-status.failed,
+.bast-history-status.cancelled {
+  color: #dc2626;
+}
+
 @media (max-width: 680px) {
+  .bast-history-item {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "main status" "date date" "download download";
+  }
+
+  .bast-history-item-main {
+    grid-area: main;
+  }
+
+  .bast-history-status {
+    grid-area: status;
+  }
+
+  .bast-history-item > .cell-muted {
+    grid-area: date;
+  }
+
+  .bast-history-item > .secondary-button {
+    grid-area: download;
+    justify-self: start;
+  }
+
   .approval-card {
     grid-template-columns: 84px 1fr;
   }

@@ -48,6 +48,10 @@ export function SyncIcon(props: IconProps) {
   return <svg {...common} {...props}><path d="M20 7h-5V2" /><path d="M20 7a8 8 0 1 0 1 8" /></svg>;
 }
 
+export function ClockIcon(props: IconProps) {
+  return <svg {...common} {...props}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>;
+}
+
 export function ExternalIcon(props: IconProps) {
   return <svg {...common} {...props}><path d="M9 5H5v14h14v-4" /><path d="M13 5h6v6" /><path d="m19 5-9 9" /></svg>;
 }

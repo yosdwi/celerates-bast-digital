@@ -80,14 +80,12 @@ class _AttendanceFactRow:
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the immutable client attendance table.
+    """Derives AttendanceFact from the `attendance` table.
 
-    Legacy evidence remains grandfathered: rows created before the approval
-    workflow have ``requires_resolution = false`` and keep satisfying today's
-    readiness contract. New WhatsApp attendance evidence explicitly writes
-    ``requires_resolution = true`` and only counts after a PMO-approved
-    ``attendance_resolution_requests`` row references that exact evidence.
-    Raw Clock In/Out values are never rewritten by this projection.
+    `evidence_note` is the human-maintained column NocoDB edits (it carries the
+    old NocoDB "Evidence" text field). `evidence_photo_count` is the WhatsApp
+    DM upload path (bot/attendance_evidence.py, attendance_evidence table) --
+    either one satisfies has_evidence.
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -112,15 +110,7 @@ class PostgresAttendanceFactReader:
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
                            a.evidence_note,
-                           COUNT(ae.id) FILTER (
-                               WHERE ae.requires_resolution = FALSE
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM attendance_resolution_requests r
-                                      WHERE r.evidence_id = ae.id
-                                        AND r.status = 'approved'
-                                  )
-                           ) AS evidence_photo_count
+                           COUNT(ae.id) AS evidence_photo_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s
@@ -152,12 +142,9 @@ class _TaskEvidenceCountRow:
 
 @final
 class PostgresTaskEvidenceReader:
-    """Per-task counts for evidence explicitly submitted by the Talent.
-
-    Talent Mobile may stage files before the final "Ajukan ke PMO" action.
-    Those draft rows stay out of completion/readiness and therefore out of the
-    Generator BAST until ``submitted_at`` is set. Legacy evidence is
-    grandfathered by the migration that backfills submitted_at=uploaded_at.
+    """Per-task evidence counts from task_evidence (talent uploads over WhatsApp DM,
+    see bot/evidence.py), keyed by tasks.record_key -- the same key domain Task
+    records expose as str(task.key).
     """
 
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
@@ -181,7 +168,6 @@ class PostgresTaskEvidenceReader:
                     FROM task_evidence e
                     JOIN tasks t ON t.id = e.task_id
                     WHERE e.work_date BETWEEN %s AND %s
-                      AND e.submitted_at IS NOT NULL
                     GROUP BY t.record_key
                     """,
                     (period.start, period.end),
