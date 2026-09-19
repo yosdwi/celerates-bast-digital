@@ -161,8 +161,11 @@ def _patch(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("message", ["payroll_attendance_start", "lengkapi", "1"])
-async def test_payroll_start_opens_current_gap_without_mobile(
+@pytest.mark.parametrize(
+    "message",
+    ["payroll_attendance_start", "lengkapi", "lanjut", "1"],
+)
+async def test_payroll_start_or_continue_opens_current_gap_without_mobile(
     monkeypatch: pytest.MonkeyPatch,
     message: str,
 ) -> None:
@@ -184,15 +187,18 @@ async def test_payroll_start_opens_current_gap_without_mobile(
 
 
 @pytest.mark.asyncio
-async def test_payroll_later_keeps_snapshot_and_does_not_route_or_mutate(
+@pytest.mark.parametrize("message", ["2", "selesai dulu"])
+async def test_payroll_later_or_stop_keeps_snapshot_and_does_not_route_or_mutate(
     monkeypatch: pytest.MonkeyPatch,
+    message: str,
 ) -> None:
     store, routing, draft_state = _patch(monkeypatch)
 
-    response = await dm_entry.reply("2", _JID)
+    response = await dm_entry.reply(message, _JID)
 
-    assert "belum ada data attendance yang diubah" in response
+    assert "tidak ada perubahan attendance tambahan" in response
     assert "lengkapi" in response
+    assert "lanjut" in response
     assert store.cleared == 0
     assert routing.calls == 0
     assert draft_state.begun == []
