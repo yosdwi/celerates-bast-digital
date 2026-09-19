@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from digital_bast.application.attendance_closing_policy import payroll_cycle, payroll_cycle_for
+from digital_bast.application.payroll_review import PayrollReviewService
 from digital_bast.application.workflow_control import WorkflowRole
 from digital_bast.domain.time import JAKARTA
 from digital_bast.web.payroll_contracts import (
@@ -12,11 +13,16 @@ from digital_bast.web.payroll_contracts import (
     PayrollCyclesResponse,
     PayrollDayResponse,
     PayrollOverviewResponse,
+    PayrollReviewDecisionInput,
+    PayrollReviewDecisionResponse,
+    PayrollReviewItemResponse,
+    PayrollReviewQueueResponse,
+    PayrollReviewSummaryResponse,
     PayrollSummaryResponse,
     PayrollTalentDetailResponse,
     PayrollTalentRowResponse,
 )
-from digital_bast.web.security import require_session
+from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -41,6 +47,29 @@ def _service(deps: WebDependencies) -> PayrollReadService:
     return deps.payroll_read
 
 
+def _review_service(deps: WebDependencies) -> PayrollReviewService:
+    if deps.payroll_read is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payroll attendance service is unavailable",
+        )
+    if deps.attendance_resolutions is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance approval service is unavailable",
+        )
+    if deps.attendance_review is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Attendance review evidence service is unavailable",
+        )
+    return PayrollReviewService(
+        deps.payroll_read,
+        deps.attendance_resolutions,
+        deps.attendance_review,
+    )
+
+
 async def _authorized_operator(
     deps: WebDependencies,
     record: SessionRecord,
@@ -57,6 +86,19 @@ async def _authorized_operator(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="PMO access is inactive",
+        )
+    return operator
+
+
+async def _authorized_attendance_reviewer(
+    deps: WebDependencies,
+    record: SessionRecord,
+) -> WorkflowOperator | None:
+    operator = await _authorized_operator(deps, record)
+    if operator is not None and not operator.can_approve_attendance:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Attendance approval permission is required",
         )
     return operator
 
@@ -175,6 +217,62 @@ def payroll_router(deps: WebDependencies) -> APIRouter:
             days=tuple(PayrollDayResponse.model_validate(day) for day in talent.days),
         )
 
+    async def review_queue(
+        request: Request,
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    ) -> PayrollReviewQueueResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        _ = await _authorized_attendance_reviewer(deps, record)
+        now = deps.now()
+        cycle = _selected_cycle(year, month, now)
+        queue = await _review_service(deps).queue(cycle, now=now)
+        return PayrollReviewQueueResponse(
+            cycle=_cycle_response(queue.cycle),
+            summary=PayrollReviewSummaryResponse.model_validate(queue.summary),
+            items=tuple(PayrollReviewItemResponse.model_validate(item) for item in queue.items),
+        )
+
+    async def decide_review_queue(
+        request: Request,
+        payload: PayrollReviewDecisionInput,
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+        csrf_token: HeaderCsrf = None,
+    ) -> PayrollReviewDecisionResponse:
+        _, record = await require_session(
+            request,
+            deps.sessions,
+            deps.cookie,
+            deps.now,
+            api=True,
+        )
+        verify_csrf(record, csrf_token)
+        _ = await _authorized_attendance_reviewer(deps, record)
+        now = deps.now()
+        cycle = _selected_cycle(year, month, now)
+        try:
+            result = await _review_service(deps).bulk_decide(
+                cycle,
+                now=now,
+                request_ids=payload.request_ids,
+                decision=payload.decision,
+                reviewer=record.user.email,
+                rejection_reason=payload.rejection_reason,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return PayrollReviewDecisionResponse.model_validate(result)
+
     router.add_api_route(
         "/cycles",
         cycles,
@@ -192,5 +290,17 @@ def payroll_router(deps: WebDependencies) -> APIRouter:
         talent_detail,
         methods=["GET"],
         response_model=PayrollTalentDetailResponse,
+    )
+    router.add_api_route(
+        "/review-queue",
+        review_queue,
+        methods=["GET"],
+        response_model=PayrollReviewQueueResponse,
+    )
+    router.add_api_route(
+        "/review-queue/decide",
+        decide_review_queue,
+        methods=["POST"],
+        response_model=PayrollReviewDecisionResponse,
     )
     return router
