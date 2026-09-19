@@ -4,11 +4,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from digital_bast.application.attendance_closing_policy import (
-    PayrollCycle,
-    payroll_cycle,
-    payroll_cycle_for,
-)
+from digital_bast.application.attendance_closing_policy import payroll_cycle, payroll_cycle_for
 from digital_bast.application.workflow_control import WorkflowRole
 from digital_bast.domain.time import JAKARTA
 from digital_bast.web.payroll_contracts import (
@@ -25,6 +21,7 @@ from digital_bast.web.security import require_session
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.payroll_read import PayrollOverview, PayrollReadService
     from digital_bast.application.workflow_control import WorkflowOperator
     from digital_bast.web.contracts import SessionRecord
@@ -119,7 +116,7 @@ def payroll_router(deps: WebDependencies) -> APIRouter:
         _ = await _authorized_operator(deps, record)
         current = payroll_cycle_for(deps.now().astimezone(JAKARTA).date())
         items = [current]
-        for _index in range(_CYCLE_HISTORY_COUNT - 1):
+        for _ in range(_CYCLE_HISTORY_COUNT - 1):
             items.append(_previous_cycle(items[-1]))
         return PayrollCyclesResponse(
             current_cycle_id=current.cycle_id,
