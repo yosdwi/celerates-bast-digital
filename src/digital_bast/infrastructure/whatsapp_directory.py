@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from enum import StrEnum
-from typing import Final, final
+from typing import TYPE_CHECKING, Final, final
 
 import psycopg
 from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
 from digital_bast.infrastructure.errors import InfrastructureError
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 _DIRECT_JID: Final = re.compile(r"^[0-9]+@(c\.us|lid)$")
 _GROUP_JID: Final = re.compile(r"^[0-9]+(?:-[0-9]+)?@g\.us$")
@@ -48,24 +50,14 @@ class TalentWhatsAppBindResult:
     wa_jid: str
 
 
+@dataclass(frozen=True, slots=True)
 class _DirectoryRow:
-    __slots__ = ("bound_at", "employee_id", "full_name", "nrp", "role", "wa_jid")
-
-    def __init__(
-        self,
-        employee_id: str,
-        nrp: str,
-        full_name: str,
-        role: str,
-        wa_jid: str | None,
-        bound_at: datetime | None,
-    ) -> None:
-        self.employee_id = employee_id
-        self.nrp = nrp
-        self.full_name = full_name
-        self.role = role
-        self.wa_jid = wa_jid
-        self.bound_at = bound_at
+    employee_id: str
+    nrp: str
+    full_name: str
+    role: str
+    wa_jid: str | None
+    bound_at: datetime | None
 
 
 @final
@@ -167,7 +159,10 @@ class PostgresTalentWhatsAppDirectory:
                 )
                 rows = cursor.fetchall()
                 for current_jid, current_employee in rows:
-                    if str(current_employee) == normalized_employee and str(current_jid) == normalized_jid:
+                    if (
+                        str(current_employee) == normalized_employee
+                        and str(current_jid) == normalized_jid
+                    ):
                         return TalentWhatsAppBindResult(
                             TalentWhatsAppBindOutcome.UNCHANGED,
                             normalized_employee,
@@ -239,7 +234,11 @@ class PostgresTalentWhatsAppDirectory:
         actor: str,
     ) -> PayrollClosingGroupSetting:
         normalized_scope = scope_key.strip() or "default"
-        normalized_jid = None if group_jid is None or not group_jid.strip() else group_jid.strip()
+        normalized_jid = (
+            None
+            if group_jid is None or not group_jid.strip()
+            else group_jid.strip()
+        )
         if normalized_jid is not None and _GROUP_JID.fullmatch(normalized_jid) is None:
             msg = "group_jid must be a WhatsApp group JID ending in @g.us"
             raise ValueError(msg)
