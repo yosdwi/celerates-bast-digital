@@ -120,7 +120,7 @@ def _patch(
     )
 
     def resolution_service_must_not_run() -> object:
-        raise AssertionError("Payroll P10 must not submit a PMO request")
+        raise AssertionError("Payroll clock input must not submit a PMO request")
 
     monkeypatch.setattr(
         dm_workflow,
@@ -151,7 +151,7 @@ async def test_payroll_clock_reply_is_saved_before_evidence_without_pmo_submit(
 
 
 @pytest.mark.asyncio
-async def test_existing_evidence_skips_the_evidence_request_but_does_not_submit(
+async def test_existing_evidence_moves_to_review_but_does_not_auto_submit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _State(_draft(has_evidence=True), _saved(has_evidence=True))
@@ -160,8 +160,10 @@ async def test_existing_evidence_skips_the_evidence_request_but_does_not_submit(
     response = await dm_workflow.reply("17:40", _JID)
 
     assert "Bukti: ✓" in response
-    assert "Belum diajukan ke PMO" in response
+    assert "Ajukan informasi ini?" in response
+    assert "payroll_attendance_submit" in response
     assert "kirim screenshot/bukti" not in response
+    assert state.cleared is False
 
 
 @pytest.mark.asyncio
