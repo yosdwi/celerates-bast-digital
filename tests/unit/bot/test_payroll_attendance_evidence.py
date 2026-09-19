@@ -44,6 +44,7 @@ class _State:
     def __init__(self, refreshed: AttendanceResolutionDraft | None) -> None:
         self.refreshed = refreshed
         self.calls: list[tuple[str, str, str]] = []
+        self.cleared = False
 
     async def mark_evidence_ready(
         self,
@@ -53,6 +54,10 @@ class _State:
     ) -> AttendanceResolutionDraft | None:
         self.calls.append((wa_jid, employee_id, attendance_key))
         return self.refreshed
+
+    async def clear(self, wa_jid: str) -> None:
+        assert wa_jid == _JID
+        self.cleared = True
 
 
 @pytest.mark.asyncio
@@ -78,6 +83,7 @@ async def test_image_is_attached_to_exact_active_draft_and_keeps_clock(
         (_EMPLOYEE_ID, _ATTENDANCE_KEY, b"\xff\xd8\xfftest-image", "bukti 4 sep")
     ]
     assert state.calls == [(_JID, _EMPLOYEE_ID, _ATTENDANCE_KEY)]
+    assert state.cleared is False
     assert "Bukti attendance sudah tersimpan" in response
     assert "Clock Out: 17:40" in response
     assert "Bukti: ✓" in response
@@ -104,6 +110,7 @@ async def test_duplicate_media_refreshes_existing_evidence_without_pmo_submit(
     assert "sudah pernah tersimpan" in response
     assert "Bukti: ✓" in response
     assert state.calls == [(_JID, _EMPLOYEE_ID, _ATTENDANCE_KEY)]
+    assert state.cleared is False
 
 
 @pytest.mark.asyncio
@@ -126,14 +133,16 @@ async def test_unsupported_media_does_not_mark_draft_evidence_ready(
     assert "belum didukung" in response
     assert "PNG, JPEG, atau WebP" in response
     assert state.calls == []
+    assert state.cleared is False
 
 
 @pytest.mark.asyncio
-async def test_stored_evidence_with_changed_source_stays_truthful(
+async def test_stored_evidence_with_changed_source_clears_only_stale_draft(
     tmp_path: Path,
 ) -> None:
     file_path = tmp_path / "bukti.jpg"
     file_path.write_bytes(b"\xff\xd8\xffsource-change")
+    state = _State(None)
 
     response = await attach_payroll_attendance_evidence(
         jid=_JID,
@@ -141,9 +150,10 @@ async def test_stored_evidence_with_changed_source_stays_truthful(
         file_path=file_path,
         caption="",
         evidence=_Evidence(UploadOutcome.STORED),
-        state=_State(None),
+        state=state,
     )
 
+    assert state.cleared is True
     assert "Bukti sudah ada" in response
     assert "kondisi attendance berubah" in response
     assert "lengkapi" in response
