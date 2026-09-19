@@ -1,7 +1,10 @@
 import pytest
 
-from digital_bast.bot.attendance_evidence import sniff_attendance_content_type
-from digital_bast.bot.evidence import sniff_content_type
+from digital_bast.bot.attendance_evidence import (
+    AttendanceEvidenceService,
+    sniff_attendance_content_type,
+)
+from digital_bast.bot.evidence import MAX_IMAGE_BYTES, UploadOutcome, sniff_content_type
 
 
 @pytest.mark.parametrize(
@@ -26,3 +29,29 @@ def test_pdf_filename_semantics_do_not_replace_signature_validation() -> None:
 
 def test_task_evidence_sniffer_remains_image_only() -> None:
     assert sniff_content_type(b"%PDF-1.7\nrest") is None
+
+
+def test_oversized_attendance_evidence_is_rejected_before_database_access() -> None:
+    service = AttendanceEvidenceService("postgresql://unused")
+
+    result = service._upload(
+        "employee",
+        "attendance-key",
+        b"x" * (MAX_IMAGE_BYTES + 1),
+        "",
+    )
+
+    assert result.outcome is UploadOutcome.TOO_LARGE
+
+
+def test_fake_pdf_is_rejected_before_database_access() -> None:
+    service = AttendanceEvidenceService("postgresql://unused")
+
+    result = service._upload(
+        "employee",
+        "attendance-key",
+        b"not-a-pdf",
+        "",
+    )
+
+    assert result.outcome is UploadOutcome.UNSUPPORTED_TYPE
