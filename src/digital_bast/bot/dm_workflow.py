@@ -23,6 +23,7 @@ from digital_bast import cli
 from digital_bast.application.workflow_control import InviteOutcome
 from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_context_service,
+    create_attendance_reminder_routing_service,
 )
 from digital_bast.bot.attendance_resolution import (
     ResolutionStatus,
@@ -32,10 +33,16 @@ from digital_bast.bot.attendance_resolution import (
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.payroll_attendance_draft import (
+    PayrollDraftCommand,
+    parse_payroll_draft_command,
     render_payroll_draft_prompt,
     select_payroll_proposal,
 )
 from digital_bast.bot.payroll_attendance_evidence import attach_payroll_attendance_evidence
+from digital_bast.bot.payroll_attendance_submit import (
+    edit_payroll_attendance_draft,
+    submit_payroll_attendance_draft,
+)
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
 from digital_bast.bot.talent_home import home as talent_home
@@ -495,6 +502,32 @@ async def reply(text: str, jid: str) -> str:
         return await run_sync(_legacy_dm_reply, text, jid)
 
     if await _is_payroll_resolution_draft(jid, draft):
+        draft_command = parse_payroll_draft_command(text)
+        if draft.has_proposal and draft.has_evidence and draft_command is not None:
+            if draft_command is PayrollDraftCommand.EDIT:
+                return await edit_payroll_attendance_draft(
+                    jid=jid,
+                    draft=draft,
+                    state=state,
+                )
+            context_store = create_attendance_reminder_context_service()
+            context = await context_store.load(jid)
+            if context is None:
+                await state.clear(jid)
+                return (
+                    "Sesi review attendance ini sudah tidak aktif. "
+                    "Tunggu reminder berikutnya atau balas `lengkapi` dari reminder yang aktif."
+                )
+            return await submit_payroll_attendance_draft(
+                jid=jid,
+                draft=draft,
+                context=context,
+                now=datetime.now(JAKARTA),
+                resolutions=create_attendance_resolution_service(),
+                state=state,
+                context_store=context_store,
+                routing=create_attendance_reminder_routing_service(),
+            )
         if looks_like_resolution_input(text):
             return await _save_payroll_resolution_draft(text, jid, draft)
         return render_payroll_draft_prompt(draft)
