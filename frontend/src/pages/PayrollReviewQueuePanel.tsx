@@ -11,6 +11,7 @@ import type {
   PayrollReviewQueueResponse,
   PayrollResolutionType,
 } from "../api/payroll";
+import { attendanceResolutionEvidenceUrl } from "../api/talentops";
 import type { TalentOpsSession } from "../api/types";
 
 interface Props {
@@ -79,6 +80,15 @@ function bytesLabel(value: number | null): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function actualLabel(item: PayrollReviewItem): string {
+  if (item.resolution_type === "missing_clock_in") return item.raw_check_in ?? "—";
+  if (item.resolution_type === "missing_clock_out") return item.raw_check_out ?? "—";
+  if (item.resolution_type === "missing_both_worked") {
+    return `${item.raw_check_in ?? "—"} → ${item.raw_check_out ?? "—"}`;
+  }
+  return `${item.raw_check_in ?? "—"} → ${item.raw_check_out ?? "—"}`;
 }
 
 function proposedLabel(item: PayrollReviewItem): string {
@@ -262,7 +272,7 @@ export default function PayrollReviewQueuePanel({ session, cycle, onRefreshOverv
                         </span>
                         <span className="payroll-review-change">
                           <small>Aktual → usulan</small>
-                          <strong>{item.resolution_type === "missing_clock_in" ? item.raw_check_in ?? "—" : item.raw_check_out ?? "—"} → {proposedLabel(item)}</strong>
+                          <strong>{actualLabel(item)} → {proposedLabel(item)}</strong>
                         </span>
                         <span className={item.reviewable ? "payroll-review-ready" : "payroll-review-stale"}>
                           {item.reviewable ? "Siap review" : reviewabilityLabel(item)}
@@ -301,6 +311,16 @@ export default function PayrollReviewQueuePanel({ session, cycle, onRefreshOverv
                   <div><dt>Evidence</dt><dd>{focused.evidence_content_type ?? "unknown"} · {bytesLabel(focused.evidence_byte_size)}</dd></div>
                 </dl>
                 {focused.evidence_caption ? <p className="payroll-review-caption">“{focused.evidence_caption}”</p> : null}
+                {focused.evidence_content_type ? (
+                  <a
+                    className="secondary-button payroll-review-evidence-link"
+                    href={attendanceResolutionEvidenceUrl(focused.request_id)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Buka evidence
+                  </a>
+                ) : null}
               </aside>
             ) : (
               <aside className="payroll-review-detail empty">Pilih row untuk melihat actual, proposed, dan evidence metadata.</aside>
