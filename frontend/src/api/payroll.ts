@@ -32,6 +32,21 @@ export type PayrollReviewabilityReason =
 
 export type PayrollReviewDecision = "approve" | "reject";
 export type PayrollReviewResultStatus = "succeeded" | "skipped" | "failed";
+export type PayrollDeliveryState =
+  | "RESERVED"
+  | "SENDING"
+  | "SENT"
+  | "FAILED_RETRYABLE"
+  | "FAILED_FINAL"
+  | "UNKNOWN";
+export type PayrollFollowUpReason =
+  | "DELIVERY_UNKNOWN"
+  | "DELIVERY_RETRYABLE_FAILED"
+  | "DELIVERY_FINAL_FAILED"
+  | "UNRESPONDED"
+  | "NOT_REMINDED"
+  | "WAITING_REVIEW"
+  | "SOURCE_UNVERIFIED";
 
 export interface PayrollCycle {
   cycle_id: string;
@@ -196,9 +211,66 @@ export type PayrollClosingSettingsInput = Pick<
   | "next_day_ready_hour"
 >;
 
+export interface PayrollDigestSummary {
+  total_talents: number;
+  complete: number;
+  waiting_submitted: number;
+  needs_talent_action: number;
+  unverified: number;
+  successful_reminder_deliveries: number;
+  successfully_reminded_talents: number;
+  unresponded_talents: number;
+  actionable_not_reminded: number;
+  delivery_retryable_failed: number;
+  delivery_final_failed: number;
+  delivery_unknown: number;
+}
+
+export interface PayrollFollowUpItem {
+  employee_id: string;
+  nrp: string;
+  name: string;
+  role: string;
+  status: PayrollStatus;
+  actionable_days: number;
+  waiting_days: number;
+  unverified_days: number;
+  reason: PayrollFollowUpReason;
+  latest_delivery_state: PayrollDeliveryState | null;
+  latest_milestone: string | null;
+  latest_sent_at: string | null;
+  responded_at: string | null;
+  error_code: string | null;
+}
+
+export interface PayrollDigestResponse {
+  cycle: PayrollCycle;
+  evaluated_through: string | null;
+  summary: PayrollDigestSummary;
+  items: PayrollFollowUpItem[];
+}
+
+export interface PayrollManualReminderPreview {
+  employee_id: string;
+  eligible: boolean;
+  outcome: string;
+  actionable_days: number;
+  message: string | null;
+}
+
+export interface PayrollManualReminderResponse {
+  employee_id: string;
+  outcome: string;
+  sent: boolean;
+}
+
 function cycleQuery(year?: number, month?: number): string {
   if (year === undefined || month === undefined) return "";
   return `?year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+}
+
+function followUpQuery(year?: number, month?: number): string {
+  return cycleQuery(year, month);
 }
 
 export async function getPayrollCycles(): Promise<PayrollCyclesResponse> {
@@ -276,6 +348,42 @@ export async function savePayrollClosingSettings(
       method: "PUT",
       headers: { "X-CSRF-Token": csrfToken },
       body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function getPayrollDigest(
+  year?: number,
+  month?: number,
+): Promise<PayrollDigestResponse> {
+  return apiFetch<PayrollDigestResponse>(
+    `/api/talentops/v1/payroll/digest${followUpQuery(year, month)}`,
+  );
+}
+
+export async function previewPayrollReminder(
+  employeeId: string,
+  year?: number,
+  month?: number,
+): Promise<PayrollManualReminderPreview> {
+  return apiFetch<PayrollManualReminderPreview>(
+    `/api/talentops/v1/payroll/follow-up/${encodeURIComponent(employeeId)}/preview${followUpQuery(year, month)}`,
+  );
+}
+
+export async function sendManualPayrollReminder(
+  csrfToken: string,
+  employeeId: string,
+  year: number,
+  month: number,
+  requestId: string,
+): Promise<PayrollManualReminderResponse> {
+  return apiFetch<PayrollManualReminderResponse>(
+    `/api/talentops/v1/payroll/follow-up/${encodeURIComponent(employeeId)}/send${followUpQuery(year, month)}`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ request_id: requestId }),
     },
   );
 }
