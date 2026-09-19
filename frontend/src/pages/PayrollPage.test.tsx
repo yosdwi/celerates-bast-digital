@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PayrollOverviewResponse } from "../api/payroll";
+import * as payrollApi from "../api/payroll";
+import type { PayrollOverviewResponse, PayrollTalentDetailResponse } from "../api/payroll";
 import type { TalentOpsSession } from "../api/types";
 import PayrollPage from "./PayrollPage";
 
@@ -85,8 +86,88 @@ function overview(): PayrollOverviewResponse {
   };
 }
 
+function detailFor(employeeId: string): PayrollTalentDetailResponse {
+  const base = overview();
+  if (employeeId === "c") {
+    return {
+      ...base.talents[2],
+      cycle: base.cycle,
+      evaluated_through: base.evaluated_through,
+      days: [{
+        attendance_id: 17,
+        attendance_key: "17",
+        work_date: "2026-09-07",
+        schedule_state: "WORKING",
+        source_state: "AVAILABLE",
+        raw_check_in: null,
+        raw_check_out: "2026-09-07T17:52:00+07:00",
+        proposed_check_in: "2026-09-07T07:31:00+07:00",
+        proposed_check_out: null,
+        resolution_id: "resolution-c",
+        resolution_status: "rejected",
+        resolution_type: "missing_clock_in",
+        absence_type: null,
+        rejection_reason: "Jam masuk tidak sesuai bukti",
+        has_evidence: true,
+        status: "NEEDS_TALENT_ACTION",
+        reason: "CORRECTION_REJECTED",
+        talent_action_required: true,
+      }],
+    };
+  }
+
+  return {
+    ...base.talents[1],
+    cycle: base.cycle,
+    evaluated_through: base.evaluated_through,
+    days: [
+      {
+        attendance_id: 14,
+        attendance_key: "14",
+        work_date: "2026-09-04",
+        schedule_state: "WORKING",
+        source_state: "AVAILABLE",
+        raw_check_in: "2026-09-04T07:32:00+07:00",
+        raw_check_out: null,
+        proposed_check_in: null,
+        proposed_check_out: "2026-09-04T17:40:00+07:00",
+        resolution_id: "resolution-b",
+        resolution_status: "pending",
+        resolution_type: "missing_clock_out",
+        absence_type: null,
+        rejection_reason: null,
+        has_evidence: true,
+        status: "WAITING_SUBMITTED",
+        reason: "GAP_COVERED_BY_SUBMITTED_REQUEST",
+        talent_action_required: false,
+      },
+      {
+        attendance_id: 15,
+        attendance_key: "15",
+        work_date: "2026-09-05",
+        schedule_state: "WORKING",
+        source_state: "AVAILABLE",
+        raw_check_in: "2026-09-05T07:29:00+07:00",
+        raw_check_out: "2026-09-05T17:38:00+07:00",
+        proposed_check_in: null,
+        proposed_check_out: null,
+        resolution_id: null,
+        resolution_status: null,
+        resolution_type: null,
+        absence_type: null,
+        rejection_reason: null,
+        has_evidence: false,
+        status: "COMPLETE",
+        reason: "RAW_COMPLETE",
+        talent_action_required: false,
+      },
+    ],
+  };
+}
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe("PayrollPage", () => {
@@ -121,5 +202,39 @@ describe("PayrollPage", () => {
 
     expect(screen.getAllByText("Budi").length).toBeGreaterThan(0);
     expect(screen.queryByText("Citra")).not.toBeInTheDocument();
+  });
+
+  it("loads attendance detail on demand and shows actual, proposed and evidence facts", async () => {
+    const getDetail = vi
+      .spyOn(payrollApi, "getPayrollTalentDetail")
+      .mockImplementation(async (employeeId) => detailFor(employeeId));
+    render(<PayrollPage session={session} data={overview()} onNavigate={vi.fn()} />);
+
+    expect(getDetail).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("button", { name: "Lihat detail Budi" })[0]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Detail attendance Budi" });
+    await waitFor(() => expect(getDetail).toHaveBeenCalledWith("b", 2026, 9));
+    expect(within(dialog).getByText("4 Sep 2026")).toBeInTheDocument();
+    expect(within(dialog).getByText("Pulang 17:40")).toBeInTheDocument();
+    expect(within(dialog).getByText("Evidence:").parentElement).toHaveTextContent("Ada");
+    expect(within(dialog).getByText("Review:").parentElement).toHaveTextContent("pending");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tutup detail" }));
+    expect(screen.queryByRole("dialog", { name: "Detail attendance Budi" })).not.toBeInTheDocument();
+  });
+
+  it("shows rejection context without turning the drawer into an approval surface", async () => {
+    vi.spyOn(payrollApi, "getPayrollTalentDetail")
+      .mockImplementation(async (employeeId) => detailFor(employeeId));
+    render(<PayrollPage session={session} data={overview()} onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Lihat detail Citra" })[0]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Detail attendance Citra" });
+    expect(within(dialog).getByText("Pengajuan sebelumnya ditolak")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Jam masuk tidak sesuai bukti/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /setujui/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /tolak/i })).not.toBeInTheDocument();
   });
 });
