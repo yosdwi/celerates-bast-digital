@@ -26,6 +26,7 @@ from digital_bast.web.talent_mobile_router import talent_mobile_router
 from digital_bast.web.talentops_page_router import talentops_page_router
 from digital_bast.web.talentops_router import talentops_router
 from digital_bast.web.task_evidence_router import task_evidence_router
+from digital_bast.web.whatsapp_directory_router import whatsapp_directory_router
 
 
 def create_app(dependencies: WebDependencies) -> FastAPI:
@@ -56,6 +57,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
     app.include_router(talentops_router(dependencies))
+    app.include_router(whatsapp_directory_router(dependencies))
     app.include_router(payroll_router(dependencies))
     app.include_router(talent_mobile_links_router(dependencies))
     app.include_router(task_evidence_router(dependencies))
