@@ -9,7 +9,10 @@ from digital_bast.operations import (
     create_pmo_notification_service,
     create_talent_reminder_service,
 )
-from digital_bast.payroll_runtime import create_payroll_talent_reminder_service
+from digital_bast.payroll_runtime import (
+    create_payroll_group_digest_service,
+    create_payroll_talent_reminder_service,
+)
 
 if TYPE_CHECKING:
     from digital_bast.application.pmo_notifications import NotificationRunSummary
@@ -26,9 +29,10 @@ if TYPE_CHECKING:
     timeout_seconds=600,
 )
 async def pmo_notifications_flow(scope_key: str = "default") -> dict[str, object]:
-    """Run PMO notifications and exactly one configured Talent reminder policy."""
+    """Run PMO notifications, Payroll digest, and one Talent reminder authority."""
     pmo: NotificationRunSummary = await create_pmo_notification_service(scope_key).run()
     payroll = await create_payroll_talent_reminder_service(scope_key).run()
+    payroll_digest = await create_payroll_group_digest_service(scope_key).run()
 
     legacy_talent: TalentReminderRunSummary | None = None
     if not payroll.enabled:
@@ -41,5 +45,6 @@ async def pmo_notifications_flow(scope_key: str = "default") -> dict[str, object
     return {
         "pmo": asdict(pmo),
         "payroll": asdict(payroll),
+        "payroll_digest": asdict(payroll_digest),
         "talent": None if legacy_talent is None else asdict(legacy_talent),
     }
