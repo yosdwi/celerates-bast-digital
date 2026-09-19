@@ -27,9 +27,16 @@ _CYCLE = payroll_cycle(2026, 9)
 
 
 class _DraftState:
+    def __init__(self) -> None:
+        self.begun: list[tuple[str, str, str]] = []
+
     async def pending(self, jid: str) -> None:
         assert jid == _JID
         return None
+
+    async def begin(self, jid: str, employee_id: str, attendance_key: str) -> object:
+        self.begun.append((jid, employee_id, attendance_key))
+        return object()
 
 
 class _Activation:
@@ -119,14 +126,15 @@ def _patch(
     context: AttendanceReminderContext | None = None,
     active_kind: str | None = None,
     route_status: AttendanceReminderRouteStatus = AttendanceReminderRouteStatus.OPEN,
-) -> tuple[_ReminderContextStore, _Routing]:
+) -> tuple[_ReminderContextStore, _Routing, _DraftState]:
     store = _ReminderContextStore(context if context is not None else _context())
     selection = _selection() if route_status is AttendanceReminderRouteStatus.OPEN else None
     routing = _Routing(AttendanceReminderRouteResult(route_status, selection))
+    draft_state = _DraftState()
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
-        lambda: _DraftState(),
+        lambda: draft_state,
     )
     monkeypatch.setattr(dm_entry, "create_activation_service", lambda: _Activation())
     monkeypatch.setattr(
@@ -149,7 +157,7 @@ def _patch(
         return None
 
     monkeypatch.setattr(dm_entry.anyio, "sleep", no_sleep)
-    return store, routing
+    return store, routing, draft_state
 
 
 @pytest.mark.asyncio
@@ -158,7 +166,7 @@ async def test_payroll_start_opens_current_gap_without_mobile(
     monkeypatch: pytest.MonkeyPatch,
     message: str,
 ) -> None:
-    _, routing = _patch(monkeypatch)
+    _, routing, draft_state = _patch(monkeypatch)
 
     def mobile_should_not_run(*_args: object, **_kwargs: object) -> str:
         raise AssertionError("Payroll reminder happy path must not open Talent Mobile")
@@ -172,13 +180,14 @@ async def test_payroll_start_opens_current_gap_without_mobile(
     assert "Jam pulang berapa?" in response
     assert "Masih ada 1 tanggal setelah ini" in response
     assert routing.calls == 1
+    assert draft_state.begun == [(_JID, _EMPLOYEE_ID, "attendance:four")]
 
 
 @pytest.mark.asyncio
 async def test_payroll_later_keeps_snapshot_and_does_not_route_or_mutate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, routing = _patch(monkeypatch)
+    store, routing, draft_state = _patch(monkeypatch)
 
     response = await dm_entry.reply("2", _JID)
 
@@ -186,13 +195,14 @@ async def test_payroll_later_keeps_snapshot_and_does_not_route_or_mutate(
     assert "lengkapi" in response
     assert store.cleared == 0
     assert routing.calls == 0
+    assert draft_state.begun == []
 
 
 @pytest.mark.asyncio
 async def test_no_longer_actionable_snapshot_is_cleared_without_mobile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store, routing = _patch(
+    store, routing, draft_state = _patch(
         monkeypatch,
         route_status=AttendanceReminderRouteStatus.NO_ACTION,
     )
@@ -202,13 +212,14 @@ async def test_no_longer_actionable_snapshot_is_cleared_without_mobile(
     assert "sudah tidak perlu action" in response
     assert store.cleared == 1
     assert routing.calls == 1
+    assert draft_state.begun == []
 
 
 @pytest.mark.asyncio
 async def test_legacy_active_evidence_selection_wins_over_payroll_digit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, routing = _patch(monkeypatch, active_kind="attendance")
+    _, routing, draft_state = _patch(monkeypatch, active_kind="attendance")
 
     async def legacy(text: str, jid: str) -> str:
         assert text == "1"
@@ -221,3 +232,4 @@ async def test_legacy_active_evidence_selection_wins_over_payroll_digit(
 
     assert response == "LEGACY PICK"
     assert routing.calls == 0
+    assert draft_state.begun == []
