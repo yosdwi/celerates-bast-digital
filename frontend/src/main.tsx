@@ -18,6 +18,7 @@ import "./styles/talent-urls.css";
 import "./styles/attendance-gaps.css";
 import "./styles/payroll.css";
 import "./styles/payroll-review.css";
+import "./styles/whatsapp-directory.css";
 
 const root = document.getElementById("root");
 if (!root) {
