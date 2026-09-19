@@ -9,6 +9,7 @@ import type {
 import type { TalentOpsSession } from "../api/types";
 import { ChevronIcon, CloseIcon } from "../components/Icons";
 import WorkspaceFrame from "../components/WorkspaceFrame";
+import PayrollFollowUpPanel from "./PayrollFollowUpPanel";
 import PayrollReviewQueuePanel from "./PayrollReviewQueuePanel";
 
 type PayrollFilter = "all" | "needs" | "waiting" | "complete" | "unverified";
@@ -187,6 +188,10 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
     document.getElementById("payroll-review-queue")?.scrollIntoView({ behavior: "smooth" });
   }
 
+  function scrollToFollowUp() {
+    document.getElementById("payroll-follow-up")?.scrollIntoView({ behavior: "smooth" });
+  }
+
   async function openDetail(talent: PayrollTalentRow) {
     const requestId = detailRequestId.current + 1;
     detailRequestId.current = requestId;
@@ -290,13 +295,19 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
               <strong>{actionDays}</strong>
               <p>{actionTalents} Talent masih perlu melengkapi attendance.</p>
             </div>
-            <button className="secondary-button" type="button" onClick={() => setFilter("needs")}>
-              Lihat daftar
+            <button className="secondary-button" type="button" onClick={scrollToFollowUp}>
+              Buka follow-up
             </button>
           </section>
         </div>
 
         <PayrollReviewQueuePanel
+          session={session}
+          cycle={view.cycle}
+          onRefreshOverview={refreshOverview}
+        />
+
+        <PayrollFollowUpPanel
           session={session}
           cycle={view.cycle}
           onRefreshOverview={refreshOverview}
