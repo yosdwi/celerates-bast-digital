@@ -7,7 +7,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, final
 
 from digital_bast.application.attendance_closing_policy import due_milestone, payroll_cycle_for
-from digital_bast.application.payroll_reminder_delivery import PayrollDeliveryState
+from digital_bast.application.payroll_reminder_delivery import (
+    PayrollDeliveryState,
+    payroll_bridge_request_id,
+)
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
@@ -61,7 +64,7 @@ class PayrollGroupOutboundGateway(Protocol):
 
 
 class PayrollGroupDigestDeliveryStore(Protocol):
-    async def reserve(
+    async def reserve(  # noqa: PLR0913 - logical delivery identity is explicit
         self,
         *,
         idempotency_key: str,
@@ -236,7 +239,7 @@ class PayrollGroupDigestService:
         receipt = await self._outbound.send_group(
             destination.group_jid,
             message,
-            idempotency_key,
+            payroll_bridge_request_id(idempotency_key),
         )
         if receipt.status == "sent":
             await self._deliveries.finish(
