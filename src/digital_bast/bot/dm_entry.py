@@ -321,6 +321,22 @@ async def _payroll_reminder_reply(
         routed.status is AttendanceReminderRouteStatus.OPEN
         and routed.selection is not None
     ):
+        attendance_key = routed.selection.day.attendance_key
+        if attendance_key is None:
+            return (
+                "Attendance ini belum punya identity yang aman untuk diproses. "
+                "Tunggu reminder berikutnya atau hubungi admin."
+            )
+        draft = await create_attendance_resolution_dm_state_service().begin(
+            jid,
+            employee_id,
+            attendance_key,
+        )
+        if draft is None:
+            return (
+                "Data attendance barusan berubah. "
+                "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
+            )
         return render_attendance_gap_prompt(routed.selection)
 
     await context_store.clear(jid)
