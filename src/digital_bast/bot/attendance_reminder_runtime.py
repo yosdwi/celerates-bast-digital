@@ -13,6 +13,7 @@ from digital_bast.config import get_settings
 from digital_bast.infrastructure.payroll_attendance import PostgresPayrollAttendanceReader
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
+from digital_bast.operations import OperationConfigurationError
 
 _MISSING_APP_DSN = "APP_DATABASE_DSN"
 
@@ -20,7 +21,7 @@ _MISSING_APP_DSN = "APP_DATABASE_DSN"
 def _application_dsn() -> str:
     settings = get_settings()
     if settings.database_dsn is None:
-        raise RuntimeError(_MISSING_APP_DSN)
+        raise OperationConfigurationError(_MISSING_APP_DSN)
     return settings.database_dsn.get_secret_value()
 
 
