@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Sequence
 
 
 class AttendanceClosingStatus(Enum):
@@ -14,16 +14,42 @@ class AttendanceClosingStatus(Enum):
     COMPLETE = "COMPLETE"
 
 
+class AttendanceCorrectionState(Enum):
+    """Normalized correction lifecycle facts consumed by the closing projection."""
+
+    NONE = "NONE"
+    SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class AttendanceScheduleState(Enum):
+    """Whether attendance is expected for the source row."""
+
+    WORKING = "WORKING"
+    OFF = "OFF"
+
+
+class AttendanceSourceState(Enum):
+    """Whether the attendance source is trustworthy enough to evaluate the row."""
+
+    AVAILABLE = "AVAILABLE"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
 class AttendanceClosingReason(Enum):
     """Deterministic explanation for a per-day closing state."""
 
     RAW_COMPLETE = "RAW_COMPLETE"
+    SCHEDULED_OFF = "SCHEDULED_OFF"
+    SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
     GAP_UNCOVERED = "GAP_UNCOVERED"
+    CORRECTION_REJECTED = "CORRECTION_REJECTED"
     GAP_COVERED_BY_SUBMITTED_REQUEST = "GAP_COVERED_BY_SUBMITTED_REQUEST"
     GAP_COVERED_BY_APPROVED_CORRECTION = "GAP_COVERED_BY_APPROVED_CORRECTION"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AttendanceClosingDayInput:
     """Normalized attendance/correction facts consumed by the closing projection."""
 
@@ -31,14 +57,15 @@ class AttendanceClosingDayInput:
     attendance_date: date
     clock_in_local: str | None
     clock_out_local: str | None
-    request_submitted: bool = False
-    request_approved: bool = False
+    correction_state: AttendanceCorrectionState = AttendanceCorrectionState.NONE
     correction_covers_clock_in: bool = False
     correction_covers_clock_out: bool = False
+    schedule_state: AttendanceScheduleState = AttendanceScheduleState.WORKING
+    source_state: AttendanceSourceState = AttendanceSourceState.AVAILABLE
     has_evidence: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AttendanceClosingDayDetail:
     """Per-day decision emitted as part of an employee closing projection."""
 
@@ -50,7 +77,7 @@ class AttendanceClosingDayDetail:
     reason: AttendanceClosingReason
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AttendanceClosingResult:
     """Payroll-facing closing projection for one employee."""
 
@@ -73,11 +100,10 @@ class AttendanceClosingResult:
 
 class AttendanceClosingService:
     """
-    Project attendance and correction facts into a deterministic payroll state.
+    Project normalized attendance and correction facts into a payroll closing state.
 
-    This service intentionally does not own the existing correction lifecycle.
-    Callers normalize lifecycle-specific request/approval data into coverage facts,
-    then this projection answers whether payroll can close the employee.
+    The service intentionally does not own the existing correction lifecycle. P03
+    adapts source-specific attendance/review data into these normalized facts.
     """
 
     def evaluate(
@@ -93,7 +119,7 @@ class AttendanceClosingService:
         )
         day_details = tuple(self._evaluate_day(row) for row in considered_rows)
 
-        if any(
+        if not day_details or any(
             detail.status is AttendanceClosingStatus.NEEDS_TALENT_ACTION
             for detail in day_details
         ):
@@ -120,30 +146,76 @@ class AttendanceClosingService:
         missing_clock_in = cls._is_missing_time(row.clock_in_local)
         missing_clock_out = cls._is_missing_time(row.clock_out_local)
 
+        if row.source_state is AttendanceSourceState.UNAVAILABLE:
+            return cls._detail(
+                row=row,
+                missing_clock_in=missing_clock_in,
+                missing_clock_out=missing_clock_out,
+                status=AttendanceClosingStatus.NEEDS_TALENT_ACTION,
+                reason=AttendanceClosingReason.SOURCE_UNAVAILABLE,
+            )
+
+        if row.schedule_state is AttendanceScheduleState.OFF:
+            return cls._detail(
+                row=row,
+                missing_clock_in=missing_clock_in,
+                missing_clock_out=missing_clock_out,
+                status=AttendanceClosingStatus.COMPLETE,
+                reason=AttendanceClosingReason.SCHEDULED_OFF,
+            )
+
         if not missing_clock_in and not missing_clock_out:
-            return AttendanceClosingDayDetail(
-                attendance_id=row.attendance_id,
-                attendance_date=row.attendance_date,
+            return cls._detail(
+                row=row,
                 missing_clock_in=False,
                 missing_clock_out=False,
                 status=AttendanceClosingStatus.COMPLETE,
                 reason=AttendanceClosingReason.RAW_COMPLETE,
             )
 
+        if row.correction_state is AttendanceCorrectionState.REJECTED:
+            return cls._detail(
+                row=row,
+                missing_clock_in=missing_clock_in,
+                missing_clock_out=missing_clock_out,
+                status=AttendanceClosingStatus.NEEDS_TALENT_ACTION,
+                reason=AttendanceClosingReason.CORRECTION_REJECTED,
+            )
+
         covers_clock_in = not missing_clock_in or row.correction_covers_clock_in
         covers_clock_out = not missing_clock_out or row.correction_covers_clock_out
         fully_covered = covers_clock_in and covers_clock_out
 
-        if fully_covered and row.request_approved:
+        if fully_covered and row.correction_state is AttendanceCorrectionState.APPROVED:
             status = AttendanceClosingStatus.COMPLETE
             reason = AttendanceClosingReason.GAP_COVERED_BY_APPROVED_CORRECTION
-        elif fully_covered and row.request_submitted:
+        elif (
+            fully_covered
+            and row.correction_state is AttendanceCorrectionState.SUBMITTED
+        ):
             status = AttendanceClosingStatus.WAITING_SUBMITTED
             reason = AttendanceClosingReason.GAP_COVERED_BY_SUBMITTED_REQUEST
         else:
             status = AttendanceClosingStatus.NEEDS_TALENT_ACTION
             reason = AttendanceClosingReason.GAP_UNCOVERED
 
+        return cls._detail(
+            row=row,
+            missing_clock_in=missing_clock_in,
+            missing_clock_out=missing_clock_out,
+            status=status,
+            reason=reason,
+        )
+
+    @staticmethod
+    def _detail(
+        *,
+        row: AttendanceClosingDayInput,
+        missing_clock_in: bool,
+        missing_clock_out: bool,
+        status: AttendanceClosingStatus,
+        reason: AttendanceClosingReason,
+    ) -> AttendanceClosingDayDetail:
         return AttendanceClosingDayDetail(
             attendance_id=row.attendance_id,
             attendance_date=row.attendance_date,
