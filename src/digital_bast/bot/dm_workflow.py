@@ -39,6 +39,10 @@ from digital_bast.bot.payroll_attendance_draft import (
     select_payroll_proposal,
 )
 from digital_bast.bot.payroll_attendance_evidence import attach_payroll_attendance_evidence
+from digital_bast.bot.payroll_attendance_repeat import (
+    handle_payroll_repeat_command,
+    parse_payroll_repeat_command,
+)
 from digital_bast.bot.payroll_attendance_submit import (
     edit_payroll_attendance_draft,
     submit_payroll_attendance_draft,
@@ -502,6 +506,26 @@ async def reply(text: str, jid: str) -> str:
         return await run_sync(_legacy_dm_reply, text, jid)
 
     if await _is_payroll_resolution_draft(jid, draft):
+        repeat_command = parse_payroll_repeat_command(text)
+        if not draft.has_proposal and repeat_command is not None:
+            context_store = create_attendance_reminder_context_service()
+            context = await context_store.load(jid)
+            if context is None:
+                await state.clear(jid)
+                return (
+                    "Sesi attendance ini sudah tidak aktif. "
+                    "Tunggu reminder berikutnya atau balas `lengkapi` dari reminder yang aktif."
+                )
+            return await handle_payroll_repeat_command(
+                command=repeat_command,
+                jid=jid,
+                draft=draft,
+                context=context,
+                now=datetime.now(JAKARTA),
+                state=state,
+                routing=create_attendance_reminder_routing_service(),
+            )
+
         draft_command = parse_payroll_draft_command(text)
         if draft.has_proposal and draft.has_evidence and draft_command is not None:
             if draft_command is PayrollDraftCommand.EDIT:
