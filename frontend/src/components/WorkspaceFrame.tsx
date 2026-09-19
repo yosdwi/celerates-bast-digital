@@ -22,6 +22,7 @@ interface Props {
   session: TalentOpsSession;
   active:
     | "command-center"
+    | "payroll"
     | "talents"
     | "actions"
     | "attendance-gaps"
@@ -40,6 +41,7 @@ interface Props {
 
 const NAV_ITEMS = [
   { key: "command-center", label: "Command Center", icon: GridIcon, path: "/admin/talentops/" },
+  { key: "payroll", label: "Payroll", icon: ClockIcon, path: "/admin/talentops/payroll" },
   { key: "talents", label: "Talents", icon: PersonIcon, path: "/admin/talentops/talents" },
   { key: "delivery", label: "Delivery", icon: TrendIcon, path: "/admin/talentops/delivery" },
   { key: "evidence", label: "Task Evidence", icon: CheckDocIcon, path: "/admin/talentops/evidence" },
