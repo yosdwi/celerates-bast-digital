@@ -1,4 +1,4 @@
-from datetime import date, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -49,7 +49,7 @@ class _ContextStore:
             employee_id=_EMPLOYEE_ID,
             cycle_id="2026-09:2026-08-21:2026-09-20",
             attendance_keys=(_ATTENDANCE_KEY,),
-            expires_at=date(2026, 9, 19) + timedelta(days=2),
+            expires_at=datetime(2026, 9, 19, 9, 0, tzinfo=UTC) + timedelta(days=2),
         )
 
 
