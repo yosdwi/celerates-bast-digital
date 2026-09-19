@@ -43,7 +43,9 @@ _OUTCOME_REPLY = {
     UploadOutcome.NOT_FOUND: "Attendance ini sudah tidak ditemukan.",
     UploadOutcome.NOT_OWNED: "Attendance ini bukan milik kamu.",
     UploadOutcome.TOO_LARGE: "Ukuran file lebih dari 5 MB.",
-    UploadOutcome.UNSUPPORTED_TYPE: "Format file belum didukung. Kirim PNG, JPEG, atau WebP.",
+    UploadOutcome.UNSUPPORTED_TYPE: (
+        "Format file belum didukung. Kirim PNG, JPEG, atau WebP."
+    ),
 }
 
 
