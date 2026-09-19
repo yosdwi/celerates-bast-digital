@@ -209,6 +209,32 @@ async def test_non_pending_or_different_gap_does_not_offer_same_shortcut() -> No
     assert different_result.selection.same_gap_suggestion is None
 
 
+@pytest.mark.asyncio
+async def test_pending_request_with_source_now_complete_is_not_a_same_gap_source() -> None:
+    stale_pending = _day(
+        key=_FIRST_KEY,
+        work_date=date(2026, 9, 4),
+        raw_in="07:31",
+        raw_out="17:39",
+        status=AttendanceClosingStatus.COMPLETE,
+        reason=AttendanceClosingReason.RAW_COMPLETE,
+        actionable=False,
+        resolution_status="pending",
+        resolution_type="missing_clock_out",
+        proposed_out="17:40",
+    )
+    service = AttendanceReminderRoutingService(
+        _Payroll(stale_pending, _current_missing_clock_out())
+    )
+
+    result = await service.first_actionable(
+        _context(), employee_id=_EMPLOYEE_ID, now=_NOW
+    )
+
+    assert result.selection is not None
+    assert result.selection.same_gap_suggestion is None
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
@@ -342,13 +368,14 @@ async def test_same_falls_back_to_explicit_input_when_suggestion_disappears() ->
     no_suggestion_service = AttendanceReminderRoutingService(
         _Payroll(_current_missing_clock_out())
     )
+    no_suggestion_context = AttendanceReminderContext.create(
+        employee_id=_EMPLOYEE_ID,
+        cycle_id=_CYCLE.cycle_id,
+        attendance_keys=(_NEXT_KEY,),
+        expires_at=_NOW + timedelta(days=2),
+    )
     routed = await no_suggestion_service.first_actionable(
-        AttendanceReminderContext.create(
-            employee_id=_EMPLOYEE_ID,
-            cycle_id=_CYCLE.cycle_id,
-            attendance_keys=(_NEXT_KEY,),
-            expires_at=_NOW + timedelta(days=2),
-        ),
+        no_suggestion_context,
         employee_id=_EMPLOYEE_ID,
         now=_NOW,
     )
@@ -358,12 +385,7 @@ async def test_same_falls_back_to_explicit_input_when_suggestion_disappears() ->
         command=PayrollRepeatCommand.SAME,
         jid=_JID,
         draft=_draft(),
-        context=AttendanceReminderContext.create(
-            employee_id=_EMPLOYEE_ID,
-            cycle_id=_CYCLE.cycle_id,
-            attendance_keys=(_NEXT_KEY,),
-            expires_at=_NOW + timedelta(days=2),
-        ),
+        context=no_suggestion_context,
         now=_NOW,
         state=state,
         routing=_Router(routed),
