@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from digital_bast.application.attendance_review import AttendanceReviewService
     from digital_bast.application.bast_generation_jobs import BastGenerationJobService
     from digital_bast.application.bast_workflow import BastWorkflowService
+    from digital_bast.application.payroll_read import PayrollReadService
     from digital_bast.application.talentops import TalentOpsService
     from digital_bast.application.talentops_ai import TalentOpsAiService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
@@ -32,6 +33,7 @@ class WebDependencies:
     backend: WebBackend
     cookie: CookieSettings
     talentops: TalentOpsService | None = None
+    payroll_read: PayrollReadService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
     task_evidence_review: TaskEvidenceReviewService | None = None
