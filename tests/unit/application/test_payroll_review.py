@@ -20,10 +20,10 @@ from digital_bast.application.payroll_read import (
     PayrollTalentView,
 )
 from digital_bast.application.payroll_review import (
+    PayrollReviewabilityReason,
     PayrollReviewDecision,
     PayrollReviewItemResultStatus,
     PayrollReviewService,
-    PayrollReviewabilityReason,
 )
 from digital_bast.bot.attendance_resolution import (
     AttendanceResolution,
