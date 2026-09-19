@@ -228,7 +228,7 @@ async def _closing_settings_response(
     )
 
 
-def payroll_router(
+def payroll_router(  # noqa: C901, PLR0915 - route handlers stay co-located
     deps: WebDependencies,
     settings_store: PayrollClosingSettingsStore | None = None,
 ) -> APIRouter:
