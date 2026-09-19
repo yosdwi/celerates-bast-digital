@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from digital_bast.application.attendance_closing import (
     AttendanceClosingReason,
@@ -175,7 +176,7 @@ class _Deliveries:
         if existing is not None:
             return PayrollDeliveryReservation(record=existing, created=False)
         record = PayrollDeliveryRecord(
-            id="fu-1",
+            id=f"fu-{len(self.records) + 1}",
             idempotency_key=idempotency_key,
             employee_id=employee_id,
             message=message,
@@ -185,6 +186,7 @@ class _Deliveries:
             milestone=milestone,
             context_id=context_id,
             attempt_count=0,
+            reserved_at=_NOW,
         )
         self.records[idempotency_key] = record
         return PayrollDeliveryReservation(record=record, created=True)
@@ -209,6 +211,7 @@ class _Deliveries:
             context_id=context_id,
             state=PayrollDeliveryState.RESERVED,
             error_code=None,
+            reserved_at=_NOW,
         )
         self.records[idempotency_key] = updated
         return updated
@@ -235,13 +238,13 @@ class _Deliveries:
         error_code: str | None = None,
         sent_at: datetime | None = None,
     ) -> PayrollDeliveryRecord | None:
-        _ = sent_at
         record = self.records[idempotency_key]
         updated = replace(
             record,
             state=state,
             provider_message_id=provider_message_id,
             error_code=error_code,
+            sent_at=sent_at if state is PayrollDeliveryState.SENT else record.sent_at,
         )
         self.records[idempotency_key] = updated
         return updated
@@ -255,6 +258,18 @@ class _Deliveries:
     ) -> bool:
         _ = (context_id, employee_id, responded_at)
         return True
+
+    async def list_cycle(
+        self,
+        *,
+        scope_key: str,
+        cycle_id: str,
+    ) -> tuple[PayrollDeliveryRecord, ...]:
+        return tuple(
+            record
+            for record in self.records.values()
+            if record.scope_key == scope_key and record.cycle_id == cycle_id
+        )
 
 
 async def test_disabled_policy_preserves_no_payroll_dispatch() -> None:
@@ -346,3 +361,67 @@ async def test_retryable_failure_reuses_one_logical_delivery() -> None:
     record = next(iter(deliveries.records.values()))
     assert record.state is PayrollDeliveryState.SENT
     assert record.attempt_count == 2
+
+
+async def test_manual_preview_and_send_revalidate_current_actionable_talent() -> None:
+    outbound = _Outbound()
+    deliveries = _Deliveries()
+    contexts = _Contexts()
+    service = PayrollTalentReminderService(
+        "default",
+        _Settings(PayrollClosingSettings(enabled=False)),
+        _Payroll(),
+        _Identities(),
+        contexts,
+        outbound,
+        deliveries,
+    )
+
+    preview = await service.preview_manual("EMP-1", _CYCLE, now=_NOW)
+    request_id = uuid4()
+    first = await service.send_manual("EMP-1", _CYCLE, request_id, now=_NOW)
+    second = await service.send_manual("EMP-1", _CYCLE, request_id, now=_NOW)
+
+    assert preview.eligible is True
+    assert preview.message is not None
+    assert "Andi" in preview.message
+    assert first.sent is True
+    assert first.outcome == "sent"
+    assert second.sent is False
+    assert second.outcome == "duplicate"
+    assert len(outbound.calls) == 1
+    assert outbound.calls[0][2].startswith("payroll-manual:default:")
+    assert len(contexts.saved) == 1
+
+
+async def test_manual_send_blocks_unknown_delivery_instead_of_blind_resend() -> None:
+    outbound = _Outbound()
+    deliveries = _Deliveries()
+    deliveries.records["old"] = PayrollDeliveryRecord(
+        id="old",
+        idempotency_key="old",
+        employee_id="EMP-1",
+        message="old reminder",
+        state=PayrollDeliveryState.UNKNOWN,
+        scope_key="default",
+        cycle_id=_CYCLE.cycle_id,
+        milestone="H-1",
+        context_id=uuid4(),
+        attempt_count=1,
+        reserved_at=_NOW,
+    )
+    service = PayrollTalentReminderService(
+        "default",
+        _Settings(PayrollClosingSettings(enabled=True)),
+        _Payroll(),
+        _Identities(),
+        _Contexts(),
+        outbound,
+        deliveries,
+    )
+
+    result = await service.send_manual("EMP-1", _CYCLE, uuid4(), now=_NOW)
+
+    assert result.sent is False
+    assert result.outcome == "unknown_blocked"
+    assert outbound.calls == []
