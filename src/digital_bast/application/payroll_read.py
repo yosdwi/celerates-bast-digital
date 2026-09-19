@@ -129,7 +129,7 @@ def closing_evaluated_through(
     next_day_ready_hour: int = 6,
 ) -> date | None:
     """Return the latest day whose configured next-day evaluation window ended."""
-    if not 0 <= next_day_ready_hour <= 23:
+    if not 0 <= next_day_ready_hour <= 23:  # noqa: PLR2004 - valid clock-hour bound
         msg = "next_day_ready_hour must be between 0 and 23"
         raise ValueError(msg)
 
