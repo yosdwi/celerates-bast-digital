@@ -17,6 +17,7 @@ from digital_bast.web.errors import (
     WebBackendUnavailableError,
 )
 from digital_bast.web.page_router import page_router
+from digital_bast.web.payroll_export_router import payroll_export_router
 from digital_bast.web.payroll_followup_router import payroll_followup_router
 from digital_bast.web.payroll_router import payroll_router
 from digital_bast.web.report_router import report_router
@@ -62,6 +63,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - exp
     app.include_router(whatsapp_directory_router(dependencies))
     app.include_router(whatsapp_ops_router(dependencies))
     app.include_router(payroll_router(dependencies))
+    app.include_router(payroll_export_router(dependencies))
     app.include_router(payroll_followup_router(dependencies))
     app.include_router(talent_mobile_links_router(dependencies))
     app.include_router(task_evidence_router(dependencies))
