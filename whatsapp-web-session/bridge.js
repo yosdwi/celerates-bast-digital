@@ -40,9 +40,6 @@ const {
   MenuStore,
 } = require("./helpers");
 
-// See README.md "Known issue": WhatsApp Web renamed _serialized to $1 on
-// some id-like objects on this build; used for trace-id logging everywhere
-// below so log lines don't read "in=undefined".
 function msgId(msg) {
   return msg?.id?._serialized ?? msg?.id?.$1 ?? "?";
 }
@@ -58,16 +55,10 @@ class Bridge {
     this.bridgeToken = bridgeToken;
     this.waitDelay = waitNoticeDelayMs;
     this.menus = new MenuStore();
+    this._startPromise = null;
 
     this.client = new Client({
       authStrategy: new LocalAuth({ dataPath: authDir }),
-      // Default is LocalWebCache, which writes a version HTML file under a
-      // *relative* path ("./.wwebjs_cache/") -- incompatible with this
-      // container's read_only rootfs (see README.md "Known issue": this
-      // silently failed with ENOENT inside a fire-and-forget browser-side
-      // call, so it never surfaced as a Node-side error or log line, and
-      // was the actual reason `ready` never fired despite every other fix).
-      // We always want the live version anyway, so skip caching entirely.
       webVersionCache: { type: "none" },
       puppeteer: {
         headless: true,
@@ -83,14 +74,34 @@ class Bridge {
 
     this._pairingNumber = String(process.env.BOT_PAIRING_NUMBER || "").replace(/\D/g, "");
     this._pairingRequested = false;
-
     this._wireEvents();
   }
 
   async start() {
-    this._pairingRequested = false;
-    this.state.logf("initializing whatsapp-web.js client");
-    await this.client.initialize();
+    if (this._startPromise) return this._startPromise;
+    this._startPromise = (async () => {
+      this._pairingRequested = false;
+      this.state.logf("initializing whatsapp-web.js client");
+      await this.client.initialize();
+    })();
+    try {
+      return await this._startPromise;
+    } finally {
+      this._startPromise = null;
+    }
+  }
+
+  async restartTransient() {
+    if (this.state.operatorActionRequired) {
+      throw new Error("operator action required; transient reconnect blocked");
+    }
+    if (this._startPromise) return this._startPromise;
+    this.state.setConnection("recovering");
+    this.state.logf("restarting whatsapp-web.js client without logout/auth reset");
+    await this.client.destroy().catch((err) => {
+      this.state.logf(`client destroy before transient reconnect failed: ${err.message}`);
+    });
+    return this.start();
   }
 
   _wireEvents() {
@@ -104,9 +115,6 @@ class Bridge {
       }
       state.setConnection("awaiting-scan");
       state.logf("pairing QR refreshed");
-      // Mirrors whatsmeow-session/main.go: request the code once per
-      // pairing attempt, only while unregistered -- a no-op once paired
-      // (the `qr` event stops firing after a successful scan/code entry).
       if (this._pairingNumber && !this._pairingRequested) {
         this._pairingRequested = true;
         try {
@@ -152,16 +160,9 @@ class Bridge {
     });
 
     client.on("disconnected", (reason) => {
-      // whatsapp-web.js's own `disconnected` fires for both transient
-      // socket drops and a real logout; it does NOT auto re-initialize the
-      // client itself (unlike whatsmeow's built-in reconnect), so on a
-      // "LOGOUT" reason specifically we latch operatorActionRequired the
-      // same way the Go bridge does for events.LoggedOut. Any other reason
-      // is logged but left for the operator to decide whether to restart
-      // the process -- do NOT loop client.initialize() here.
       if (String(reason).toUpperCase() === "LOGOUT") {
         state.requireOperatorAction("logged-out", String(reason));
-        state.logf(`whatsapp-web.js permanent logout; automatic re-pair blocked`);
+        state.logf("whatsapp-web.js permanent logout; automatic re-pair blocked");
       } else {
         state.setConnection("disconnected");
         state.logf(`whatsapp-web.js disconnected: ${reason}`);
@@ -262,13 +263,6 @@ class Bridge {
 
   async _handleMessage(msg) {
     if (msg.fromMe) return;
-    // WhatsApp Status interactions (someone viewing/replying to this
-    // number's Status) surface as inbound messages with `from ===
-    // "status@broadcast"` -- confirmed live, 2026-09-04. These are not DMs;
-    // treating them as one routes into sendMessage()'s isStatus branch on
-    // reply, which calls a WAWebStatusGatingUtils function this WhatsApp
-    // Web build doesn't have (window.require(...).canCheckStatusRankingPosterGating
-    // is not a function). Not a business message either way -- skip.
     if (msg.from === "status@broadcast") {
       this.state.logf(`ignoring status@broadcast interaction in=${msgId(msg)}`);
       return;
@@ -326,8 +320,6 @@ class Bridge {
     }
     const text = msg.body || "";
     if (!text) return;
-    // See file header: unverified whether `author` ever differs from `from`
-    // for a 1:1 chat the way whatsmeow's LID resolution has to handle.
     const identityJid = msg.author || msg.from;
     this.state.logf(`dm text in=${msgId(msg)} identity=${identityJid} text=${text.slice(0, 120)}`);
     const resolved = this.menus.resolve(identityJid, text);
@@ -373,8 +365,6 @@ class Bridge {
 
   async sendText(jid, text) {
     const result = await this.client.sendMessage(jid, text);
-    // See README.md "Known issue": WhatsApp Web renamed _serialized to $1 on
-    // some id-like objects on this build; fall back rather than return "".
     return result?.id?._serialized || result?.id?.$1 || "";
   }
 }
