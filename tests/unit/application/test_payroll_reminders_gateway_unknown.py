@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
-from uuid import UUID
+from typing import TYPE_CHECKING
 
 from digital_bast.application.attendance_closing import (
     AttendanceClosingReason,
@@ -25,8 +25,12 @@ from digital_bast.application.payroll_reminder_delivery import (
 )
 from digital_bast.application.payroll_reminders import PayrollTalentReminderService
 from digital_bast.application.talentops_followups import WhatsAppSendReceipt
-from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from digital_bast.domain.completion import DateRange
 
 _NOW = datetime(2026, 9, 19, 10, 0, tzinfo=JAKARTA)
 _CYCLE = payroll_cycle(2026, 9)
@@ -131,7 +135,7 @@ class _Deliveries:
     def __init__(self) -> None:
         self.record: PayrollDeliveryRecord | None = None
 
-    async def reserve(
+    async def reserve(  # noqa: PLR0913 - protocol fixture mirrors the delivery store
         self,
         *,
         idempotency_key: str,
