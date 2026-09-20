@@ -50,7 +50,7 @@ _MONTHS: Final = {
 _MONTH_PATTERN: Final = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _ISO_DATE_RE: Final = re.compile(r"(?<!\d)(20\d{2})-(\d{1,2})-(\d{1,2})(?!\d)")
 _DMY_DATE_RE: Final = re.compile(
-    r"(?<!\d)([0-3]?\d)[/-]([01]?\d)(?:[/-](20\d{2}))?(?!\d)"
+    r"(?<![\d-])([0-3]?\d)[/-]([01]?\d)(?:[/-](20\d{2}))?(?!\d)"
 )
 _MONTH_DATE_RE: Final = re.compile(
     rf"(?<!\d)([0-3]?\d)\s+({_MONTH_PATTERN})(?:\s+(20\d{{2}}))?(?!\d)",
