@@ -81,7 +81,7 @@ test("executionFor routes group replies through the PMO group entry wrapper", ()
   ]);
 });
 
-test("executionFor routes DM text and timestamp through the mobile-aware Python entry wrapper", () => {
+test("executionFor routes timestamped DM through the payroll-aware Python entry wrapper", () => {
   const execution = executionFor([
     "bot-reply",
     "--text",
@@ -96,7 +96,7 @@ test("executionFor routes DM text and timestamp through the mobile-aware Python 
   assert.equal(execution.command, "python");
   assert.deepEqual(execution.args, [
     "-m",
-    "digital_bast.bot.dm_entry",
+    "digital_bast.bot.dm_message_entry",
     "reply",
     "--text",
     "17:00",
@@ -104,6 +104,27 @@ test("executionFor routes DM text and timestamp through the mobile-aware Python 
     "628123@s.whatsapp.net",
     "--message-at",
     "2026-09-08T01:30:00.000Z",
+  ]);
+});
+
+test("executionFor keeps legacy DM entry when timestamp is absent", () => {
+  const execution = executionFor([
+    "bot-reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--channel",
+    "dm",
+  ]);
+  assert.deepEqual(execution.args, [
+    "-m",
+    "digital_bast.bot.dm_entry",
+    "reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
   ]);
 });
 
