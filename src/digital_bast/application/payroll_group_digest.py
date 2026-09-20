@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from digital_bast.application.talentops_followups import WhatsAppSendReceipt
     from digital_bast.infrastructure.whatsapp_directory import PayrollClosingGroupSetting
 
+_GATEWAY_UNKNOWN_ERRORS = frozenset({"delivery_outcome_unknown", "receipt_store_unhealthy"})
+
 
 @dataclass(frozen=True, slots=True)
 class PayrollGroupDigestDelivery:
@@ -297,6 +299,18 @@ class PayrollGroupDigestService:
                 milestone=milestone,
                 outcome="sent",
                 sent=1,
+            )
+        if receipt.error_code in _GATEWAY_UNKNOWN_ERRORS:
+            await self._deliveries.finish(
+                idempotency_key,
+                PayrollDeliveryState.UNKNOWN,
+                error_code=receipt.error_code,
+            )
+            return PayrollGroupDigestRunSummary(
+                enabled=True,
+                paused=False,
+                milestone=milestone,
+                outcome="unknown",
             )
         if receipt.status == "bridge_unavailable":
             await self._deliveries.finish(
