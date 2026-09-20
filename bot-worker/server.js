@@ -59,9 +59,26 @@ function executionFor(args) {
     const jid = optionValue(args, "--jid");
     const messageAt = optionValue(args, "--message-at");
     if (text !== null && jid) {
-      const dmArgs = ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid];
-      if (messageAt) dmArgs.push("--message-at", messageAt);
-      return { command: PYTHON, args: dmArgs };
+      if (messageAt) {
+        return {
+          command: PYTHON,
+          args: [
+            "-m",
+            "digital_bast.bot.dm_message_entry",
+            "reply",
+            "--text",
+            text,
+            "--jid",
+            jid,
+            "--message-at",
+            messageAt,
+          ],
+        };
+      }
+      return {
+        command: PYTHON,
+        args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
+      };
     }
   }
   if (args[0] === "bot-reply") {
