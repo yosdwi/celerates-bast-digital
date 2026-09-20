@@ -31,7 +31,7 @@ from digital_bast.web.whatsapp_directory_router import whatsapp_directory_router
 from digital_bast.web.whatsapp_ops_router import whatsapp_ops_router
 
 
-def create_app(dependencies: WebDependencies) -> FastAPI:
+def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - explicit router assembly
     project_root = Path(__file__).resolve().parents[3]
     templates = Jinja2Templates(directory=project_root / "templates")
     templates.env.autoescape = True
