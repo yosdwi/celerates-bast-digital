@@ -65,6 +65,8 @@
 .payroll-review-confirm-actions { display: flex; gap: 7px; justify-content: flex-end; }
 .danger-button { min-height: 32px; padding: 0 12px; border: 1px solid #d93025; border-radius: 5px; color: #fff; background: #d93025; font-size: 10px; font-weight: 600; }
 .danger-button:disabled { opacity: .45; cursor: not-allowed; }
+.payroll-follow-up-table-wrap { overflow-x: auto; }
+.payroll-follow-up-preview-message { max-width: 100%; margin: 12px 0; padding: 10px; overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 6px; color: #3c4043; background: var(--subtle); font: inherit; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 
 @media (max-width: 900px) {
   .payroll-review-layout { grid-template-columns: 1fr; }
@@ -89,6 +91,19 @@
   .payroll-review-facts { grid-template-columns: 1fr 1fr; }
   .payroll-review-confirm { padding: 11px; }
   .payroll-review-confirm-actions button { flex: 1; }
+  .payroll-follow-up-table-wrap { padding: 10px; overflow: visible; background: var(--subtle); }
+  .payroll-follow-up-table,
+  .payroll-follow-up-table tbody,
+  .payroll-follow-up-table tr,
+  .payroll-follow-up-table td { display: block; width: 100%; }
+  .payroll-follow-up-table thead { display: none; }
+  .payroll-follow-up-table tbody { display: grid; gap: 9px; }
+  .payroll-follow-up-table tr { overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+  .payroll-follow-up-table td { height: auto; min-height: 0; padding: 9px 10px; border-bottom: 0; }
+  .payroll-follow-up-table td + td { border-top: 1px solid var(--line-soft); }
+  .payroll-follow-up-table td::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--quiet); font-size: 8px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+  .payroll-follow-up-table td:last-child .secondary-button { width: 100%; }
+  .payroll-follow-up-table .payroll-status { white-space: normal; }
 }
 
 @media (max-width: 430px) {

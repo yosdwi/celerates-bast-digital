@@ -155,8 +155,8 @@ export default function PayrollFollowUpPanel({ session, cycle, onRefreshOverview
       ) : digest && digest.items.length === 0 ? (
         <div className="payroll-review-empty">Tidak ada follow-up Payroll yang perlu ditangani.</div>
       ) : digest ? (
-        <div className="desktop-table-wrap">
-          <table className="data-table" aria-label="Payroll follow-up list">
+        <div className="payroll-follow-up-table-wrap">
+          <table className="data-table payroll-follow-up-table" aria-label="Payroll follow-up list">
             <thead>
               <tr>
                 <th>Talent</th>
@@ -168,11 +168,11 @@ export default function PayrollFollowUpPanel({ session, cycle, onRefreshOverview
             <tbody>
               {digest.items.map((item) => (
                 <tr key={item.employee_id}>
-                  <td>
+                  <td data-label="Talent">
                     <div className="talent-name">{item.name}</div>
                     <div className="cell-muted">{item.nrp} · {item.role}</div>
                   </td>
-                  <td>
+                  <td data-label="Perlu perhatian">
                     <strong>{reasonLabel(item)}</strong>
                     <div className="cell-muted">
                       {item.actionable_days > 0 ? `${item.actionable_days} tanggal perlu Talent` : ""}
@@ -180,11 +180,11 @@ export default function PayrollFollowUpPanel({ session, cycle, onRefreshOverview
                       {item.unverified_days > 0 ? `${item.unverified_days} perlu cek source` : ""}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Delivery terakhir">
                     <span className="payroll-status">{stateLabel(item)}</span>
                     {item.error_code ? <div className="cell-muted">{item.error_code}</div> : null}
                   </td>
-                  <td>
+                  <td data-label="Action">
                     {item.actionable_days > 0 ? (
                       <button
                         className="secondary-button"
@@ -223,7 +223,7 @@ export default function PayrollFollowUpPanel({ session, cycle, onRefreshOverview
           </div>
           {preview ? (
             <>
-              {preview.message ? <pre>{preview.message}</pre> : <p>{outcomeLabel(preview.outcome)}</p>}
+              {preview.message ? <pre className="payroll-follow-up-preview-message">{preview.message}</pre> : <p>{outcomeLabel(preview.outcome)}</p>}
               {blocksManualSend(selectedItem) ? (
                 <div className="payroll-review-warning">
                   Kirim manual diblokir untuk state ini agar tidak membuat delivery duplikat.
