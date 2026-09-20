@@ -45,6 +45,7 @@ class SessionSupervisor {
     this.now = now;
     this.timer = null;
     this.runningProbe = null;
+    this.manualRecovery = null;
     this.data = {
       version: 1,
       policy_version: POLICY_VERSION,
@@ -134,13 +135,17 @@ class SessionSupervisor {
     if (!this.ownerGuard.acquired) return { accepted: false, reason: "session_owner_not_acquired" };
     if (!this.storageSafety.healthy) return { accepted: false, reason: "session_storage_unhealthy" };
     if (this.bridge.isReady()) return { accepted: false, reason: "already_ready" };
-    if (this.runningProbe) return { accepted: false, reason: "recovery_in_progress" };
+    if (this.runningProbe || this.manualRecovery) return { accepted: false, reason: "recovery_in_progress" };
     this.data.paused = false;
     this.data.cooldown_until = null;
-    return this._recover("operator_reconnect");
+    this.manualRecovery = this._recover("operator_reconnect").finally(() => {
+      this.manualRecovery = null;
+    });
+    return { accepted: true, reason: "reconnect_started" };
   }
 
   async probe() {
+    if (this.manualRecovery) return { recovered: false, reason: "recovery_in_progress" };
     if (this.runningProbe) return this.runningProbe;
     this.runningProbe = this._probeOnce();
     try {
