@@ -76,34 +76,44 @@ class DurableOutboundReceiptStore {
   }
 
   _trim() {
-    if (this.records.size <= this.maxReceipts) return;
-    const ordered = [...this.records.values()].sort((left, right) =>
-      String(left.updated_at || "").localeCompare(String(right.updated_at || "")),
-    );
-    for (const record of ordered.slice(0, ordered.length - this.maxReceipts)) {
+    const completed = [...this.records.values()]
+      .filter((record) => record.state !== "accepted")
+      .sort((left, right) =>
+        String(left.updated_at || "").localeCompare(String(right.updated_at || "")),
+      );
+    const excess = completed.length - this.maxReceipts;
+    if (excess <= 0) return;
+    for (const record of completed.slice(0, excess)) {
       this.records.delete(record.request_id);
     }
   }
 
-  _serialize(extra = null) {
-    const receipts = [...this.records.values()];
-    if (extra) receipts.push(extra);
-    receipts.sort((left, right) =>
-      String(left.updated_at || "").localeCompare(String(right.updated_at || "")),
-    );
+  _serialize() {
+    const accepted = [...this.records.values()].filter((record) => record.state === "accepted");
+    const completed = [...this.records.values()]
+      .filter((record) => record.state !== "accepted")
+      .sort((left, right) =>
+        String(left.updated_at || "").localeCompare(String(right.updated_at || "")),
+      )
+      .slice(-this.maxReceipts);
     return {
       version: STORE_VERSION,
-      receipts: receipts.slice(-this.maxReceipts),
+      receipts: [...accepted, ...completed],
     };
   }
 
-  _persist(extra = null) {
+  _persist() {
     const dir = path.dirname(this.filePath);
     fs.mkdirSync(dir, { recursive: true, mode: 0o750 });
     const temporary = `${this.filePath}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
-    const payload = `${JSON.stringify(this._serialize(extra))}\n`;
+    const payload = `${JSON.stringify(this._serialize())}\n`;
     fs.writeFileSync(temporary, payload, { mode: 0o640 });
     fs.renameSync(temporary, this.filePath);
+  }
+
+  _persistenceFailed(err) {
+    this.loadError = `receipt_store_write_failed:${err.message}`;
+    this.logf(this.loadError);
   }
 
   snapshot() {
@@ -126,11 +136,6 @@ class DurableOutboundReceiptStore {
 
   async run(requestId, jid, text, sendFn) {
     const fingerprint = payloadFingerprint(jid, text);
-    const completed = this.records.get(requestId);
-    if (completed) {
-      if (completed.fingerprint !== fingerprint) return { conflict: true };
-      return completed.result;
-    }
     if (this.loadError) {
       return { status: "unavailable", error: "receipt_store_unhealthy" };
     }
@@ -141,6 +146,13 @@ class DurableOutboundReceiptStore {
       return pending.promise;
     }
 
+    const completed = this.records.get(requestId);
+    if (completed) {
+      if (completed.fingerprint !== fingerprint) return { conflict: true };
+      if (completed.state === "accepted") return unknownResult();
+      return completed.result;
+    }
+
     const accepted = {
       request_id: requestId,
       fingerprint,
@@ -148,7 +160,14 @@ class DurableOutboundReceiptStore {
       result: null,
       updated_at: new Date().toISOString(),
     };
-    this._persist(accepted);
+    this.records.set(requestId, accepted);
+    try {
+      this._persist();
+    } catch (err) {
+      this.records.delete(requestId);
+      this._persistenceFailed(err);
+      return { status: "unavailable", error: "receipt_store_unhealthy" };
+    }
 
     const promise = (async () => {
       let result;
@@ -169,8 +188,19 @@ class DurableOutboundReceiptStore {
       };
       this.records.set(requestId, record);
       this._trim();
-      this._persist();
-      this.inFlight.delete(requestId);
+      try {
+        this._persist();
+      } catch (err) {
+        this.records.set(requestId, {
+          ...record,
+          state: "unknown",
+          result: unknownResult(),
+        });
+        this._persistenceFailed(err);
+        return unknownResult();
+      } finally {
+        this.inFlight.delete(requestId);
+      }
       return finalResult;
     })();
 
