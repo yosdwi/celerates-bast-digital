@@ -44,6 +44,13 @@ function msgId(msg) {
   return msg?.id?._serialized ?? msg?.id?.$1 ?? "?";
 }
 
+function messageTimestampIso(msg) {
+  const seconds = Number(msg?.timestamp);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const value = new Date(seconds * 1000);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
+}
+
 const EVIDENCE_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup \u{1F64F} Tinggal kirim foto/dokumennya langsung ke DM aku.";
 
@@ -325,7 +332,13 @@ class Bridge {
     const resolved = this.menus.resolve(identityJid, text);
     const result = await this.callWorkerWithNotice(
       msg,
-      { kind: "text", text: resolved, jid: identityJid, channel: "dm" },
+      {
+        kind: "text",
+        text: resolved,
+        jid: identityJid,
+        channel: "dm",
+        message_at: messageTimestampIso(msg),
+      },
       !looksLikeDMFastPath(resolved),
     );
     await this._sendWorkerReply(msg, identityJid, result, "menjalankan perintah");
@@ -377,4 +390,4 @@ function extensionForMime(mimetype) {
   return ".jpg";
 }
 
-module.exports = { Bridge };
+module.exports = { Bridge, messageTimestampIso };
