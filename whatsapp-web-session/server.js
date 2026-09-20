@@ -1,22 +1,28 @@
 "use strict";
 
-// Prototype wa-session replacement (whatsapp-web.js). See README.md for how
-// to run this in isolation and what it does/doesn't prove yet. Contract
-// (routes, request/response shapes, x-bridge-token auth) matches
-// whatsmeow-session/main.go exactly so this is a real drop-in test, not a
-// simplified stand-in.
-
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const { RuntimeState } = require("./state");
 const { Bridge } = require("./bridge");
-const { MAX_MESSAGE_CHARS, MAX_REQUEST_ID_CHARS, safeEqual, OutboundDedupeStore } = require("./helpers");
+const { DurableOutboundReceiptStore } = require("./gateway-receipts");
+const {
+  SessionOwnerGuard,
+  clearStaleChromiumLocks,
+  inspectSessionStorage,
+} = require("./session-safety");
+const { SessionSupervisor } = require("./session-supervisor");
+const { MAX_MESSAGE_CHARS, MAX_REQUEST_ID_CHARS, safeEqual } = require("./helpers");
 
 function getenv(name, fallback) {
-  const v = (process.env[name] || "").trim();
-  return v || fallback;
+  const value = (process.env[name] || "").trim();
+  return value || fallback;
+}
+
+function envNumber(name, fallback) {
+  const parsed = Number(getenv(name, String(fallback)));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 const DATA_DIR = getenv("BOT_DATA_DIR", "./data");
@@ -24,10 +30,27 @@ const AUTH_DIR = getenv("BOT_AUTH_DIR", path.join(DATA_DIR, "auth-whatsapp-web-j
 const SETUP_HOST = getenv("BOT_SETUP_HOST", "127.0.0.1");
 const SETUP_PORT = getenv("BOT_SETUP_PORT", "8090");
 const WORKER_BASE_URL = getenv("BOT_WORKER_BASE_URL", "http://127.0.0.1:8091");
-const WAIT_NOTICE_DELAY_MS = Number(getenv("BOT_WAIT_NOTICE_DELAY_MS", "2500"));
+const WAIT_NOTICE_DELAY_MS = envNumber("BOT_WAIT_NOTICE_DELAY_MS", 2500);
+const RECEIPT_MAX = envNumber("BOT_OUTBOUND_RECEIPT_MAX", 2048);
+const OWNER_TTL_MS = envNumber("BOT_SESSION_OWNER_TTL_MS", 90_000);
+const OWNER_HEARTBEAT_MS = envNumber("BOT_SESSION_OWNER_HEARTBEAT_MS", 15_000);
+const MIN_FREE_BYTES = envNumber("BOT_SESSION_MIN_FREE_BYTES", 128 * 1024 * 1024);
+const MIN_FREE_INODES = envNumber("BOT_SESSION_MIN_FREE_INODES", 256);
+const SUPERVISOR_PROBE_MS = envNumber("BOT_SESSION_PROBE_MS", 15_000);
+const SUPERVISOR_GRACE_MS = envNumber("BOT_SESSION_RECOVERY_GRACE_MS", 30_000);
+const SUPERVISOR_WINDOW_MS = envNumber("BOT_SESSION_RECOVERY_WINDOW_MS", 15 * 60_000);
+const SUPERVISOR_COOLDOWN_MS = envNumber("BOT_SESSION_RECOVERY_COOLDOWN_MS", 15 * 60_000);
+const SUPERVISOR_MAX_ATTEMPTS = envNumber("BOT_SESSION_RECOVERY_MAX_ATTEMPTS", 3);
+
+const RECEIPT_PATH = path.join(DATA_DIR, "whatsapp-outbound-receipts.json");
+const OWNER_PATH = path.join(DATA_DIR, "whatsapp-web-session-owner.json");
+const SUPERVISOR_PATH = path.join(DATA_DIR, "whatsapp-session-supervisor.json");
 
 function configuredToken() {
-  const tokenFile = getenv("BOT_BRIDGE_TOKEN_FILE", getenv("SYNC_INGEST_TOKEN_FILE", "/run/secrets/sync_ingest_token"));
+  const tokenFile = getenv(
+    "BOT_BRIDGE_TOKEN_FILE",
+    getenv("SYNC_INGEST_TOKEN_FILE", "/run/secrets/sync_ingest_token"),
+  );
   try {
     return fs.readFileSync(tokenFile, "utf8").trim();
   } catch {
@@ -36,9 +59,6 @@ function configuredToken() {
 }
 
 function validDirectJid(raw) {
-  // whatsapp-web.js direct-chat JIDs look like "<digits>@c.us" (classic) or
-  // "<digits>@lid" (privacy/LID addressing) -- mirrors whatsmeow-session's
-  // validDirectJID accepting both DefaultUserServer and HiddenUserServer.
   return /^\d+@(c\.us|lid)$/.test(raw);
 }
 
@@ -46,69 +66,13 @@ function validGroupJid(raw) {
   return /^\d+(?:-\d+)?@g\.us$/.test(raw);
 }
 
-fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o750 });
-fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
-
-// Chromium refuses to launch against a profile that still has a
-// SingletonLock/-Socket/-Cookie from a previous run -- it can't tell a
-// stale lock (previous container didn't shut down cleanly before this one
-// started) apart from a real concurrent process. Our deploy model
-// guarantees at most one container holds this volume at a time (compose
-// always stops the old one before starting a new one), so on OUR OWN
-// startup any such lock is by definition stale -- safe to clear, unlike
-// deleting it while a process might actually be running.
-function clearStaleChromiumLocks(root) {
-  let cleared = 0;
-  const stack = [root];
-  while (stack.length) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (/^Singleton(Lock|Socket|Cookie)$/.test(entry.name)) {
-        try {
-          fs.rmSync(full, { force: true });
-          cleared += 1;
-        } catch (err) {
-          state.logf(`failed to clear stale lock ${full}: ${err.message}`);
-        }
-      }
-    }
-  }
-  return cleared;
-}
-
-const state = new RuntimeState(AUTH_DIR);
-state.logf(`starting whatsapp-web.js transport; auth=${AUTH_DIR}`);
-
-const clearedLocks = clearStaleChromiumLocks(AUTH_DIR);
-if (clearedLocks > 0) state.logf(`cleared ${clearedLocks} stale Chromium singleton lock file(s) from a previous run`);
-
-const bridge = new Bridge({
-  state,
-  authDir: AUTH_DIR,
-  dataDir: DATA_DIR,
-  workerBaseUrl: WORKER_BASE_URL,
-  bridgeToken: configuredToken(),
-  waitNoticeDelayMs: WAIT_NOTICE_DELAY_MS,
-});
-
-const outbound = new OutboundDedupeStore();
-
 function writeJson(res, status, payload) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
 }
 
-function nullable(v) {
-  return v === "" ? null : v;
+function nullable(value) {
+  return value === "" ? null : value;
 }
 
 async function readJsonBody(req, maxBytes) {
@@ -132,23 +96,131 @@ async function readJsonBody(req, maxBytes) {
   });
 }
 
+function bridgeAuthorized(req) {
+  return safeEqual(req.headers["x-bridge-token"], configuredToken());
+}
+
+fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o750 });
+fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o750 });
+
+const state = new RuntimeState(AUTH_DIR);
+state.logf(`starting whatsapp-web.js transport; auth=${AUTH_DIR}`);
+
+const storageSafety = inspectSessionStorage({
+  dataDir: DATA_DIR,
+  authDir: AUTH_DIR,
+  minFreeBytes: MIN_FREE_BYTES,
+  minFreeInodes: MIN_FREE_INODES,
+});
+if (!storageSafety.healthy) {
+  state.logf(`session storage safety blocked startup: ${storageSafety.reasons.join(",")}`);
+}
+
+const ownerGuard = new SessionOwnerGuard({
+  filePath: OWNER_PATH,
+  ttlMs: OWNER_TTL_MS,
+  heartbeatMs: OWNER_HEARTBEAT_MS,
+  logf: (line) => state.logf(line),
+});
+const ownerAcquired = ownerGuard.acquire();
+if (!ownerAcquired) {
+  state.logf(
+    `session owner conflict; existing owner=${ownerGuard.snapshot().conflict_owner_id || "unknown"}`,
+  );
+}
+
+if (ownerAcquired && storageSafety.healthy) {
+  const cleanup = clearStaleChromiumLocks(AUTH_DIR, {
+    ownerGuard,
+    storageSafety,
+    logf: (line) => state.logf(line),
+  });
+  if (cleanup.cleared > 0) {
+    state.logf(`cleared ${cleanup.cleared} stale Chromium singleton lock file(s)`);
+  }
+}
+
+const bridge = new Bridge({
+  state,
+  authDir: AUTH_DIR,
+  dataDir: DATA_DIR,
+  workerBaseUrl: WORKER_BASE_URL,
+  bridgeToken: configuredToken(),
+  waitNoticeDelayMs: WAIT_NOTICE_DELAY_MS,
+});
+
+const outbound = new DurableOutboundReceiptStore({
+  filePath: RECEIPT_PATH,
+  maxReceipts: RECEIPT_MAX,
+  logf: (line) => state.logf(line),
+});
+
+const supervisor = new SessionSupervisor({
+  state,
+  bridge,
+  filePath: SUPERVISOR_PATH,
+  ownerGuard,
+  storageSafety,
+  probeMs: SUPERVISOR_PROBE_MS,
+  graceMs: SUPERVISOR_GRACE_MS,
+  windowMs: SUPERVISOR_WINDOW_MS,
+  cooldownMs: SUPERVISOR_COOLDOWN_MS,
+  maxAttempts: SUPERVISOR_MAX_ATTEMPTS,
+  logf: (line) => state.logf(line),
+});
+
+function messagingReady() {
+  return bridge.isReady() && ownerGuard.acquired && storageSafety.healthy;
+}
+
+function operationalSnapshot() {
+  const current = state.snapshot();
+  const recovery = supervisor.snapshot();
+  const owner = ownerGuard.snapshot();
+  const receipts = outbound.snapshot();
+  return {
+    alive: true,
+    ready: messagingReady(),
+    connection: current.connection,
+    me: current.me,
+    qrDataUrl: nullable(current.qrDataUrl),
+    pairingCode: nullable(current.pairingCode),
+    operatorActionRequired: current.operatorActionRequired,
+    operatorReason: nullable(current.operatorReason),
+    connectionChangedAt: current.connectionChangedAt,
+    recoveryState: recovery.recovery_state,
+    recoveryReason: recovery.recovery_reason,
+    recoveryPaused: recovery.paused,
+    lastProbeAt: recovery.last_probe_at,
+    lastReadyAt: recovery.last_ready_at,
+    lastAckAt: recovery.last_ack_at,
+    cooldownUntil: recovery.cooldown_until,
+    recoveryAttempts: recovery.attempts_in_window,
+    recoveryMaxAttempts: recovery.max_attempts,
+    recoveryPolicyVersion: recovery.policy_version,
+    appliedRecoveryPolicyVersion: recovery.applied_policy_version,
+    ownerAcquired: owner.acquired,
+    ownerConflictId: owner.conflict_owner_id,
+    ownerConflictHeartbeatAt: owner.conflict_heartbeat_at,
+    storageHealthy: storageSafety.healthy,
+    storageReasons: storageSafety.reasons,
+    freeBytes: storageSafety.free_bytes,
+    freeInodes: storageSafety.free_inodes,
+    receiptStoreHealthy: receipts.healthy,
+    receiptStoreError: receipts.error,
+    receiptSent: receipts.sent,
+    receiptUnknown: receipts.unknown,
+    receiptInFlight: receipts.in_flight,
+    transport: "whatsapp-web.js",
+  };
+}
+
 async function handleStatus(req, res) {
-  if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
+  if (!bridgeAuthorized(req)) {
     writeJson(res, 403, { status: "forbidden" });
     return;
   }
-  const s = state.snapshot();
-  writeJson(res, 200, {
-    connection: s.connection,
-    ready: bridge.isReady(),
-    me: s.me,
-    qrDataUrl: nullable(s.qrDataUrl),
-    pairingCode: nullable(s.pairingCode),
-    operatorActionRequired: s.operatorActionRequired,
-    operatorReason: nullable(s.operatorReason),
-    connectionChangedAt: s.connectionChangedAt,
-    transport: "whatsapp-web.js",
-  });
+  writeJson(res, 200, operationalSnapshot());
 }
 
 function serializedId(value) {
@@ -189,11 +261,11 @@ async function serializeGroup(chat) {
 }
 
 async function handleGroups(req, res) {
-  if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
+  if (!bridgeAuthorized(req)) {
     writeJson(res, 403, { status: "forbidden" });
     return;
   }
-  if (!bridge.isReady()) {
+  if (!messagingReady()) {
     writeJson(res, 503, { status: "unavailable", error: "whatsapp_not_connected", groups: [] });
     return;
   }
@@ -214,11 +286,11 @@ async function handleGroups(req, res) {
 }
 
 async function handleSendOutbound(req, res, jidValidator) {
-  if (!safeEqual(req.headers["x-bridge-token"], configuredToken())) {
+  if (!bridgeAuthorized(req)) {
     writeJson(res, 403, { status: "forbidden" });
     return;
   }
-  if (!bridge.isReady()) {
+  if (!messagingReady()) {
     writeJson(res, 503, { status: "unavailable", error: "whatsapp_not_connected" });
     return;
   }
@@ -232,15 +304,23 @@ async function handleSendOutbound(req, res, jidValidator) {
   const jid = String(payload.jid || "").trim();
   const text = String(payload.text || "").trim();
   const requestId = String(payload.request_id || "").trim();
-  if (!jidValidator(jid) || !text || text.length > MAX_MESSAGE_CHARS || !requestId || requestId.length > MAX_REQUEST_ID_CHARS) {
+  if (
+    !jidValidator(jid) ||
+    !text ||
+    text.length > MAX_MESSAGE_CHARS ||
+    !requestId ||
+    requestId.length > MAX_REQUEST_ID_CHARS
+  ) {
     writeJson(res, 422, { status: "invalid", error: "invalid_message_request" });
     return;
   }
+
   const result = await outbound.run(requestId, jid, text, async () => {
     state.logf(`outbound start request=${requestId} target=${jid} text_len=${text.length}`);
     try {
       const providerMessageId = await bridge.sendText(jid, text);
       state.logf(`outbound ack request=${requestId} provider=${providerMessageId} target=${jid}`);
+      supervisor.markAck();
       return { status: "sent", provider_message_id: providerMessageId };
     } catch (err) {
       state.logf(`outbound failed request=${requestId}: ${err && err.stack ? err.stack : err}`);
@@ -251,14 +331,61 @@ async function handleSendOutbound(req, res, jidValidator) {
     writeJson(res, 409, { status: "invalid", error: "request_id_conflict" });
     return;
   }
-  const httpStatus = result.status === "sent" ? 200 : 503;
-  writeJson(res, httpStatus, result);
+  writeJson(res, result.status === "sent" ? 200 : 503, result);
+}
+
+async function beginControlledPairing() {
+  if (!ownerGuard.acquired) return { accepted: false, reason: "session_owner_not_acquired" };
+  if (!storageSafety.healthy) return { accepted: false, reason: "session_storage_unhealthy" };
+  if (messagingReady()) return { accepted: false, reason: "already_ready" };
+  if (!state.operatorActionRequired && state.connection !== "pairing-required") {
+    return { accepted: false, reason: "pairing_not_required" };
+  }
+
+  state.clearOperatorAction();
+  state.setConnection("starting");
+  supervisor.resume();
+  state.logf("operator explicitly requested controlled WhatsApp pairing");
+  bridge.start().catch((err) => {
+    state.setConnection("failed");
+    state.logf(`pairing restart failed: ${err.stack || err}`);
+  });
+  return { accepted: true, reason: "pairing_started" };
+}
+
+async function handleRecoveryControl(req, res, action) {
+  if (!bridgeAuthorized(req)) {
+    writeJson(res, 403, { status: "forbidden" });
+    return;
+  }
+  if (action === "pause") {
+    supervisor.pause();
+    writeJson(res, 200, { accepted: true, reason: "paused" });
+    return;
+  }
+  if (action === "resume") {
+    supervisor.resume();
+    writeJson(res, 200, { accepted: true, reason: "resumed" });
+    return;
+  }
+  if (action === "reconnect") {
+    const result = await supervisor.requestReconnect();
+    writeJson(res, result.accepted ? 202 : 409, result);
+    return;
+  }
+  if (action === "pair") {
+    const result = await beginControlledPairing();
+    writeJson(res, result.accepted ? 202 : 409, result);
+    return;
+  }
+  writeJson(res, 404, { status: "not_found" });
 }
 
 function setupPageHtml() {
   const s = state.snapshot();
+  const ops = operationalSnapshot();
   let pairing = "<p>Tidak ada QR aktif.</p>";
-  if (s.connection === "connected") {
+  if (ops.ready) {
     pairing = "<p>Sudah terhubung. Tidak perlu pairing lagi.</p>";
   } else if (s.qrDataUrl) {
     pairing = `<img alt="WhatsApp QR" src="${s.qrDataUrl}" width="320" height="320">`;
@@ -272,44 +399,44 @@ function setupPageHtml() {
       `<p>${escapeHtml(s.operatorReason)}</p>` +
       `<form method="post" action="/pair"><button type="submit">Mulai pairing terkontrol</button></form>`;
   }
-  const refresh = s.connection !== "connected" && s.connection !== "pairing-required" ? '<meta http-equiv="refresh" content="5">' : "";
+  const refresh = !ops.ready && s.connection !== "pairing-required" ? '<meta http-equiv="refresh" content="5">' : "";
   const rows =
     s.groups
-      .map((g) => `<tr><td>${escapeHtml(g.subject)}</td><td><code>${escapeHtml(g.jid)}</code></td></tr>`)
+      .map((group) => `<tr><td>${escapeHtml(group.subject)}</td><td><code>${escapeHtml(group.jid)}</code></td></tr>`)
       .join("") || `<tr><td colspan="2">Belum ada grup terbaca.</td></tr>`;
   return (
     `<!doctype html><html lang="id"><head><meta charset="utf-8">${refresh}` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1"><title>Setup BAST Bot (prototype)</title>` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1"><title>Setup BAST Bot</title>` +
     `<style>body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:52rem;padding:0 1rem;line-height:1.5}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:.4rem .6rem;text-align:left}pre{background:#f5f5f5;padding:.75rem;overflow:auto;max-height:18rem}.status{font-weight:600}.warn{background:#fff3cd;padding:.75rem;border-radius:.25rem}</style>` +
-    `</head><body><div class="warn">PROTOTYPE -- whatsapp-web.js transport. Not wired into production. Pair only a TEST number here.</div>` +
-    `<h1>Setup BAST Bot -- whatsapp-web.js (prototype)</h1>` +
-    `<p class="status">Status: ${escapeHtml(s.connection)} -- ready=${bridge.isReady()} -- ${escapeHtml(s.me)}</p>` +
+    `</head><body><h1>Setup BAST Bot — whatsapp-web.js</h1>` +
+    `<p class="status">Status: ${escapeHtml(s.connection)} — ready=${ops.ready} — ${escapeHtml(s.me)}</p>` +
+    `<p>Recovery: ${escapeHtml(ops.recoveryState)}${ops.recoveryReason ? ` — ${escapeHtml(ops.recoveryReason)}` : ""}</p>` +
     `<h2>1. Pairing WhatsApp</h2>${pairing}` +
-    `<h2>2. Grup terbaca (semua grup yang di-join, tidak ada allowlist)</h2><table><thead><tr><th>Nama grup</th><th>JID</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<h2>2. Grup terbaca</h2><table><thead><tr><th>Nama grup</th><th>JID</th></tr></thead><tbody>${rows}</tbody></table>` +
     `<h2>Log</h2><pre>${escapeHtml(s.logs.join("\n"))}</pre></body></html>`
   );
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        character
+      ],
+  );
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   try {
     if (req.method === "GET" && url.pathname === "/health") {
-      writeJson(res, 200, { alive: true, ready: bridge.isReady(), connection: state.connection, me: state.me, transport: "whatsapp-web.js" });
+      writeJson(res, 200, operationalSnapshot());
       return;
     }
     if (req.method === "GET" && url.pathname === "/ready") {
-      const ready = bridge.isReady();
-      writeJson(res, ready ? 200 : 503, {
-        ready,
-        connection: state.connection,
-        operatorActionRequired: state.operatorActionRequired,
-        operatorReason: nullable(state.operatorReason),
-        transport: "whatsapp-web.js",
-      });
+      const snapshot = operationalSnapshot();
+      writeJson(res, snapshot.ready ? 200 : 503, snapshot);
       return;
     }
     if (req.method === "GET" && url.pathname === "/internal/v1/status") {
@@ -328,15 +455,24 @@ const server = http.createServer(async (req, res) => {
       await handleSendOutbound(req, res, validGroupJid);
       return;
     }
+    if (req.method === "POST" && url.pathname === "/internal/v1/recovery/pause") {
+      await handleRecoveryControl(req, res, "pause");
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/internal/v1/recovery/resume") {
+      await handleRecoveryControl(req, res, "resume");
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/internal/v1/recovery/reconnect") {
+      await handleRecoveryControl(req, res, "reconnect");
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/internal/v1/pair") {
+      await handleRecoveryControl(req, res, "pair");
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/pair") {
-      // whatsapp-web.js has no explicit "begin pairing" call the way the Go
-      // bridge does: initialize() itself emits `qr`. If we're latched on
-      // operatorActionRequired, clear the latch and re-initialize.
-      if (state.operatorActionRequired) {
-        state.clearOperatorAction();
-        state.logf("operator explicitly requested WhatsApp pairing");
-        bridge.start().catch((err) => state.logf(`pairing restart failed: ${err.message}`));
-      }
+      await beginControlledPairing();
       res.writeHead(303, { location: "/" });
       res.end();
       return;
@@ -358,18 +494,36 @@ server.listen(Number(SETUP_PORT), SETUP_HOST, () => {
   state.logf(`setup/status HTTP on http://${SETUP_HOST}:${SETUP_PORT}`);
 });
 
-if (state.operatorActionRequired) {
+if (!ownerAcquired) {
+  state.setConnection("blocked");
+  state.logf("WhatsApp client initialization blocked by active session owner lease");
+} else if (!storageSafety.healthy) {
+  state.setConnection("blocked");
+  state.logf("WhatsApp client initialization blocked by session storage safety gate");
+} else if (state.operatorActionRequired) {
   state.setConnection("pairing-required");
-  state.logf(`automatic pairing blocked after permanent disconnect; explicit operator action required: ${state.operatorReason}`);
+  state.logf(
+    `automatic pairing blocked after permanent disconnect; explicit operator action required: ${state.operatorReason}`,
+  );
 } else {
   bridge.start().catch((err) => {
     state.setConnection("failed");
     state.logf(`initialize failed: ${err.stack || err}`);
   });
 }
+supervisor.start();
 
-process.on("SIGTERM", async () => {
-  state.logf("shutdown requested");
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  state.logf(`shutdown requested: ${signal}`);
+  supervisor.stop();
   await bridge.client.destroy().catch(() => {});
+  ownerGuard.release();
   server.close(() => process.exit(0));
-});
+  setTimeout(() => process.exit(0), 5000).unref?.();
+}
+
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
