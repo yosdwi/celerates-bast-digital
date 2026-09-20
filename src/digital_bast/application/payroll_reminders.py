@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 _CONTEXT_TTL = timedelta(days=7)
 _SCHEDULED_BY = "payroll-scheduler"
 _MANUAL_BY = "payroll-manual"
+_GATEWAY_UNKNOWN_ERRORS = frozenset({"delivery_outcome_unknown", "receipt_store_unhealthy"})
 
 
 class PayrollOverviewReader(Protocol):
@@ -404,6 +405,13 @@ class PayrollTalentReminderService:
                 sent_at=now,
             )
             return "sent"
+        if receipt.error_code in _GATEWAY_UNKNOWN_ERRORS:
+            await self._deliveries.finish(
+                idempotency_key,
+                PayrollDeliveryState.UNKNOWN,
+                error_code=receipt.error_code,
+            )
+            return "unknown"
         if receipt.status == "bridge_unavailable":
             await self._deliveries.finish(
                 idempotency_key,
