@@ -93,6 +93,40 @@ test("accepted receipt from an interrupted process becomes unknown and is never 
   }
 });
 
+test("concurrent accepted requests are both durable before either send finishes", async () => {
+  const fixture = temporaryStore();
+  let releaseFirst;
+  let releaseSecond;
+  try {
+    const first = fixture.store.run(
+      "concurrent-1",
+      "6281@c.us",
+      "first",
+      () => new Promise((resolve) => { releaseFirst = resolve; }),
+    );
+    const second = fixture.store.run(
+      "concurrent-2",
+      "6282@c.us",
+      "second",
+      () => new Promise((resolve) => { releaseSecond = resolve; }),
+    );
+
+    const persisted = JSON.parse(fs.readFileSync(fixture.filePath, "utf8"));
+    const accepted = new Set(
+      persisted.receipts
+        .filter((record) => record.state === "accepted")
+        .map((record) => record.request_id),
+    );
+    assert.deepEqual(accepted, new Set(["concurrent-1", "concurrent-2"]));
+
+    releaseFirst({ status: "sent", provider_message_id: "wa-1" });
+    releaseSecond({ status: "sent", provider_message_id: "wa-2" });
+    await Promise.all([first, second]);
+  } finally {
+    cleanup(fixture.dir);
+  }
+});
+
 test("ambiguous send failure becomes durable unknown instead of retrying blindly", async () => {
   const fixture = temporaryStore();
   let sends = 0;
