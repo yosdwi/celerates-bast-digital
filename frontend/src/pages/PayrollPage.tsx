@@ -9,6 +9,7 @@ import type {
 import type { TalentOpsSession } from "../api/types";
 import { ChevronIcon, CloseIcon } from "../components/Icons";
 import WorkspaceFrame from "../components/WorkspaceFrame";
+import PayrollExportPanel from "./PayrollExportPanel";
 import PayrollFollowUpPanel from "./PayrollFollowUpPanel";
 import PayrollReviewQueuePanel from "./PayrollReviewQueuePanel";
 
@@ -300,6 +301,8 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
             </button>
           </section>
         </div>
+
+        <PayrollExportPanel session={session} cycle={view.cycle} />
 
         <PayrollReviewQueuePanel
           session={session}

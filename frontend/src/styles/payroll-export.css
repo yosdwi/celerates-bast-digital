@@ -1,0 +1,44 @@
+.payroll-export-panel { margin-bottom: 16px; padding: 14px; }
+.payroll-export-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.payroll-export-heading > div:first-child { min-width: 0; }
+.payroll-export-heading h2 { margin: 5px 0 0; font-size: 15px; font-weight: 650; }
+.payroll-export-heading p { max-width: 720px; margin: 6px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.payroll-export-controls { display: flex; align-items: flex-end; gap: 8px; flex: 0 0 auto; }
+.payroll-export-controls label { display: grid; gap: 4px; color: var(--quiet); font-size: 9px; }
+.payroll-export-controls select { min-width: 150px; height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; color: inherit; background: #fff; font: inherit; font-size: 10.5px; }
+.payroll-export-confirm { margin-top: 12px; padding: 11px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--line); border-radius: 7px; background: var(--subtle); }
+.payroll-export-confirm > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.payroll-export-confirm strong { font-size: 11px; font-weight: 650; }
+.payroll-export-confirm span { color: var(--muted); font-size: 10px; }
+.payroll-export-confirm small { color: var(--quiet); font-size: 9px; line-height: 1.4; }
+.payroll-export-confirm > div:last-child { display: flex; gap: 7px; flex: 0 0 auto; }
+.payroll-export-message { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 10px; }
+.payroll-export-message.error { color: var(--red); background: var(--red-soft); }
+.payroll-export-message.success { color: #137333; background: var(--green-soft); }
+.payroll-export-history-heading { margin-top: 14px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line-soft); }
+.payroll-export-history-heading > div { min-width: 0; }
+.payroll-export-history-heading strong { display: block; font-size: 10.5px; font-weight: 650; }
+.payroll-export-history-heading span { display: block; margin-top: 2px; color: var(--quiet); font-size: 9px; }
+.payroll-export-history-list { margin-top: 8px; border: 1px solid var(--line-soft); border-radius: 7px; overflow: hidden; }
+.payroll-export-history-list article { min-width: 0; padding: 9px 10px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line-soft); }
+.payroll-export-history-list article:last-child { border-bottom: 0; }
+.payroll-export-history-list article > div { min-width: 0; }
+.payroll-export-history-list article > div:first-child strong { display: block; overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.payroll-export-history-list article > div:first-child span { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+.payroll-export-history-list article > div:last-child { flex: 0 0 auto; text-align: right; }
+.payroll-export-history-list article > div:last-child span,
+.payroll-export-history-list article > div:last-child small { display: block; color: var(--quiet); font-size: 8.5px; }
+.payroll-export-history-list article > div:last-child small { margin-top: 2px; }
+.payroll-export-empty { margin-top: 8px; padding: 14px; border: 1px dashed var(--line); border-radius: 7px; color: var(--quiet); font-size: 10px; text-align: center; }
+.payroll-export-empty.error { color: var(--red); }
+
+@media (max-width: 760px) {
+  .payroll-export-panel { padding: 12px; }
+  .payroll-export-heading { display: block; }
+  .payroll-export-controls { margin-top: 12px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; }
+  .payroll-export-controls select { width: 100%; min-width: 0; }
+  .payroll-export-confirm { align-items: stretch; flex-direction: column; }
+  .payroll-export-confirm > div:last-child { display: grid; grid-template-columns: 1fr 1fr; }
+  .payroll-export-history-list article { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .payroll-export-history-list article > div:last-child { text-align: left; }
+}
