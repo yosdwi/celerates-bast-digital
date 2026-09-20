@@ -262,3 +262,24 @@ async def test_group_digest_retryable_failure_reuses_same_logical_delivery() -> 
     assert second.outcome == "sent"
     assert len(deliveries.records) == 1
     assert next(iter(deliveries.records.values())).attempt_count == 2
+
+
+async def test_ambiguous_gateway_delivery_becomes_unknown_and_is_not_resent() -> None:
+    outbound = _Outbound(
+        WhatsAppSendReceipt(
+            status="bridge_unavailable",
+            error_code="delivery_outcome_unknown",
+        )
+    )
+    deliveries = _Deliveries()
+    service, _, _ = _service(outbound=outbound, deliveries=deliveries)
+
+    first = await service.run(now=_H1)
+    second = await service.run(now=_H1)
+
+    assert first.outcome == "unknown"
+    assert second.outcome == "unknown"
+    assert len(outbound.calls) == 1
+    record = next(iter(deliveries.records.values()))
+    assert record.state is PayrollDeliveryState.UNKNOWN
+    assert record.error_code == "delivery_outcome_unknown"
