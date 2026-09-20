@@ -57,11 +57,11 @@ function executionFor(args) {
   if (args[0] === "bot-reply" && optionValue(args, "--channel") === "dm") {
     const text = optionValue(args, "--text");
     const jid = optionValue(args, "--jid");
+    const messageAt = optionValue(args, "--message-at");
     if (text !== null && jid) {
-      return {
-        command: PYTHON,
-        args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
-      };
+      const dmArgs = ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid];
+      if (messageAt) dmArgs.push("--message-at", messageAt);
+      return { command: PYTHON, args: dmArgs };
     }
   }
   if (args[0] === "bot-reply") {
@@ -103,10 +103,15 @@ function cliArgsFor(payload) {
     return ["bot-evidence", "--jid", jid, "--file", filePath, "--caption", String(caption || "")];
   }
   if (payload && payload.kind === "text") {
-    const { text, jid, channel } = payload;
+    const { text, jid, channel, message_at: messageAt } = payload;
     if (typeof text !== "string") return null;
     const args = ["bot-reply", "--text", text];
-    if (jid && channel) args.push("--jid", jid, "--channel", channel);
+    if (jid && channel) {
+      args.push("--jid", jid, "--channel", channel);
+      if (typeof messageAt === "string" && messageAt.trim()) {
+        args.push("--message-at", messageAt.trim());
+      }
+    }
     return args;
   }
   return null;
