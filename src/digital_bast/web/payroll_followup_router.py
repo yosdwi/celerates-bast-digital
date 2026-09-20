@@ -12,6 +12,7 @@ from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.payroll_closing_settings import (
     PostgresPayrollClosingSettingsStore,
 )
+from digital_bast.payroll_query_runtime import create_payroll_closing_query_service
 from digital_bast.payroll_runtime import (
     create_payroll_digest_service,
     create_payroll_talent_reminder_service,
@@ -25,6 +26,10 @@ from digital_bast.web.payroll_contracts import (
     PayrollManualReminderPreviewResponse,
     PayrollManualReminderResponse,
 )
+from digital_bast.web.payroll_query_contracts import (
+    PayrollClosingQueryInput,
+    PayrollClosingQueryResponse,
+)
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 
 if TYPE_CHECKING:
@@ -33,6 +38,7 @@ if TYPE_CHECKING:
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.payroll_closing_settings import PayrollClosingSettingsStore
     from digital_bast.application.payroll_digest import PayrollDigestService
+    from digital_bast.application.payroll_query import PayrollClosingQueryService
     from digital_bast.application.payroll_reminders import PayrollTalentReminderService
     from digital_bast.application.workflow_control import WorkflowOperator
     from digital_bast.web.contracts import SessionRecord
@@ -104,6 +110,7 @@ def payroll_followup_router(
     digest_service: PayrollDigestService | None = None,
     reminder_service: PayrollTalentReminderService | None = None,
     settings_store: PayrollClosingSettingsStore | None = None,
+    query_service: PayrollClosingQueryService | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX, tags=["payroll-follow-up"])
 
@@ -121,6 +128,9 @@ def payroll_followup_router(
 
     def reminders_for(scope_key: str) -> PayrollTalentReminderService:
         return reminder_service or create_payroll_talent_reminder_service(scope_key)
+
+    def queries_for(scope_key: str) -> PayrollClosingQueryService:
+        return query_service or create_payroll_closing_query_service(scope_key)
 
     async def context(
         request: Request,
@@ -152,6 +162,39 @@ def payroll_followup_router(
             target_roles=policy.target_roles,
         )
         return PayrollDigestResponse(
+            cycle=_cycle_response(projected.cycle),
+            evaluated_through=projected.evaluated_through,
+            summary=PayrollDigestSummaryResponse.model_validate(projected.summary),
+            items=tuple(
+                PayrollFollowUpItemResponse.model_validate(item) for item in projected.items
+            ),
+        )
+
+    async def closing_query(
+        request: Request,
+        payload: PayrollClosingQueryInput,
+        year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+        month: Annotated[int | None, Query(ge=1, le=12)] = None,
+        scope_key: Annotated[str, Query(min_length=1, max_length=120)] = "default",
+        csrf_token: HeaderCsrf = None,
+    ) -> PayrollClosingQueryResponse:
+        record, selected_scope = await context(request, scope_key)
+        verify_csrf(record, csrf_token)
+        policy = await closing_store().load(selected_scope)
+        cycle = _selected_cycle(year, month, deps.now(), policy.closing_day)
+        result = await queries_for(selected_scope).query(
+            payload.question,
+            cycle,
+            now=deps.now(),
+            next_day_ready_hour=policy.next_day_ready_hour,
+            target_roles=policy.target_roles,
+            role_filter=payload.role,
+        )
+        projected = result.digest
+        return PayrollClosingQueryResponse(
+            status=result.status,
+            answer=result.answer,
+            role_filter=payload.role,
             cycle=_cycle_response(projected.cycle),
             evaluated_through=projected.evaluated_through,
             summary=PayrollDigestSummaryResponse.model_validate(projected.summary),
@@ -203,6 +246,12 @@ def payroll_followup_router(
         digest,
         methods=["GET"],
         response_model=PayrollDigestResponse,
+    )
+    router.add_api_route(
+        "/query",
+        closing_query,
+        methods=["POST"],
+        response_model=PayrollClosingQueryResponse,
     )
     router.add_api_route(
         "/follow-up/{employee_id}/preview",
