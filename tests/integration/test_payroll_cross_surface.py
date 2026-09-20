@@ -25,7 +25,10 @@ from digital_bast.bot.attendance_resolution import AttendanceResolutionService, 
 from digital_bast.domain.time import JAKARTA
 from digital_bast.infrastructure.payroll_attendance import PostgresPayrollAttendanceReader
 from digital_bast.web.postgres_backend import PostgresWebBackend
-from tests.integration.test_attendance_resolution import database_dsn, seed_attendance
+from tests.integration.test_attendance_resolution import (  # noqa: F401
+    database_dsn,
+    seed_attendance,
+)
 
 _CYCLE = payroll_cycle(2026, 9)
 _NOW = datetime(2026, 9, 20, 12, 0, tzinfo=JAKARTA)
@@ -147,7 +150,7 @@ class _SingleTalentOverview:
 
 @pytest.mark.asyncio
 async def test_whatsapp_submission_pmo_approval_closing_and_legacy_export_share_truth(
-    database_dsn: str,
+    database_dsn: str,  # noqa: F811 - imported pytest fixture is intentionally injected here
 ) -> None:
     employee_id, nrp, full_name, attendance_key = seed_attendance(
         database_dsn,
@@ -182,7 +185,8 @@ async def test_whatsapp_submission_pmo_approval_closing_and_legacy_export_share_
     assert queue.items[0].request_id == submitted.request_id
     assert queue.items[0].raw_check_out is None
     assert queue.items[0].proposed_check_out == "17:23"
-    assert (await overview.overview(_CYCLE, now=_NOW)).talents[0].status is AttendanceClosingStatus.WAITING_SUBMITTED
+    before_approval = await overview.overview(_CYCLE, now=_NOW)
+    assert before_approval.talents[0].status is AttendanceClosingStatus.WAITING_SUBMITTED
 
     decision = await review.bulk_decide(
         _CYCLE,
@@ -209,7 +213,9 @@ async def test_whatsapp_submission_pmo_approval_closing_and_legacy_export_share_
 
 
 @pytest.mark.asyncio
-async def test_pmo_rejection_returns_closing_item_to_talent_action(database_dsn: str) -> None:
+async def test_pmo_rejection_returns_closing_item_to_talent_action(
+    database_dsn: str,  # noqa: F811 - imported pytest fixture is intentionally injected here
+) -> None:
     employee_id, nrp, full_name, attendance_key = seed_attendance(
         database_dsn,
         check_in=None,

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -59,8 +60,11 @@ class History:
         return tuple(reversed(selected[-limit:]))
 
 
-def _client(tmp_path: Path) -> tuple[TestClient, list[tuple[object, str, str | None]]]:
+def _client(
+    tmp_path: Path,
+) -> tuple[TestClient, list[tuple[object, str, str | None]], str]:
     now = datetime(2026, 9, 20, 5, 0, tzinfo=UTC)
+    token = uuid4().hex
     record = SessionRecord(
         user=AuthenticatedUser(
             id="owner-1",
@@ -68,7 +72,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, list[tuple[object, str, str | N
             name="Owner",
             role="owner",
         ),
-        csrf_token="csrf",
+        csrf_token=token,
         created_at=now,
         expires_at=datetime(2026, 9, 21, 5, 0, tzinfo=UTC),
     )
@@ -96,16 +100,16 @@ def _client(tmp_path: Path) -> tuple[TestClient, list[tuple[object, str, str | N
     )
     client = TestClient(app)
     client.cookies.set("digital_bast_session", "session-1")
-    return client, calls
+    return client, calls, token
 
 
 def test_payroll_export_api_downloads_selected_cycle_and_records_history(tmp_path: Path) -> None:
-    client, calls = _client(tmp_path)
+    client, calls, token = _client(tmp_path)
 
     response = client.post(
         "/api/talentops/v1/payroll/exports?year=2026&month=9",
         json={"report_type": "developer"},
-        headers={"X-CSRF-Token": "csrf"},
+        headers={"X-CSRF-Token": token},
     )
 
     assert response.status_code == 200
@@ -135,7 +139,7 @@ def test_payroll_export_api_downloads_selected_cycle_and_records_history(tmp_pat
 
 
 def test_payroll_export_api_requires_csrf(tmp_path: Path) -> None:
-    client, calls = _client(tmp_path)
+    client, calls, _token = _client(tmp_path)
 
     response = client.post(
         "/api/talentops/v1/payroll/exports?year=2026&month=9",

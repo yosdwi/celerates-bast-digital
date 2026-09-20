@@ -28,7 +28,10 @@ class History:
 
 def test_payroll_export_wraps_legacy_exporter_with_selected_21_to_20_cycle(tmp_path: Path) -> None:
     calls: list[tuple[object, str, str | None]] = []
-    export_path = tmp_path / "Attendance_Celerates_Combined_2026-08-21_to_2026-09-20 (DEVELOPER).csv"
+    export_path = tmp_path / (
+        "Attendance_Celerates_Combined_2026-08-21_to_2026-09-20 "
+        "(DEVELOPER).csv"
+    )
     export_path.write_text("legacy,csv\n", encoding="utf-8")
 
     async def exporter(period: object, report_type: str, employee: str | None) -> tuple[Path, int]:

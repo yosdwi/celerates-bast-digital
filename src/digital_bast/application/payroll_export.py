@@ -4,11 +4,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID, uuid4
 
-from digital_bast.application.attendance_closing_policy import PayrollCycle
 from digital_bast.domain.completion import DateRange
+
+if TYPE_CHECKING:
+    from digital_bast.application.attendance_closing_policy import PayrollCycle
 
 PayrollExportFunction = Callable[
     [DateRange, str, str | None],

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import final
-from uuid import UUID
+from typing import TYPE_CHECKING, final
 
 import psycopg
 from anyio.to_thread import run_sync
@@ -12,6 +10,84 @@ from psycopg.rows import class_row
 
 from digital_bast.application.payroll_export import PayrollExportRecord
 from digital_bast.infrastructure.errors import InfrastructureError
+
+if TYPE_CHECKING:
+    from datetime import date, datetime
+    from uuid import UUID
+
+_MAX_HISTORY_LIMIT = 200
+
+_INSERT_SQL = """
+    INSERT INTO payroll_export_history (
+        export_id,
+        cycle_id,
+        cycle_label,
+        start_date,
+        end_date,
+        exported_at,
+        exported_by,
+        report_type,
+        role_filter,
+        employee_filter,
+        filename,
+        result,
+        row_count
+    )
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    RETURNING
+        export_id,
+        cycle_id,
+        cycle_label,
+        start_date,
+        end_date,
+        exported_at,
+        exported_by,
+        report_type,
+        role_filter,
+        employee_filter,
+        filename,
+        result,
+        row_count
+"""
+_LIST_SQL = """
+    SELECT
+        export_id,
+        cycle_id,
+        cycle_label,
+        start_date,
+        end_date,
+        exported_at,
+        exported_by,
+        report_type,
+        role_filter,
+        employee_filter,
+        filename,
+        result,
+        row_count
+    FROM payroll_export_history
+    ORDER BY exported_at DESC, export_id DESC
+    LIMIT %s
+"""
+_LIST_CYCLE_SQL = """
+    SELECT
+        export_id,
+        cycle_id,
+        cycle_label,
+        start_date,
+        end_date,
+        exported_at,
+        exported_by,
+        report_type,
+        role_filter,
+        employee_filter,
+        filename,
+        result,
+        row_count
+    FROM payroll_export_history
+    WHERE cycle_id = %s
+    ORDER BY exported_at DESC, export_id DESC
+    LIMIT %s
+"""
 
 
 class _PayrollExportRow:
@@ -62,41 +138,6 @@ class _PayrollExportRow:
         self.row_count = row_count
 
 
-_COLUMNS = """
-    export_id,
-    cycle_id,
-    cycle_label,
-    start_date,
-    end_date,
-    exported_at,
-    exported_by,
-    report_type,
-    role_filter,
-    employee_filter,
-    filename,
-    result,
-    row_count
-"""
-_INSERT_SQL = f"""
-    INSERT INTO payroll_export_history ({_COLUMNS})
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    RETURNING {_COLUMNS}
-"""
-_LIST_SQL = f"""
-    SELECT {_COLUMNS}
-    FROM payroll_export_history
-    ORDER BY exported_at DESC, export_id DESC
-    LIMIT %s
-"""
-_LIST_CYCLE_SQL = f"""
-    SELECT {_COLUMNS}
-    FROM payroll_export_history
-    WHERE cycle_id = %s
-    ORDER BY exported_at DESC, export_id DESC
-    LIMIT %s
-"""
-
-
 def _record(row: _PayrollExportRow) -> PayrollExportRecord:
     return PayrollExportRecord(
         export_id=row.export_id,
@@ -133,8 +174,11 @@ class PostgresPayrollExportHistoryStore:
         cycle_id: str | None = None,
         limit: int = 50,
     ) -> tuple[PayrollExportRecord, ...]:
-        if not 1 <= limit <= 200:
-            message = "payroll export history limit must be between 1 and 200"
+        if not 1 <= limit <= _MAX_HISTORY_LIMIT:
+            message = (
+                "payroll export history limit must be between "
+                f"1 and {_MAX_HISTORY_LIMIT}"
+            )
             raise ValueError(message)
         return await run_sync(self._list, cycle_id, limit)
 
