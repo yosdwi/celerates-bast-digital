@@ -34,6 +34,11 @@ grep -q 'proxy and bot-worker rolled back' scripts/deploy.sh
 grep -q 'compose build bot-worker' scripts/deploy.sh
 grep -q 'bot-worker failed health gate; previous image restored' scripts/deploy.sh
 grep -q 'rollback_worker' scripts/deploy.sh
+# deploy.sh requires compose.production.yaml in every staged release directory.
+# Keep the release bundle and its staging/production validation in lockstep so
+# an otherwise-green release cannot fail on-host before preflight starts.
+grep -q 'compose.yaml compose.production.yaml scripts config/nginx/nginx.conf' .github/workflows/release.yml
+grep -q 'test -f "$stage_dir/compose.production.yaml"' .github/workflows/release.yml
 grep -q 'wa-session/outbound.js' wa-session/Dockerfile
 grep -q '^USER 10001:10001$' whatsmeow-session/Dockerfile
 # The invariant that matters most in this file: whatsmeow must never read the
