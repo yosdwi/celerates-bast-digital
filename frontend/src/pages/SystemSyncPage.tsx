@@ -193,7 +193,7 @@ export default function SystemSyncPage({ session, data, onNavigate }: Props) {
           <div className="summary-item"><div className="summary-label">Application live</div><div className="summary-value">{live ? (live.ok ? "Yes" : "No") : "—"}</div><div className="summary-meta">/health/live</div></div>
           <div className="summary-item"><div className="summary-label">Application ready</div><div className="summary-value">{ready ? (ready.ok ? "Yes" : "No") : "—"}</div><div className="summary-meta">Sessions, auth, backend readiness</div></div>
           <div className="summary-item"><div className="summary-label">Sources observed</div><div className="summary-value">{observedSources} / {data.sources.length}</div><div className="summary-meta">Successful ingest timestamps</div></div>
-          <div className="summary-item"><div className="summary-label">WhatsApp</div><div className="summary-value">{waDisplay.label}</div><div className="summary-meta">{waDisplay.detail}</div></div>
+          <div className="summary-item"><div className="summary-label">Sync SLA</div><div className="summary-value">Not set</div><div className="summary-meta">No threshold is inferred</div></div>
         </div>
 
         <div className="system-grid">
