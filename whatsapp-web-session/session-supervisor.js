@@ -133,6 +133,7 @@ class SessionSupervisor {
     if (this.state.operatorActionRequired) return { accepted: false, reason: "operator_action_required" };
     if (!this.ownerGuard.acquired) return { accepted: false, reason: "session_owner_not_acquired" };
     if (!this.storageSafety.healthy) return { accepted: false, reason: "session_storage_unhealthy" };
+    if (this.bridge.isReady()) return { accepted: false, reason: "already_ready" };
     if (this.runningProbe) return { accepted: false, reason: "recovery_in_progress" };
     this.data.paused = false;
     this.data.cooldown_until = null;
