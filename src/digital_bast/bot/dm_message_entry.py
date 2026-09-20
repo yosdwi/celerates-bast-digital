@@ -10,16 +10,21 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import anyio
 
+from digital_bast.bot.attendance_context import AttendanceReminderContext
 from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteStatus
 from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_context_service,
     create_attendance_reminder_routing_service,
 )
-from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input
+from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
+from digital_bast.bot.attendance_resolution_dm_state import (
+    AttendanceResolutionDmStateService,
+    AttendanceResolutionDraft,
+)
 from digital_bast.bot.dm_entry import reply as legacy_entry_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.payroll_attendance_draft import (
@@ -50,8 +55,8 @@ def _parse_message_at(raw: str) -> datetime:
     return value.astimezone(UTC)
 
 
-def _date_mismatch_reply(draft_date: object, reference: ExplicitWorkDate) -> str:
-    active_label = format_day(draft_date) if hasattr(draft_date, "strftime") else "tanggal aktif"
+def _date_mismatch_reply(draft_date: date, reference: ExplicitWorkDate) -> str:
+    active_label = format_day(draft_date)
     if reference.work_date is None:
         detail = "Tanggal di pesanmu belum bisa dipastikan dengan aman."
     else:
@@ -62,7 +67,13 @@ def _date_mismatch_reply(draft_date: object, reference: ExplicitWorkDate) -> str
     )
 
 
-async def _active_payroll_draft(jid: str):
+async def _active_payroll_draft(
+    jid: str,
+) -> tuple[
+    AttendanceResolutionDmStateService,
+    AttendanceResolutionDraft | None,
+    AttendanceReminderContext | None,
+]:
     state = create_attendance_resolution_dm_state_service()
     draft = await state.pending(jid)
     if draft is None or draft.work_date is None:
@@ -77,7 +88,11 @@ async def _active_payroll_draft(jid: str):
     return state, draft, context
 
 
-async def _revalidate_exact_gap(draft: object, context: object, message_at: datetime) -> bool:
+async def _revalidate_exact_gap(
+    draft: AttendanceResolutionDraft,
+    context: AttendanceReminderContext,
+    message_at: datetime,
+) -> bool:
     routed = await create_attendance_reminder_routing_service().first_actionable(
         context,
         employee_id=draft.employee_id,
@@ -92,10 +107,10 @@ async def _revalidate_exact_gap(draft: object, context: object, message_at: date
 
 async def _save_proposal(
     jid: str,
-    state: object,
-    draft: object,
-    context: object,
-    proposal: object,
+    state: AttendanceResolutionDmStateService,
+    draft: AttendanceResolutionDraft,
+    context: AttendanceReminderContext,
+    proposal: ResolutionProposal,
     message_at: datetime,
 ) -> str:
     if not await _revalidate_exact_gap(draft, context, message_at):
@@ -127,7 +142,7 @@ async def _save_proposal(
 
 async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0911
     state, draft, context = await _active_payroll_draft(jid)
-    if draft is None or context is None:
+    if draft is None or context is None or draft.work_date is None:
         return await legacy_entry_reply(text, jid)
 
     # Existing explicit state-machine commands always win. Do not let natural
