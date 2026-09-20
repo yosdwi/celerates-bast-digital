@@ -39,7 +39,10 @@ class _BridgeStatusResponse(BaseModel):
     applied_recovery_policy_version: int = Field(default=0, alias="appliedRecoveryPolicyVersion")
     owner_acquired: bool = Field(default=False, alias="ownerAcquired")
     owner_conflict_id: str | None = Field(default=None, alias="ownerConflictId")
-    owner_conflict_heartbeat_at: datetime | None = Field(default=None, alias="ownerConflictHeartbeatAt")
+    owner_conflict_heartbeat_at: datetime | None = Field(
+        default=None,
+        alias="ownerConflictHeartbeatAt",
+    )
     storage_healthy: bool = Field(default=False, alias="storageHealthy")
     storage_reasons: list[str] = Field(default_factory=list, alias="storageReasons")
     free_bytes: int | None = Field(default=None, alias="freeBytes")
