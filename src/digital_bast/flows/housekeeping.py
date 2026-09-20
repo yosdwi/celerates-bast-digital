@@ -39,6 +39,7 @@ from prefect.client.schemas.filters import (
     FlowRunFilterStateType,
 )
 from prefect.client.schemas.objects import StateType
+from prefect.types import DateTime
 
 _HIGH_FREQUENCY_DEPLOYMENTS: Final = ("operational-import", "pmo-notifications")
 _STALE_AFTER: Final = timedelta(hours=1)
@@ -57,7 +58,7 @@ _PAGE_SIZE: Final = 200
 )
 async def prefect_housekeeping_flow() -> int:
     logger = get_run_logger()
-    cutoff = datetime.now(UTC) - _STALE_AFTER
+    cutoff = DateTime.instance(datetime.now(UTC) - _STALE_AFTER)
     deleted = 0
     async with get_client() as client:
         while deleted < _MAX_DELETE_PER_RUN:
