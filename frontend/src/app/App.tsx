@@ -345,7 +345,14 @@ export default function App() {
         </main>
       );
     }
-    return <PayrollPage session={session} data={payrollData} onNavigate={navigate} />;
+    return (
+      <PayrollPage
+        session={session}
+        data={payrollData}
+        onNavigate={navigate}
+        onPeriodChange={(selection) => void loadPayroll(selection)}
+      />
+    );
   }
 
   if (!data && periodPending) return <LoadingScreen />;

@@ -262,6 +262,30 @@ describe("PayrollPage", () => {
     expect(screen.queryByRole("dialog", { name: "Detail attendance Budi" })).not.toBeInTheDocument();
   });
 
+  it("lets the operator pick a different Payroll cycle", () => {
+    const onPeriodChange = vi.fn();
+    render(
+      <PayrollPage
+        session={session}
+        data={overview()}
+        onNavigate={vi.fn()}
+        onPeriodChange={onPeriodChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Payroll cycle"), {
+      target: { value: "2026-08" },
+    });
+
+    expect(onPeriodChange).toHaveBeenCalledWith({ year: 2026, month: 8 });
+  });
+
+  it("hides the cycle picker when no onPeriodChange handler is provided", () => {
+    render(<PayrollPage session={session} data={overview()} onNavigate={vi.fn()} />);
+
+    expect(screen.queryByLabelText("Payroll cycle")).not.toBeInTheDocument();
+  });
+
   it("shows rejection context without turning the drawer into an approval surface", async () => {
     vi.spyOn(payrollApi, "getPayrollTalentDetail")
       .mockImplementation(async (employeeId) => detailFor(employeeId));

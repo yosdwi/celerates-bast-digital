@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { monthInputValue, parseMonthInput } from "../app/period";
+import type { PeriodSelection } from "../app/period";
 import { getPayrollOverview, getPayrollTalentDetail } from "../api/payroll";
 import type {
   PayrollDay,
@@ -19,6 +21,7 @@ interface Props {
   session: TalentOpsSession;
   data: PayrollOverviewResponse;
   onNavigate: (path: string) => void;
+  onPeriodChange?: (selection: PeriodSelection) => void;
 }
 
 const MONTHS = [
@@ -141,7 +144,7 @@ function sortedDetailDays(days: PayrollDay[]): PayrollDay[] {
   });
 }
 
-export default function PayrollPage({ session, data, onNavigate }: Props) {
+export default function PayrollPage({ session, data, onNavigate, onPeriodChange }: Props) {
   const [view, setView] = useState(data);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PayrollFilter>("all");
@@ -246,6 +249,20 @@ export default function PayrollPage({ session, data, onNavigate }: Props) {
                 : " · Belum ada hari yang siap dievaluasi"}
             </p>
           </div>
+          {onPeriodChange ? (
+            <label className="period-control">
+              <span className="period-control-label desktop-only">Cycle</span>
+              <input
+                type="month"
+                aria-label="Payroll cycle"
+                value={monthInputValue(view.cycle)}
+                onChange={(event) => {
+                  const next = parseMonthInput(event.target.value);
+                  if (next) onPeriodChange(next);
+                }}
+              />
+            </label>
+          ) : null}
           <div className="payroll-total" aria-label="Total Talent">
             <span>Total Talent</span>
             <strong>{view.summary.total_talents}</strong>
