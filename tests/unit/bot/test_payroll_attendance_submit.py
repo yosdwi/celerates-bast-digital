@@ -192,7 +192,7 @@ def test_review_command_has_text_and_numeric_fallback(
 
 
 @pytest.mark.asyncio
-async def test_submit_uses_durable_draft_then_offers_continue_or_stop() -> None:
+async def test_submit_uses_durable_draft_then_offers_named_next_gap_or_stop() -> None:
     resolutions = _ResolutionService(SubmitOutcome.CREATED)
     state = _State(_draft(_NEXT_KEY, proposal=False, evidence=False))
     context_store = _ContextStore()
@@ -221,7 +221,8 @@ async def test_submit_uses_durable_draft_then_offers_continue_or_stop() -> None:
     assert state.begins == []
     assert context_store.cleared == 0
     assert "sudah diajukan ke PMO" in response
-    assert "Lanjut" in response
+    assert "Berikutnya: 7 September 2026" in response
+    assert "Lengkapi 7 September 2026" in response
     assert "Selesai dulu" in response
     assert ATTENDANCE_REMINDER_START_ACTION_ID in response
     assert ATTENDANCE_REMINDER_LATER_ACTION_ID in response
