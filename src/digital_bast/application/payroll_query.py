@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, Literal, Protocol, final
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
-    from digital_bast.application.payroll_digest import PayrollClosingDigest, PayrollDigestService
+    from digital_bast.application.payroll_digest import PayrollClosingDigest
     from digital_bast.application.talentops_ai import TalentOpsChatClient
 
 _QUERY_SYSTEM_PROMPT = """Kamu adalah asisten PMO untuk Payroll Attendance Closing.
@@ -40,7 +40,7 @@ class PayrollClosingDigestReader(Protocol):
 @dataclass(frozen=True, slots=True)
 class PayrollClosingQueryResult:
     digest: PayrollClosingDigest
-    status: str
+    status: Literal["ok", "unavailable"]
     answer: str | None
     role_filter: str | None = None
 

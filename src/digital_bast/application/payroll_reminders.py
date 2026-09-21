@@ -359,7 +359,7 @@ class PayrollTalentReminderService:
         if record.state is PayrollDeliveryState.FAILED_FINAL:
             return "final_failed"
         if record.state is PayrollDeliveryState.SENDING:
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code="interrupted_after_delivery_claim",
@@ -379,7 +379,7 @@ class PayrollTalentReminderService:
             claimed = await self._deliveries.claim(idempotency_key)
             if claimed is None:
                 return "unsafe_skipped"
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.FAILED_FINAL,
                 error_code="whatsapp_identity_not_bound",
@@ -398,7 +398,7 @@ class PayrollTalentReminderService:
             payroll_bridge_request_id(idempotency_key),
         )
         if receipt.status == "sent":
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.SENT,
                 provider_message_id=receipt.provider_message_id,
@@ -406,21 +406,21 @@ class PayrollTalentReminderService:
             )
             return "sent"
         if receipt.error_code in _GATEWAY_UNKNOWN_ERRORS:
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code=receipt.error_code,
             )
             return "unknown"
         if receipt.status == "bridge_unavailable":
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.FAILED_RETRYABLE,
                 error_code=receipt.error_code,
             )
             return "retryable_failed"
 
-        await self._deliveries.finish(
+        _ = await self._deliveries.finish(
             idempotency_key,
             PayrollDeliveryState.FAILED_FINAL,
             error_code=receipt.error_code,

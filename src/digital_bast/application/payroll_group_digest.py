@@ -249,7 +249,7 @@ class PayrollGroupDigestService:
                 outcome="failed_final",
             )
         if record.state is PayrollDeliveryState.SENDING:
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code="interrupted_after_delivery_claim",
@@ -288,7 +288,7 @@ class PayrollGroupDigestService:
             payroll_bridge_request_id(idempotency_key),
         )
         if receipt.status == "sent":
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.SENT,
                 provider_message_id=receipt.provider_message_id,
@@ -301,7 +301,7 @@ class PayrollGroupDigestService:
                 sent=1,
             )
         if receipt.error_code in _GATEWAY_UNKNOWN_ERRORS:
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code=receipt.error_code,
@@ -313,7 +313,7 @@ class PayrollGroupDigestService:
                 outcome="unknown",
             )
         if receipt.status == "bridge_unavailable":
-            await self._deliveries.finish(
+            _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.FAILED_RETRYABLE,
                 error_code=receipt.error_code,
@@ -325,7 +325,7 @@ class PayrollGroupDigestService:
                 outcome="failed_retryable",
             )
 
-        await self._deliveries.finish(
+        _ = await self._deliveries.finish(
             idempotency_key,
             PayrollDeliveryState.FAILED_FINAL,
             error_code=receipt.error_code,

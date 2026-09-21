@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import final
+from typing import LiteralString, cast, final
 
 import psycopg
 from anyio.to_thread import run_sync
@@ -37,12 +37,15 @@ class PostgresPayrollClosingSettingsStore:
         raw_offsets = row[5]
         raw_roles = row[6]
         offsets = (
-            tuple(int(value) for value in raw_offsets)
+            tuple(
+                int(cast("int | str", value))
+                for value in cast("Sequence[object]", raw_offsets)
+            )
             if isinstance(raw_offsets, Sequence) and not isinstance(raw_offsets, (str, bytes))
             else ()
         )
         roles = (
-            tuple(str(value) for value in raw_roles)
+            tuple(str(value) for value in cast("Sequence[object]", raw_roles))
             if isinstance(raw_roles, Sequence) and not isinstance(raw_roles, (str, bytes))
             else ()
         )
@@ -50,18 +53,18 @@ class PostgresPayrollClosingSettingsStore:
             scope_key=str(row[0]),
             enabled=bool(row[1]),
             paused=bool(row[2]),
-            closing_day=int(row[3]),
-            reminder_hour=int(row[4]),
+            closing_day=int(cast("int | str", row[3])),
+            reminder_hour=int(cast("int | str", row[4])),
             reminder_offsets=offsets,
             target_roles=roles,
-            next_day_ready_hour=int(row[7]),
-            desired_version=int(row[8]),
-            applied_version=int(row[9]),
+            next_day_ready_hour=int(cast("int | str", row[7])),
+            desired_version=int(cast("int | str", row[8])),
+            applied_version=int(cast("int | str", row[9])),
             updated_by=None if row[10] is None else str(row[10]),
         )
 
     @staticmethod
-    def _select_sql() -> str:
+    def _select_sql() -> LiteralString:
         return """
             SELECT scope_key,
                    payroll_closing_enabled,
