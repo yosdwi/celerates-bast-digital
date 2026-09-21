@@ -37,7 +37,6 @@ from digital_bast.bot.attendance_reminder_runtime import (
 )
 from digital_bast.bot.attendance_resolution import AttendanceResolution, ResolutionStatus
 from digital_bast.bot.dm_workflow import reply as workflow_reply
-from digital_bast.bot.guideline_onboarding import try_guideline_onboarding
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.payroll_attendance_repeat import render_payroll_repeat_prompt
 from digital_bast.bot.talent_context import (
@@ -76,6 +75,9 @@ _REQUEST_COMMANDS: Final = frozenset(
 )
 _CLOSEOUT_GRACE_DAYS: Final = 7
 _REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
+_NOT_BOUND_REPLY: Final = (
+    "Nomor WhatsApp ini belum terhubung ke data Talent. Hubungi admin untuk didaftarkan."
+)
 _PAYROLL_EXPLICIT_ACTIONS: Final = frozenset(
     {
         "payroll_attendance_start",
@@ -357,7 +359,7 @@ async def _payroll_reminder_reply(
     )
 
 
-async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
+async def reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 - guarded workflow routing
     if await create_attendance_resolution_dm_state_service().pending(jid) is not None:
         return await workflow_reply(text, jid)
 
@@ -372,11 +374,14 @@ async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow
         return await workflow_reply(text, jid)
 
     if employee_id is None:
-        guided = await try_guideline_onboarding(text, jid)
-        if guided is not None:
-            await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
-            return guided
-        return await workflow_reply(text, jid)
+        # Self-service "reply your NRP" onboarding is retired: every Talent's
+        # WhatsApp identity is bound by an admin now (see the group-directory
+        # mapping this replaced), so an unresolved identity here is always a
+        # binding gap or a resolution mismatch (e.g. WhatsApp's own @lid vs
+        # @c.us routing), never a genuinely new/unregistered sender -- direct
+        # them to admin instead of asking for an NRP that would never lead
+        # anywhere.
+        return _NOT_BOUND_REPLY
 
     normalized = text.strip().casefold()
     if normalized in _MENU_COMMANDS:

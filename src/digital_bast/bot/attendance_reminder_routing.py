@@ -340,6 +340,43 @@ class AttendanceReminderRoutingService:
             day=day,
         )
 
+    async def actionable_by_key(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        attendance_key: str,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        """Select the currently-actionable snapshot row for one exact
+        attendance_key -- the reminder text tells the Talent they can reply
+        with the row's 1-based position (``attendance_key_at``); the key
+        itself, not a parsed date, is what a bare digit reply resolves to.
+        """
+        status, cycle, by_key, current_actionable = await self._current(
+            context,
+            employee_id=employee_id,
+            now=now,
+        )
+        if status is not AttendanceReminderRouteStatus.OPEN or cycle is None:
+            return AttendanceReminderRouteResult(status)
+
+        position = next(
+            (i for i, key in enumerate(context.attendance_keys) if key == attendance_key),
+            None,
+        )
+        day = by_key.get(attendance_key)
+        if position is None or day is None or not day.talent_action_required:
+            return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
+        return _selection(
+            cycle=cycle,
+            context=context,
+            by_key=by_key,
+            current_actionable=current_actionable,
+            position=position,
+            day=day,
+        )
+
 
 def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> str:
     """Ask only the next missing attendance fact; no Mobile/menu redirect."""

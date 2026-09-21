@@ -93,6 +93,28 @@ class TrackedAttendanceReminderRoutingService:
             )
         return result
 
+    async def actionable_by_key(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        attendance_key: str,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        result = await self._routing.actionable_by_key(
+            context,
+            employee_id=employee_id,
+            attendance_key=attendance_key,
+            now=now,
+        )
+        if result.status is AttendanceReminderRouteStatus.OPEN:
+            _ = await self._deliveries.mark_attendance_response(
+                context_id=context.context_id,
+                employee_id=employee_id,
+                responded_at=now,
+            )
+        return result
+
 
 def create_attendance_reminder_routing_service() -> TrackedAttendanceReminderRoutingService:
     dsn = _application_dsn()

@@ -104,9 +104,16 @@ def legacy_attendance_csv(rows: tuple[Mapping[str, object], ...]) -> str:
             schedule_shift_name = row.get("schedule_shift_name")
             if schedule_shift_name:
                 shift = str(schedule_shift_name)
-                fallback_in, fallback_out = _SHIFT_NAME_TIMES.get(shift, ("", ""))
-                schedule_in = schedule_in or fallback_in
-                schedule_out = schedule_out or fallback_out
+        if not schedule_in and not schedule_out:
+            # schedule_in/out are frequently blank even on a day the sync DID
+            # send a real shift (confirmed against live exports: "SHIFT 2"
+            # rows with no schedule window) -- independent of whether shift
+            # came from the row itself or the roster fallback above, resolve
+            # the window from the shift name through the same SHIFT_LEGEND
+            # pama_attendance.py uses.
+            fallback_in, fallback_out = _SHIFT_NAME_TIMES.get(shift, ("", ""))
+            schedule_in = fallback_in
+            schedule_out = fallback_out
         writer.writerow(
             neutralize_csv_formula(str(value))
             for value in (
@@ -118,10 +125,10 @@ def legacy_attendance_csv(rows: tuple[Mapping[str, object], ...]) -> str:
                 "",
                 schedule_in,
                 schedule_out,
-                row.get("attendance_code", ""),
-                row.get("check_in", ""),
-                row.get("check_out", ""),
-                row.get("notes", ""),
+                row.get("attendance_code") or "",
+                row.get("check_in") or "",
+                row.get("check_out") or "",
+                row.get("notes") or "",
                 "",
                 "",
                 "",

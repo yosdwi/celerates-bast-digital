@@ -79,8 +79,8 @@ if TYPE_CHECKING:
 type DmCommand = Literal["reply", "evidence"]
 
 _ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
-# Shared with cli._dm_onboarding's greeting handling for not-yet-bound
-# senders -- one canonical set, not two copies drifting apart.
+# Shared with cli._NRP_HELP's not-yet-bound greeting handling -- one
+# canonical set, not two copies drifting apart.
 _MENU_WORDS: Final = cli.GREETING_WORDS
 _YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
 _REBIND_SUBMIT_WORDS: Final = frozenset(
@@ -426,16 +426,19 @@ async def _handle_rebind_stage(text: str, jid: str) -> str | None:
                 await rebind.clear_stage(jid)
                 return "Nomor ini ternyata sama dengan binding aktif; tidak perlu ganti nomor."
             await rebind.clear_stage(jid)
-            return "Binding lama sudah tidak ditemukan. Kirim NRP lagi untuk onboarding normal."
+            return "Binding lama sudah tidak ditemukan. Hubungi admin untuk didaftarkan ulang."
         return await _rebind_prompt(jid, staged)
 
+    # activation.claim()/pending_claim() belonged to the now-retired
+    # self-service NRP onboarding flow (cli._dm_onboarding) -- nothing calls
+    # claim() anymore, so pending_employee_id is always None here today.
+    # Left in place as a harmless guard in case that pairing is ever revived.
     pending_employee_id = await activation.pending_claim(jid)
     if pending_employee_id is None or lowered not in _YES_WORDS:
         return None
     old_jid = await create_rebind_onboarding_service().existing_jid(pending_employee_id)
     if old_jid is None or old_jid == jid:
         return None
-    # Intercept before cli._dm_onboarding calls bind(): no automatic takeover.
     await activation.clear_claim(jid)
     await rebind.stage(jid, pending_employee_id)
     return await _rebind_prompt(jid, pending_employee_id)

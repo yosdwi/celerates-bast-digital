@@ -224,6 +224,16 @@ async def _reply_with_active_draft(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     return await _save_proposal(jid, state, draft, context, proposal, message_at)
 
 
+def _bare_position(text: str) -> int | None:
+    """A bare digit reply to a reminder's own numbered list (e.g. "1" for
+    the "1. 1 Sep" line) -- the reminder text explicitly tells the Talent
+    they can answer this way. Reject "1." etc: only a plain integer counts,
+    so stray punctuation doesn't silently misresolve to the wrong gap.
+    """
+    stripped = text.strip()
+    return int(stripped) if stripped.isdigit() else None
+
+
 async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
     text: str,
     jid: str,
@@ -231,8 +241,9 @@ async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
     state: AttendanceResolutionDmStateService,
 ) -> str | None:
     picked_date = parse_attendance_reminder_date_action(text)
+    position = _bare_position(text)
     natural = looks_like_natural_attendance_input(text)
-    if picked_date is None and not natural:
+    if picked_date is None and position is None and not natural:
         return None
 
     employee_id = await create_activation_service().resolve(jid)
@@ -255,37 +266,59 @@ async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
         await context_store.clear(jid)
         return "Reminder attendance ini sudah tidak valid. Tunggu reminder berikutnya."
 
-    target_date = picked_date
-    if target_date is None:
-        reference = explicit_work_date_for_period(
-            text,
-            message_at=message_at,
-            period_start=cycle.period.start,
-            period_end=cycle.period.end,
-        )
-        if not reference.mentioned:
-            return (
-                "Bisa, tapi untuk attendance yang mana? Pilih nomor tanggal dari reminder "
-                'atau tulis tanggalnya, misalnya "1 September cuti".'
-            )
-        if reference.work_date is None:
-            return (
-                "Tanggal di pesanmu belum bisa dipastikan dengan aman. "
-                "Pilih nomor tanggal dari reminder atau sebut tanggalnya lengkap."
-            )
-        target_date = reference.work_date
+    routing = create_attendance_reminder_routing_service()
+    now_jakarta = message_at.astimezone(JAKARTA)
 
-    routed = await create_attendance_reminder_routing_service().actionable_on(
-        context,
-        employee_id=employee_id,
-        work_date=target_date,
-        now=message_at.astimezone(JAKARTA),
-    )
-    if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
-        return (
-            f"{format_day(target_date)} tidak termasuk attendance yang masih perlu action "
-            "dari reminder ini. Pilih tanggal lain yang masih tercantum."
+    if position is not None:
+        attendance_key = context.attendance_key_at(position)
+        if attendance_key is None:
+            return (
+                f'Nomor "{position}" tidak ada di reminder ini. '
+                "Pilih nomor tanggal yang tercantum atau tulis tanggalnya langsung."
+            )
+        routed = await routing.actionable_by_key(
+            context,
+            employee_id=employee_id,
+            attendance_key=attendance_key,
+            now=now_jakarta,
         )
+        if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
+            return (
+                f'Nomor "{position}" tidak lagi termasuk attendance yang perlu action '
+                "dari reminder ini. Pilih tanggal lain yang masih tercantum."
+            )
+    else:
+        target_date = picked_date
+        if target_date is None:
+            reference = explicit_work_date_for_period(
+                text,
+                message_at=message_at,
+                period_start=cycle.period.start,
+                period_end=cycle.period.end,
+            )
+            if not reference.mentioned:
+                return (
+                    "Bisa, tapi untuk attendance yang mana? Pilih nomor tanggal dari reminder "
+                    'atau tulis tanggalnya, misalnya "1 September cuti".'
+                )
+            if reference.work_date is None:
+                return (
+                    "Tanggal di pesanmu belum bisa dipastikan dengan aman. "
+                    "Pilih nomor tanggal dari reminder atau sebut tanggalnya lengkap."
+                )
+            target_date = reference.work_date
+
+        routed = await routing.actionable_on(
+            context,
+            employee_id=employee_id,
+            work_date=target_date,
+            now=now_jakarta,
+        )
+        if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
+            return (
+                f"{format_day(target_date)} tidak termasuk attendance yang masih perlu action "
+                "dari reminder ini. Pilih tanggal lain yang masih tercantum."
+            )
     if routed.status is not AttendanceReminderRouteStatus.OPEN or routed.selection is None:
         await context_store.clear(jid)
         return (

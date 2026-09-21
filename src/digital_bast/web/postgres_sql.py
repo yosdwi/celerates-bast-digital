@@ -62,17 +62,26 @@ ATTENDANCE = """
 # absence onto the contractual schedule, without ever UPDATE-ing the client
 # source-of-truth attendance row.
 #
-# schedule_shift_name backs the shift/schedule_in/schedule_out fallback for a
-# row the sync never populated (e.g. an evidence-upload stub, origin =
-# 'manual', shift/schedule_in/schedule_out all ''): the roster's own
-# schedules.shift_name still has the assignment for that day even with no
-# punch data, and csv_export.py resolves it through the same SHIFT_LEGEND
-# pama_attendance.py uses so the two never drift apart.
+# Driven from `schedules`, not `attendance`: a day the sync never sent (e.g.
+# an evidence-upload stub, or a day PAMA dropped entirely) used to vanish
+# from the export outright rather than show up empty -- confirmed against
+# real exports where IoT Operations talents had as few as 19 of 31 days in a
+# cycle. schedules has near-complete day coverage independent of any punch,
+# so LEFT JOIN attendance onto it instead of the other way around. Rows with
+# no schedules entry either (a genuinely deeper roster gap) still won't
+# appear; that's a schedules-sync completeness problem, out of scope here.
+#
+# schedule_shift_name backs the shift/schedule_in/schedule_out fallback
+# csv_export.py applies through the same SHIFT_LEGEND pama_attendance.py
+# uses (reversed by name, not duplicated), for a day missing shift and/or
+# schedule_in/out -- confirmed against real data: both "no attendance row at
+# all" and "a real shift like SHIFT 2 with schedule_in/out sync never sent"
+# happen independently.
 ATTENDANCE_LEGACY = """
     SELECT jsonb_build_object(
-               'employee_id', a.employee_id,
+               'employee_id', s.employee_id,
                'full_name', e.full_name,
-               'work_date', a.work_date::text,
+               'work_date', s.work_date::text,
                'shift', a.shift,
                'schedule_in', a.schedule_in,
                'schedule_out', a.schedule_out,
@@ -98,7 +107,7 @@ ATTENDANCE_LEGACY = """
                            THEN to_char(r.proposed_check_out, 'HH24:MI')
                        WHEN r.resolution_type = 'absence' AND e.role = 'Developer'
                            THEN CASE
-                               WHEN EXTRACT(ISODOW FROM a.work_date) = 5 THEN '17:00'
+                               WHEN EXTRACT(ISODOW FROM s.work_date) = 5 THEN '17:00'
                                ELSE '16:30'
                            END
                        WHEN r.resolution_type = 'absence' AND e.role = 'IoT Operations'
@@ -107,8 +116,9 @@ ATTENDANCE_LEGACY = """
                    END,
                'notes', a.notes
            ) AS payload
-    FROM attendance a
-    JOIN employees e ON e.employee_id = a.employee_id
+    FROM schedules s
+    JOIN employees e ON e.employee_id = s.employee_id
+    LEFT JOIN attendance a ON a.employee_id = s.employee_id AND a.work_date = s.work_date
     LEFT JOIN LATERAL (
         SELECT resolution_type, proposed_check_in, proposed_check_out
         FROM attendance_resolution_requests rr
@@ -117,11 +127,11 @@ ATTENDANCE_LEGACY = """
         ORDER BY rr.reviewed_at DESC
         LIMIT 1
     ) r ON true
-    LEFT JOIN schedules s ON s.employee_id = a.employee_id AND s.work_date = a.work_date
-    WHERE a.work_date BETWEEN %s AND %s
+    WHERE s.work_date BETWEEN %s AND %s
       AND e.role = %s
+      AND e.status = 'Active'
       AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
-    ORDER BY e.full_name, a.work_date
+    ORDER BY e.full_name, s.work_date
 """
 
 INSERT_PLAN = """
