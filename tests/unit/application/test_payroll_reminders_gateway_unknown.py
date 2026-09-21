@@ -28,6 +28,8 @@ from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from datetime import date
     from uuid import UUID
 
     from digital_bast.domain.completion import DateRange
@@ -234,6 +236,13 @@ class _Deliveries:
         return (self.record,)
 
 
+class _Gaps:
+    async def ensure_placeholder_rows(
+        self, employee_id: str, work_dates: Sequence[date]
+    ) -> None:
+        _ = (employee_id, work_dates)
+
+
 async def test_ambiguous_gateway_delivery_becomes_unknown_and_is_not_resent() -> None:
     outbound = _Outbound()
     deliveries = _Deliveries()
@@ -245,6 +254,7 @@ async def test_ambiguous_gateway_delivery_becomes_unknown_and_is_not_resent() ->
         _Contexts(),
         outbound,
         deliveries,
+        _Gaps(),
     )
 
     first = await service.run(now=_NOW)

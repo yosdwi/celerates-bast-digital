@@ -16,6 +16,8 @@ from digital_bast.bot.attendance_reminder import compose_attendance_reminder
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from datetime import date
     from uuid import UUID
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
@@ -52,6 +54,12 @@ class PayrollOverviewReader(Protocol):
 
 class AttendanceContextWriter(Protocol):
     async def save(self, wa_jid: str, context: AttendanceReminderContext) -> None: ...
+
+
+class AttendanceGapFiller(Protocol):
+    async def ensure_placeholder_rows(
+        self, employee_id: str, work_dates: Sequence[date]
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +111,7 @@ class PayrollTalentReminderService:
         contexts: AttendanceContextWriter,
         outbound: WhatsAppOutboundGateway,
         deliveries: PayrollReminderDeliveryStore,
+        gaps: AttendanceGapFiller,
     ) -> None:
         self._scope_key = scope_key
         self._settings = settings
@@ -111,6 +120,7 @@ class PayrollTalentReminderService:
         self._contexts = contexts
         self._outbound = outbound
         self._deliveries = deliveries
+        self._gaps = gaps
 
     async def run(self, *, now: datetime | None = None) -> PayrollReminderRunSummary:
         instant = now or datetime.now(JAKARTA)
@@ -175,6 +185,7 @@ class PayrollTalentReminderService:
                     f"{milestone.label}:{talent.employee_id}"
                 ),
                 created_by=_SCHEDULED_BY,
+                next_day_ready_hour=policy.next_day_ready_hour,
             )
             counts[outcome] += 1
 
@@ -202,6 +213,7 @@ class PayrollTalentReminderService:
                 eligible=False,
                 outcome=outcome,
             )
+        talent = await self._backfill_gaps(talent, cycle, now, policy.next_day_ready_hour)
         context_id = uuid5(
             NAMESPACE_URL,
             f"payroll-preview:{self._scope_key}:{cycle.cycle_id}:{employee_id}",
@@ -219,7 +231,6 @@ class PayrollTalentReminderService:
                 outcome="unsafe_skipped",
                 actionable_days=talent.actionable_days,
             )
-        _ = policy
         return PayrollManualReminderPreview(
             employee_id=employee_id,
             eligible=True,
@@ -236,7 +247,7 @@ class PayrollTalentReminderService:
         *,
         now: datetime,
     ) -> PayrollManualReminderResult:
-        _, talent, outcome = await self._current_talent(employee_id, cycle, now)
+        policy, talent, outcome = await self._current_talent(employee_id, cycle, now)
         if talent is None:
             return PayrollManualReminderResult(
                 employee_id=employee_id,
@@ -274,6 +285,7 @@ class PayrollTalentReminderService:
             now=now,
             idempotency_key=idempotency_key,
             created_by=_MANUAL_BY,
+            next_day_ready_hour=policy.next_day_ready_hour,
         )
         return PayrollManualReminderResult(
             employee_id=employee_id,
@@ -305,6 +317,40 @@ class PayrollTalentReminderService:
             return policy, None, "not_actionable"
         return policy, talent, "ready"
 
+    async def _backfill_gaps(
+        self,
+        talent: PayrollTalentView,
+        cycle: PayrollCycle,
+        now: datetime,
+        next_day_ready_hour: int,
+    ) -> PayrollTalentView:
+        """Give SOURCE_UNAVAILABLE days a real attendance_key before composing.
+
+        compose_attendance_reminder fails closed on any actionable day without
+        an attendance_key, and the bot's correction flow looks up the row by
+        that key -- so a day with no source row needs one backfilled here
+        before it can be referenced, then the talent view reloaded to pick up
+        the new attendance_id/attendance_key.
+        """
+        missing = tuple(
+            day.work_date
+            for day in talent.days
+            if day.talent_action_required and not (day.attendance_key or "").strip()
+        )
+        if not missing:
+            return talent
+        await self._gaps.ensure_placeholder_rows(talent.employee_id, missing)
+        overview = await self._payroll.overview(
+            cycle,
+            now=now,
+            next_day_ready_hour=next_day_ready_hour,
+        )
+        refreshed = next(
+            (item for item in overview.talents if item.employee_id == talent.employee_id),
+            None,
+        )
+        return refreshed if refreshed is not None else talent
+
     async def _latest_delivery(
         self,
         employee_id: str,
@@ -329,7 +375,9 @@ class PayrollTalentReminderService:
         now: datetime,
         idempotency_key: str,
         created_by: str,
+        next_day_ready_hour: int,
     ) -> str:
+        talent = await self._backfill_gaps(talent, cycle, now, next_day_ready_hour)
         context_id = uuid5(NAMESPACE_URL, idempotency_key)
         draft = compose_attendance_reminder(
             talent,

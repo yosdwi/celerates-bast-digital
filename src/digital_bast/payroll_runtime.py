@@ -85,6 +85,7 @@ def create_payroll_talent_reminder_service(
         AttendanceReminderContextService(dsn),
         _outbound_gateway(),
         PostgresPayrollReminderDeliveryStore(dsn),
+        PostgresPayrollAttendanceReader(dsn),
     )
 
 

@@ -28,7 +28,7 @@ function reasonLabel(item: PayrollFollowUpItem): string {
     case "UNRESPONDED": return "Reminder terkirim, belum ada action attendance";
     case "NOT_REMINDED": return "Belum ada reminder yang berhasil terkirim";
     case "WAITING_REVIEW": return "Sudah diajukan, menunggu review PMO";
-    case "SOURCE_UNVERIFIED": return "Data sumber belum terverifikasi";
+    case "SOURCE_UNVERIFIED": return "Belum ada data absensi — perlu dilengkapi Talent";
     default: return item.reason;
   }
 }
@@ -177,7 +177,7 @@ export default function PayrollFollowUpPanel({ session, cycle, onRefreshOverview
                     <div className="cell-muted">
                       {item.actionable_days > 0 ? `${item.actionable_days} tanggal perlu Talent` : ""}
                       {item.waiting_days > 0 ? `${item.waiting_days} menunggu review` : ""}
-                      {item.unverified_days > 0 ? `${item.unverified_days} perlu cek source` : ""}
+                      {item.unverified_days > 0 ? `${item.unverified_days} tanggal tanpa data absensi` : ""}
                     </div>
                   </td>
                   <td data-label="Delivery terakhir">

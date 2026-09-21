@@ -361,9 +361,14 @@ class PayrollReadService:
         for detail, source, schedule_state in zip(
             result.days, source_rows, schedule_states, strict=True
         ):
+            # SOURCE_UNAVAILABLE (no attendance row at all for a working day) is a
+            # genuine gap, not a reason to distrust the source -- it needs the
+            # same Talent follow-up as any other missing clock-in/out. The
+            # reminder send path (payroll_reminders.py) backfills a placeholder
+            # attendance row before composing so these days get a real
+            # attendance_key to anchor the correction request to.
             talent_action_required = (
                 detail.status is AttendanceClosingStatus.NEEDS_TALENT_ACTION
-                and detail.reason is not AttendanceClosingReason.SOURCE_UNAVAILABLE
                 and schedule_state is AttendanceScheduleState.WORKING
             )
             days.append(

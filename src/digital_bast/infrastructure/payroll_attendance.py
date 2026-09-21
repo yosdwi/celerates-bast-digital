@@ -7,9 +7,11 @@ from anyio.to_thread import run_sync
 from psycopg.rows import class_row
 
 from digital_bast.application.payroll_read import PayrollAttendanceRecord
+from digital_bast.domain.identity import daily_key
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date, datetime, time
 
     from digital_bast.domain.completion import DateRange
@@ -165,3 +167,47 @@ class PostgresPayrollAttendanceReader:
             )
             for row in rows
         )
+
+    async def ensure_placeholder_rows(
+        self, employee_id: str, work_dates: Sequence[date]
+    ) -> None:
+        """Backfill an empty attendance row for days the source never sent.
+
+        Used only for days a Talent reminder is about to reference but which
+        have no attendance row at all (AttendanceClosingReason.SOURCE_UNAVAILABLE) --
+        the reminder/correction flow needs a real row to anchor a resolution
+        request to. `record_key` is the same deterministic
+        `daily_key("attendance", work_date, employee_id)` the pipeline import
+        uses, so ON CONFLICT DO NOTHING never creates a duplicate row and a
+        later real pipeline sync for that day still lands on (and can update)
+        this same row normally.
+        """
+        if not work_dates:
+            return
+        await run_sync(self._ensure_placeholder_rows, employee_id, work_dates)
+
+    def _ensure_placeholder_rows(
+        self, employee_id: str, work_dates: Sequence[date]
+    ) -> None:
+        try:
+            with (
+                psycopg.connect(
+                    self._dsn, connect_timeout=self._connect_timeout_seconds
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                for work_date in work_dates:
+                    record_key = str(daily_key("attendance", work_date, employee_id))
+                    _ = cursor.execute(
+                        """
+                        INSERT INTO attendance (
+                            record_key, employee_id, work_date, check_in, check_out, origin
+                        ) VALUES (%s, %s, %s, NULL, NULL, 'pipeline')
+                        ON CONFLICT (record_key) DO NOTHING
+                        """,
+                        (record_key, employee_id, work_date),
+                    )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="payroll_attendance_placeholder"
+            ) from error

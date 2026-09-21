@@ -29,6 +29,7 @@ from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import date
     from uuid import UUID
 
@@ -272,6 +273,16 @@ class _Deliveries:
         )
 
 
+class _Gaps:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[date, ...]]] = []
+
+    async def ensure_placeholder_rows(
+        self, employee_id: str, work_dates: Sequence[date]
+    ) -> None:
+        self.calls.append((employee_id, tuple(work_dates)))
+
+
 async def test_disabled_policy_preserves_no_payroll_dispatch() -> None:
     settings = _Settings(PayrollClosingSettings(enabled=False))
     outbound = _Outbound()
@@ -283,6 +294,7 @@ async def test_disabled_policy_preserves_no_payroll_dispatch() -> None:
         _Contexts(),
         outbound,
         _Deliveries(),
+        _Gaps(),
     )
 
     result = await service.run(now=_NOW)
@@ -313,6 +325,7 @@ async def test_due_policy_sends_only_current_actionable_talent_and_persists_cont
         contexts,
         outbound,
         deliveries,
+        _Gaps(),
     )
 
     result = await service.run(now=_NOW)
@@ -351,6 +364,7 @@ async def test_retryable_failure_reuses_one_logical_delivery() -> None:
         _Contexts(),
         outbound,
         deliveries,
+        _Gaps(),
     )
 
     first = await service.run(now=_NOW)
@@ -378,6 +392,7 @@ async def test_manual_preview_and_send_revalidate_current_actionable_talent() ->
         contexts,
         outbound,
         deliveries,
+        _Gaps(),
     )
 
     preview = await service.preview_manual("EMP-1", _CYCLE, now=_NOW)
@@ -399,6 +414,66 @@ async def test_manual_preview_and_send_revalidate_current_actionable_talent() ->
     assert record.idempotency_key.startswith("payroll-manual:default:")
     assert str(request_id) in record.idempotency_key
     assert len(contexts.saved) == 1
+
+
+async def test_source_unavailable_day_backfills_placeholder_before_sending() -> None:
+    """A day with no attendance row at all (SOURCE_UNAVAILABLE) must still be
+    reminder-able -- the service backfills a placeholder row so
+    compose_attendance_reminder gets a real attendance_key to anchor to.
+    """
+    missing_day = replace(
+        _day(_CYCLE.period.start),
+        attendance_id=None,
+        attendance_key="",
+        reason=AttendanceClosingReason.SOURCE_UNAVAILABLE,
+    )
+    backfilled_day = _day(_CYCLE.period.start)
+    talent_before = replace(_talent(), days=(missing_day,))
+    talent_after = replace(_talent(), days=(backfilled_day,))
+
+    class _GapPayroll:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def overview(
+            self,
+            cycle: object,
+            *,
+            now: datetime,
+            next_day_ready_hour: int = 6,
+        ) -> PayrollOverview:
+            assert cycle == _CYCLE
+            assert now == _NOW
+            self.calls += 1
+            talent = talent_before if self.calls == 1 else talent_after
+            return PayrollOverview(
+                cycle=_CYCLE,
+                evaluated_through=_CYCLE.period.start,
+                summary=PayrollSummary(1, 0, 0, 1, 1),
+                talents=(talent,),
+            )
+
+    payroll = _GapPayroll()
+    gaps = _Gaps()
+    outbound = _Outbound()
+    deliveries = _Deliveries()
+    service = PayrollTalentReminderService(
+        "default",
+        _Settings(PayrollClosingSettings(enabled=True)),
+        payroll,
+        _Identities(),
+        _Contexts(),
+        outbound,
+        deliveries,
+        gaps,
+    )
+
+    result = await service.send_manual("EMP-1", _CYCLE, uuid4(), now=_NOW)
+
+    assert gaps.calls == [("EMP-1", (_CYCLE.period.start,))]
+    assert payroll.calls == 2
+    assert result.sent is True
+    assert result.outcome == "sent"
 
 
 async def test_manual_send_blocks_unknown_delivery_instead_of_blind_resend() -> None:
@@ -425,6 +500,7 @@ async def test_manual_send_blocks_unknown_delivery_instead_of_blind_resend() -> 
         _Contexts(),
         outbound,
         deliveries,
+        _Gaps(),
     )
 
     result = await service.send_manual("EMP-1", _CYCLE, uuid4(), now=_NOW)

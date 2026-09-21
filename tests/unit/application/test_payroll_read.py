@@ -123,7 +123,7 @@ async def test_payroll_overview_projects_current_attendance_and_corrections() ->
     assert overview.summary.total_talents == 5
     assert overview.summary.complete == 2
     assert overview.summary.waiting_submitted == 1
-    assert overview.summary.needs_talent_action == 1
+    assert overview.summary.needs_talent_action == 2
     assert overview.summary.unverified == 1
 
     by_id = {talent.employee_id: talent for talent in overview.talents}
@@ -132,10 +132,14 @@ async def test_payroll_overview_projects_current_attendance_and_corrections() ->
     assert by_id["emp-b"].days[0].proposed_check_out == "17:40"
     assert by_id["emp-c"].status is AttendanceClosingStatus.NEEDS_TALENT_ACTION
     assert by_id["emp-c"].actionable_days == 1
-    assert by_id["emp-d"].actionable_days == 0
+    # SOURCE_UNAVAILABLE (no attendance row at all) is a genuine gap the
+    # Talent needs to fill, same as any other missing clock-in/out -- it
+    # counts as actionable so the reminder flow picks it up, not as a
+    # separate "distrust the source" bucket.
+    assert by_id["emp-d"].actionable_days == 1
     assert by_id["emp-d"].unverified_days == 1
     assert by_id["emp-d"].days[0].attendance_id is None
-    assert by_id["emp-d"].days[0].talent_action_required is False
+    assert by_id["emp-d"].days[0].talent_action_required is True
     assert by_id["emp-d"].days[0].reason is AttendanceClosingReason.SOURCE_UNAVAILABLE
     assert by_id["emp-e"].status is AttendanceClosingStatus.COMPLETE
     assert (
@@ -187,10 +191,10 @@ async def test_iot_day_without_schedule_timesheet_or_attendance_is_unverified() 
     )
 
     talent = overview.talents[0]
-    assert talent.actionable_days == 0
+    assert talent.actionable_days == 1
     assert talent.unverified_days == 1
     assert talent.days[0].reason is AttendanceClosingReason.SOURCE_UNAVAILABLE
-    assert talent.days[0].talent_action_required is False
+    assert talent.days[0].talent_action_required is True
 
 
 async def test_current_day_waits_for_next_day_evaluation_boundary() -> None:
