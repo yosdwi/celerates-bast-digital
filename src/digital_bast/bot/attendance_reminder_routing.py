@@ -22,6 +22,11 @@ from digital_bast.bot.attendance_reminder import (
     ATTENDANCE_REMINDER_LATER_ACTION_ID,
     ATTENDANCE_REMINDER_START_ACTION_ID,
 )
+from digital_bast.bot.interactive import interactive
+from digital_bast.bot.payroll_attendance_draft import (
+    PAYROLL_PRESENCE_ABSENT_ACTION_ID,
+    PAYROLL_PRESENCE_WORKED_ACTION_ID,
+)
 from digital_bast.domain.completion import format_day
 
 if TYPE_CHECKING:
@@ -361,7 +366,17 @@ def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> s
                     "Hari itu kamu masuk kerja atau tidak masuk?",
                 )
             )
-    elif missing_in:
+        if selection.remaining_actionable > 1:
+            remaining = selection.remaining_actionable - 1
+            lines.extend(("", f"Masih ada {remaining} tanggal setelah ini."))
+        return interactive(
+            "\n".join(lines),
+            (PAYROLL_PRESENCE_WORKED_ACTION_ID, "Masuk kerja"),
+            (PAYROLL_PRESENCE_ABSENT_ACTION_ID, "Tidak masuk"),
+            footer="Payroll Attendance",
+        )
+
+    if missing_in:
         if day.raw_check_out:
             lines.append(f"Clock Out tercatat {day.raw_check_out}.")
         lines.append("Clock In perlu dikoreksi." if rejected else "Clock In belum ada.")
