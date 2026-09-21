@@ -1,8 +1,9 @@
-"""Natural-language candidate extraction for an already-selected Payroll gap.
+"""Natural-language candidate extraction for Payroll attendance replies.
 
 This module never selects a Talent, attendance row, or approval outcome and never
-writes state. The caller owns the active durable draft and must revalidate it
-before saving any candidate returned here.
+writes state. It only extracts dates/candidates. Callers must resolve those
+against a durable Payroll reminder context and revalidate current projection
+state before saving anything.
 """
 
 from __future__ import annotations
@@ -142,6 +143,85 @@ def _message_local_date(message_at: datetime) -> date:
     return message_at.astimezone(JAKARTA).date()
 
 
+def _unique_reference(candidates: list[date | None]) -> ExplicitWorkDate:
+    if not candidates:
+        return ExplicitWorkDate(False, None)
+    unique = {item for item in candidates if item is not None}
+    if len(unique) != 1 or any(item is None for item in candidates):
+        return ExplicitWorkDate(True, None)
+    return ExplicitWorkDate(True, next(iter(unique)))
+
+
+def _period_matches(
+    period_start: date,
+    period_end: date,
+    *,
+    day: int,
+    month: int | None = None,
+) -> tuple[date, ...]:
+    matches: list[date] = []
+    current = period_start
+    while current <= period_end:
+        if current.day == day and (month is None or current.month == month):
+            matches.append(current)
+        current += timedelta(days=1)
+    return tuple(matches)
+
+
+def explicit_work_date_for_period(
+    text: str,
+    *,
+    message_at: datetime,
+    period_start: date,
+    period_end: date,
+) -> ExplicitWorkDate:
+    """Resolve a message date against one Payroll cycle without choosing a gap.
+
+    This is used before a draft exists. Day/month phrases without a year are
+    resolved only when exactly one date inside the supplied cycle can match.
+    Full dates and relative dates remain factual even when they fall outside the
+    cycle; the caller then rejects them against the stable reminder snapshot.
+    """
+    if period_end < period_start:
+        raise ValueError("period_end must be on or after period_start")
+
+    lowered = text.casefold()
+    message_date = _message_local_date(message_at)
+    candidates: list[date | None] = []
+
+    if re.search(r"\bkemarin\b", lowered):
+        candidates.append(message_date - timedelta(days=1))
+    if re.search(r"\b(?:hari\s+ini|today)\b", lowered):
+        candidates.append(message_date)
+
+    for match in _ISO_DATE_RE.finditer(text):
+        candidates.append(_safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+
+    for match in _DMY_DATE_RE.finditer(text):
+        day = int(match.group(1))
+        month = int(match.group(2))
+        if match.group(3):
+            candidates.append(_safe_date(int(match.group(3)), month, day))
+        else:
+            matches = _period_matches(period_start, period_end, day=day, month=month)
+            candidates.append(matches[0] if len(matches) == 1 else None)
+
+    for match in _MONTH_DATE_RE.finditer(text):
+        day = int(match.group(1))
+        month = _MONTHS[match.group(2).casefold()]
+        if match.group(3):
+            candidates.append(_safe_date(int(match.group(3)), month, day))
+        else:
+            matches = _period_matches(period_start, period_end, day=day, month=month)
+            candidates.append(matches[0] if len(matches) == 1 else None)
+
+    for match in _DAY_ONLY_RE.finditer(text):
+        matches = _period_matches(period_start, period_end, day=int(match.group(1)))
+        candidates.append(matches[0] if len(matches) == 1 else None)
+
+    return _unique_reference(candidates)
+
+
 def explicit_work_date(
     text: str,
     *,
@@ -181,12 +261,7 @@ def explicit_work_date(
             _safe_date(active_work_date.year, active_work_date.month, int(match.group(1)))
         )
 
-    if not candidates:
-        return ExplicitWorkDate(False, None)
-    unique = {item for item in candidates if item is not None}
-    if len(unique) != 1 or any(item is None for item in candidates):
-        return ExplicitWorkDate(True, None)
-    return ExplicitWorkDate(True, next(iter(unique)))
+    return _unique_reference(candidates)
 
 
 def looks_like_natural_attendance_input(text: str) -> bool:
