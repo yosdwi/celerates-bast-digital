@@ -41,6 +41,9 @@ def _day(
     reason: AttendanceClosingReason = AttendanceClosingReason.GAP_UNCOVERED,
     resolution_type: str | None = None,
 ) -> PayrollDayView:
+    resolution_status = (
+        "rejected" if reason is AttendanceClosingReason.CORRECTION_REJECTED else None
+    )
     return PayrollDayView(
         attendance_id=day,
         attendance_key=key,
@@ -52,7 +55,7 @@ def _day(
         proposed_check_in=None,
         proposed_check_out=None,
         resolution_id=None,
-        resolution_status="rejected" if reason is AttendanceClosingReason.CORRECTION_REJECTED else None,
+        resolution_status=resolution_status,
         resolution_type=resolution_type,
         absence_type=None,
         rejection_reason=None,
