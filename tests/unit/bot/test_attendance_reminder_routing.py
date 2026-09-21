@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -168,6 +169,52 @@ async def test_routing_keeps_snapshot_order_not_projection_order() -> None:
 
 
 @pytest.mark.asyncio
+async def test_exact_date_can_select_second_gap_while_first_stays_actionable() -> None:
+    service = AttendanceReminderRoutingService(
+        _Payroll(
+            _talent(
+                _day(4, "attendance:four"),
+                _day(7, "attendance:seven", raw_in=None, raw_out="17:51"),
+            )
+        )
+    )
+
+    result = await service.actionable_on(
+        _context("attendance:four", "attendance:seven"),
+        employee_id="employee-1",
+        work_date=date(2026, 9, 7),
+        now=_NOW,
+    )
+
+    assert result.status is AttendanceReminderRouteStatus.OPEN
+    assert result.selection is not None
+    assert result.selection.day.attendance_key == "attendance:seven"
+    assert result.selection.remaining_actionable == 2
+
+
+@pytest.mark.asyncio
+async def test_exact_date_never_expands_beyond_reminder_snapshot() -> None:
+    service = AttendanceReminderRoutingService(
+        _Payroll(
+            _talent(
+                _day(4, "attendance:four"),
+                _day(7, "attendance:seven"),
+            )
+        )
+    )
+
+    result = await service.actionable_on(
+        _context("attendance:four"),
+        employee_id="employee-1",
+        work_date=date(2026, 9, 7),
+        now=_NOW,
+    )
+
+    assert result.status is AttendanceReminderRouteStatus.NO_ACTION
+    assert result.selection is None
+
+
+@pytest.mark.asyncio
 async def test_routing_skips_snapshot_item_that_is_no_longer_actionable() -> None:
     payroll = _Payroll(
         _talent(
@@ -244,6 +291,27 @@ async def test_routing_returns_no_action_when_snapshot_is_already_resolved() -> 
     )
 
     assert result.status is AttendanceReminderRouteStatus.NO_ACTION
+
+
+def test_missing_both_prompt_is_button_first_and_keeps_remaining_count() -> None:
+    selection = type("Selection", (), {})()
+    selection.cycle = _CYCLE
+    selection.day = _day(4, "attendance:four", raw_in=None, raw_out=None)
+    selection.remaining_actionable = 2
+
+    payload = json.loads(render_attendance_gap_prompt(selection))
+
+    assert payload["kind"] == "interactive"
+    assert "Hari itu kamu masuk kerja atau tidak masuk?" in payload["text"]
+    assert "Masih ada 1 tanggal setelah ini" in payload["text"]
+    assert [action["label"] for action in payload["actions"]] == [
+        "Masuk kerja",
+        "Tidak masuk",
+    ]
+    assert [action["id"] for action in payload["actions"]] == [
+        "payroll_attendance_worked",
+        "payroll_attendance_absent",
+    ]
 
 
 def test_prompt_for_rejected_clock_out_is_correction_specific_and_not_mobile() -> None:
