@@ -198,11 +198,11 @@ def render_payroll_draft_prompt(
 ) -> str:
     """Render only the next explicit step; never imply submission before it happens."""
     date_label = format_day(draft.work_date) if draft.work_date is not None else "Attendance ini"
-    lines: list[str] = []
-    if prefix.strip():
-        lines.extend((prefix.strip(), ""))
 
     if draft.has_proposal:
+        lines: list[str] = []
+        if prefix.strip():
+            lines.extend((prefix.strip(), ""))
         lines.append(date_label)
         lines.extend(_draft_value_lines(draft))
         if draft.has_evidence:
@@ -218,7 +218,7 @@ def render_payroll_draft_prompt(
     if draft.resolution_type is ResolutionType.MISSING_BOTH_WORKED:
         return render_payroll_presence_prompt(draft, prefix=prefix)
 
-    lines.extend(_draft_intro(draft, prefix))
+    lines = _draft_intro(draft, prefix)
     if draft.resolution_type is ResolutionType.MISSING_CLOCK_IN:
         lines.append("Jam masuk berapa?")
     elif draft.resolution_type is ResolutionType.MISSING_CLOCK_OUT:
