@@ -1,9 +1,9 @@
 """Timestamp-aware DM entry for natural Payroll attendance replies.
 
-The existing deterministic DM workflow remains the authority. This wrapper only
-intercepts an already-active Payroll draft when a message explicitly references a
-date or when deterministic proposal parsing cannot understand a natural attendance
-sentence. All button/action/numeric paths delegate unchanged.
+The deterministic Payroll reminder context remains the authority. This wrapper can
+now bootstrap an exact actionable gap directly from a date-pick action or a
+natural sentence such as ``1 September cuti``; it never selects outside the
+stable reminder snapshot and revalidates current projection state before saving.
 """
 
 from __future__ import annotations
@@ -15,11 +15,16 @@ from datetime import UTC, date, datetime
 import anyio
 
 from digital_bast.bot.attendance_context import AttendanceReminderContext
-from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteStatus
+from digital_bast.bot.attendance_reminder import parse_attendance_reminder_date_action
+from digital_bast.bot.attendance_reminder_routing import (
+    AttendanceReminderRouteStatus,
+    cycle_for_reminder_context,
+)
 from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_context_service,
     create_attendance_reminder_routing_service,
 )
+from digital_bast.bot.attendance_resolution import ResolutionType
 from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
 from digital_bast.bot.attendance_resolution_dm_state import (
     AttendanceResolutionDmStateService,
@@ -28,13 +33,18 @@ from digital_bast.bot.attendance_resolution_dm_state import (
 from digital_bast.bot.dm_entry import reply as legacy_entry_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.payroll_attendance_draft import (
+    PayrollPresenceCommand,
     parse_payroll_draft_command,
+    parse_payroll_presence_command,
+    render_payroll_absence_prompt,
     render_payroll_draft_prompt,
+    render_payroll_worked_prompt,
     select_payroll_proposal,
 )
 from digital_bast.bot.payroll_attendance_natural import (
     ExplicitWorkDate,
     explicit_work_date,
+    explicit_work_date_for_period,
     looks_like_natural_attendance_input,
     proposal_for_active_gap,
 )
@@ -44,7 +54,10 @@ from digital_bast.bot.payroll_attendance_natural_runtime import (
 from digital_bast.bot.payroll_attendance_repeat import parse_payroll_repeat_command
 from digital_bast.domain.completion import format_day
 from digital_bast.domain.time import JAKARTA
-from digital_bast.operations import create_attendance_resolution_dm_state_service
+from digital_bast.operations import (
+    create_activation_service,
+    create_attendance_resolution_dm_state_service,
+)
 
 
 def _parse_message_at(raw: str) -> datetime:
@@ -93,9 +106,12 @@ async def _revalidate_exact_gap(
     context: AttendanceReminderContext,
     message_at: datetime,
 ) -> bool:
-    routed = await create_attendance_reminder_routing_service().first_actionable(
+    if draft.work_date is None:
+        return False
+    routed = await create_attendance_reminder_routing_service().actionable_on(
         context,
         employee_id=draft.employee_id,
+        work_date=draft.work_date,
         now=message_at.astimezone(JAKARTA),
     )
     return bool(
@@ -117,7 +133,7 @@ async def _save_proposal(
         await state.clear(jid)
         return (
             "Kondisi attendance sudah berubah, jadi informasi ini belum disimpan. "
-            "Balas `lengkapi` lagi dari reminder yang masih aktif untuk memuat kondisi terbaru."
+            "Pilih lagi tanggal dari reminder yang masih aktif untuk memuat kondisi terbaru."
         )
     saved = await state.save_proposal(
         jid,
@@ -132,7 +148,7 @@ async def _save_proposal(
         await state.clear(jid)
         return (
             "Data attendance barusan berubah, jadi draft ini tidak disimpan. "
-            "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
+            "Pilih lagi tanggal dari reminder untuk memuat kondisi terbaru."
         )
     return render_payroll_draft_prompt(
         saved,
@@ -140,17 +156,27 @@ async def _save_proposal(
     )
 
 
-async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0911
-    state, draft, context = await _active_payroll_draft(jid)
-    if draft is None or context is None or draft.work_date is None:
-        return await legacy_entry_reply(text, jid)
-
+async def _reply_with_active_draft(
+    text: str,
+    jid: str,
+    message_at: datetime,
+    state: AttendanceResolutionDmStateService,
+    draft: AttendanceResolutionDraft,
+    context: AttendanceReminderContext,
+) -> str:
     # Existing explicit state-machine commands always win. Do not let natural
     # interpretation shadow Same/Different or Ajukan/Ubah numeric/button actions.
     if not draft.has_proposal and parse_payroll_repeat_command(text) is not None:
         return await workflow_reply(text, jid)
     if draft.has_proposal and draft.has_evidence and parse_payroll_draft_command(text) is not None:
         return await workflow_reply(text, jid)
+
+    if not draft.has_proposal and draft.resolution_type is ResolutionType.MISSING_BOTH_WORKED:
+        presence = parse_payroll_presence_command(text)
+        if presence is PayrollPresenceCommand.WORKED:
+            return render_payroll_worked_prompt(draft)
+        if presence is PayrollPresenceCommand.ABSENT:
+            return render_payroll_absence_prompt(draft)
 
     deterministic = select_payroll_proposal(draft, text)
     reference = explicit_work_date(
@@ -189,6 +215,106 @@ async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0
             return _date_mismatch_reply(draft.work_date, candidate_reference)
         return render_payroll_draft_prompt(draft)
     return await _save_proposal(jid, state, draft, context, proposal, message_at)
+
+
+async def _bootstrap_payroll_draft(
+    text: str,
+    jid: str,
+    message_at: datetime,
+    state: AttendanceResolutionDmStateService,
+) -> str | None:
+    picked_date = parse_attendance_reminder_date_action(text)
+    natural = looks_like_natural_attendance_input(text)
+    if picked_date is None and not natural:
+        return None
+
+    employee_id = await create_activation_service().resolve(jid)
+    if employee_id is None:
+        return None
+
+    context_store = create_attendance_reminder_context_service()
+    context = await context_store.load(jid)
+    if context is None:
+        return None
+    if context.employee_id != employee_id:
+        await context_store.clear(jid)
+        return (
+            "Reminder attendance ini sudah tidak cocok dengan identity WhatsApp aktif. "
+            "Hubungi admin."
+        )
+
+    cycle = cycle_for_reminder_context(context)
+    if cycle is None:
+        await context_store.clear(jid)
+        return "Reminder attendance ini sudah tidak valid. Tunggu reminder berikutnya."
+
+    target_date = picked_date
+    if target_date is None:
+        reference = explicit_work_date_for_period(
+            text,
+            message_at=message_at,
+            period_start=cycle.period.start,
+            period_end=cycle.period.end,
+        )
+        if not reference.mentioned:
+            return (
+                "Bisa, tapi untuk attendance yang mana? Pilih nomor tanggal dari reminder "
+                'atau tulis tanggalnya, misalnya "1 September cuti".'
+            )
+        if reference.work_date is None:
+            return (
+                "Tanggal di pesanmu belum bisa dipastikan dengan aman. "
+                "Pilih nomor tanggal dari reminder atau sebut tanggalnya lengkap."
+            )
+        target_date = reference.work_date
+
+    routed = await create_attendance_reminder_routing_service().actionable_on(
+        context,
+        employee_id=employee_id,
+        work_date=target_date,
+        now=message_at.astimezone(JAKARTA),
+    )
+    if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
+        return (
+            f"{format_day(target_date)} tidak termasuk attendance yang masih perlu action "
+            "dari reminder ini. Pilih tanggal lain yang masih tercantum."
+        )
+    if routed.status is not AttendanceReminderRouteStatus.OPEN or routed.selection is None:
+        await context_store.clear(jid)
+        return (
+            "Konteks reminder attendance sudah berubah. "
+            "Tunggu reminder berikutnya atau hubungi admin jika perlu."
+        )
+
+    attendance_key = routed.selection.day.attendance_key
+    if attendance_key is None:
+        return (
+            "Attendance ini belum punya identity yang aman untuk diproses. "
+            "Tunggu reminder berikutnya atau hubungi admin."
+        )
+    draft = await state.begin(jid, employee_id, attendance_key)
+    if draft is None or draft.work_date is None:
+        return (
+            "Data attendance barusan berubah. "
+            "Pilih lagi tanggal dari reminder untuk memuat kondisi terbaru."
+        )
+
+    # A date button only selects the exact gap. Natural text may additionally
+    # carry the proposal itself and can therefore skip the extra question.
+    if picked_date is not None and not natural:
+        return render_payroll_draft_prompt(draft)
+    return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
+
+
+async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0911
+    state, draft, context = await _active_payroll_draft(jid)
+    if draft is not None and context is not None and draft.work_date is not None:
+        return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
+
+    bootstrapped = await _bootstrap_payroll_draft(text, jid, message_at, state)
+    if bootstrapped is not None:
+        return bootstrapped
+    return await legacy_entry_reply(text, jid)
 
 
 def build_parser() -> argparse.ArgumentParser:
