@@ -136,6 +136,7 @@ class _Routing:
     def __init__(self, by_date: dict[date, str]) -> None:
         self.by_date = by_date
         self.exact_calls: list[date] = []
+        self.key_calls: list[str] = []
 
     async def actionable_on(
         self,
@@ -153,6 +154,29 @@ class _Routing:
         if key is None:
             return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
         selection = SimpleNamespace(day=SimpleNamespace(attendance_key=key, work_date=work_date))
+        return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.OPEN, selection)
+
+    async def actionable_by_key(
+        self,
+        context: object,
+        *,
+        employee_id: str,
+        attendance_key: str,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        assert context is not None
+        assert employee_id == _EMPLOYEE_ID
+        assert now.tzinfo is not None
+        self.key_calls.append(attendance_key)
+        work_date = next(
+            (d for d, k in self.by_date.items() if k == attendance_key),
+            None,
+        )
+        if work_date is None:
+            return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
+        selection = SimpleNamespace(
+            day=SimpleNamespace(attendance_key=attendance_key, work_date=work_date)
+        )
         return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.OPEN, selection)
 
 
@@ -253,6 +277,30 @@ async def test_numeric_same_gap_action_keeps_existing_parser_precedence(
     assert response == "DELEGATED"
     assert delegated == [("1", _JID)]
     assert state.saved == []
+
+
+async def test_bare_digit_reply_only_picks_the_gap_never_auto_submits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: with no draft active yet, replying "1" to pick the
+    reminder's first-listed gap (as the reminder text itself invites) must
+    only select it and ask worked-vs-absent -- not fall through to
+    _reply_with_active_draft and have the bare "1" re-read as answer
+    content. Confirmed live in production: this exact sequence auto-
+    submitted an unclaimed "Sakit" absence for a real Talent.
+    """
+    state = _State(active=False)
+    delegated, legacy, routing = _wire(monkeypatch, state)
+
+    response = await dm_message_entry.reply("1", _JID, _MESSAGE_AT)
+
+    assert routing.key_calls == [_ATTENDANCE_KEY]
+    assert state.begun == [(_JID, _EMPLOYEE_ID, _ATTENDANCE_KEY)]
+    assert state.saved == []
+    assert delegated == []
+    assert legacy == []
+    assert "Masuk kerja" in response
+    assert "Tidak masuk" in response
 
 
 async def test_natural_textual_time_candidate_revalidates_then_saves(

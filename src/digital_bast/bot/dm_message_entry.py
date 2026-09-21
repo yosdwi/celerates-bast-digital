@@ -339,9 +339,14 @@ async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
             "Pilih lagi tanggal dari reminder untuk memuat kondisi terbaru."
         )
 
-    # A date button only selects the exact gap. Natural text may additionally
-    # carry the proposal itself and can therefore skip the extra question.
-    if picked_date is not None and not natural:
+    # A date button or a bare position digit only selects the exact gap --
+    # the digit itself must never be re-read as the answer content by
+    # _reply_with_active_draft below (confirmed live: replying "1" to pick
+    # a gap was falling through and getting matched as a same-gap proposal
+    # shortcut, auto-submitting an absence nobody claimed). Natural text may
+    # additionally carry the proposal itself and can therefore skip the
+    # extra question.
+    if (picked_date is not None or position is not None) and not natural:
         return render_payroll_draft_prompt(draft)
     return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
 
