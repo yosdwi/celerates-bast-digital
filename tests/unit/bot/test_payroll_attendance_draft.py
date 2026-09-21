@@ -5,6 +5,10 @@ from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolution
 from digital_bast.bot.payroll_attendance_draft import (
     PAYROLL_DRAFT_EDIT_ACTION_ID,
     PAYROLL_DRAFT_SUBMIT_ACTION_ID,
+    PayrollDraftCommand,
+    PayrollPresenceCommand,
+    parse_payroll_draft_command,
+    parse_payroll_presence_command,
     render_payroll_draft_prompt,
     select_payroll_proposal,
 )
@@ -28,6 +32,33 @@ def _draft(
         absence_type=absence_type,
         has_evidence=has_evidence,
     )
+
+
+def test_presence_command_recognizes_the_prompt_s_own_numbered_label() -> None:
+    """Regression: the presence prompt itself renders "1. Masuk kerja\n2.
+    Tidak masuk" with digit-shortcut replies remembered client-side, but
+    that client-side translation only fires for a bare digit and can get
+    clobbered by a crossed-over prompt (confirmed live: a real Talent's
+    "1. Masuk kerja" reply fell through as an unrecognized presence answer
+    and got misread by the natural-language date parser instead, jumping
+    to a different day's gap). The parser must recognize its own numbered
+    label directly, not only a bare digit or the bare word.
+    """
+    assert parse_payroll_presence_command("1. Masuk kerja") is PayrollPresenceCommand.WORKED
+    assert parse_payroll_presence_command("2. Tidak masuk") is PayrollPresenceCommand.ABSENT
+    assert parse_payroll_presence_command("1") is PayrollPresenceCommand.WORKED
+    assert parse_payroll_presence_command("2") is PayrollPresenceCommand.ABSENT
+    assert parse_payroll_presence_command("masuk kerja") is PayrollPresenceCommand.WORKED
+    assert parse_payroll_presence_command("tidak masuk") is PayrollPresenceCommand.ABSENT
+    assert parse_payroll_presence_command("3. Masuk kerja") is None
+    assert parse_payroll_presence_command("") is None
+
+
+def test_draft_command_recognizes_its_own_numbered_label() -> None:
+    assert parse_payroll_draft_command("1. Ajukan") is PayrollDraftCommand.SUBMIT
+    assert parse_payroll_draft_command("2. Ubah") is PayrollDraftCommand.EDIT
+    assert parse_payroll_draft_command("1") is PayrollDraftCommand.SUBMIT
+    assert parse_payroll_draft_command("2") is PayrollDraftCommand.EDIT
 
 
 def test_single_clock_is_selected_for_the_actual_missing_clock_out() -> None:

@@ -8,6 +8,7 @@ this module submits a PMO request.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
@@ -59,6 +60,7 @@ _WORKED_WORDS: Final = frozenset(
         "masuk kerja",
         "bekerja",
         "kerja",
+        "1",
     }
 )
 _ABSENT_WORDS: Final = frozenset(
@@ -68,12 +70,24 @@ _ABSENT_WORDS: Final = frozenset(
         "nggak masuk",
         "gak masuk",
         "ga masuk",
+        "2",
     }
 )
+# The prompt itself renders these as a numbered list ("1. Masuk kerja\n2.
+# Tidak masuk") with digit-shortcut replies remembered client-side -- but
+# that client-side translation only fires for a *bare* digit reply
+# (confirmed live: whatsapp-web-session's MenuStore.resolve() bails out on
+# anything that isn't pure digits) and gets clobbered by whatever prompt
+# was sent most recently if the Talent's answer crossed with a new message.
+# Stripping a leading "1. "/"2. " here means the parser recognizes the
+# numbered label directly from the text itself, not only a translated bare
+# digit, so it can't silently drift out of sync with a stale client-side
+# menu.
+_LEADING_INDEX_PATTERN: Final = re.compile(r"^\s*[12]\.\s*")
 
 
 def parse_payroll_draft_command(text: str) -> PayrollDraftCommand | None:
-    normalized = text.strip().casefold()
+    normalized = _LEADING_INDEX_PATTERN.sub("", text.strip().casefold())
     if normalized in _SUBMIT_WORDS:
         return PayrollDraftCommand.SUBMIT
     if normalized in _EDIT_WORDS:
@@ -83,7 +97,7 @@ def parse_payroll_draft_command(text: str) -> PayrollDraftCommand | None:
 
 def parse_payroll_presence_command(text: str) -> PayrollPresenceCommand | None:
     """Parse only the explicit worked-vs-absent branch for a missing-both gap."""
-    normalized = text.strip().casefold()
+    normalized = _LEADING_INDEX_PATTERN.sub("", text.strip().casefold())
     if normalized in _WORKED_WORDS:
         return PayrollPresenceCommand.WORKED
     if normalized in _ABSENT_WORDS:
