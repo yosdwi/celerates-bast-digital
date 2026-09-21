@@ -106,6 +106,8 @@ def test_composer_keeps_only_current_action_and_builds_p07_snapshot() -> None:
     assert draft.text.index("4 Sep") < draft.text.index("7 Sep")
     assert "4 Sep — Clock Out belum ada" in draft.text
     assert "7 Sep — Clock In belum ada" in draft.text
+    assert '"1 September cuti"' in draft.text
+    assert '"15 September masuk 07:30 pulang 17:00"' in draft.text
     assert "8 Sep" not in draft.text
     assert "9 Sep" not in draft.text
     assert draft.context.context_id == _CONTEXT_ID
@@ -114,25 +116,27 @@ def test_composer_keeps_only_current_action_and_builds_p07_snapshot() -> None:
     assert draft.context.attendance_keys == ("attendance:four", "attendance:seven")
 
 
-def test_composer_exposes_only_lengkapi_and_nanti_with_plain_text_fallback() -> None:
+def test_composer_exposes_date_actions_then_nanti_with_plain_text_fallback() -> None:
     draft = compose_attendance_reminder(
-        _talent(_day(4)),
+        _talent(_day(4), _day(7)),
         payroll_cycle(2026, 9),
         expires_at=_EXPIRES_AT,
         context_id=_CONTEXT_ID,
     )
 
     assert draft is not None
-    assert tuple(action.label for action in draft.actions) == ("Lengkapi", "Nanti")
+    assert tuple(action.label for action in draft.actions) == ("4 Sep", "7 Sep", "Nanti")
     assert tuple(action.id for action in draft.actions) == (
-        "payroll_attendance_start",
+        "payroll_attendance_date:2026-09-04",
+        "payroll_attendance_date:2026-09-07",
         "payroll_attendance_later",
     )
     assert draft.as_interactive().digit_shortcuts is True
     plain = draft.as_plain_text()
-    assert "1. Lengkapi" in plain
-    assert "2. Nanti" in plain
-    assert 'Balas 1/2 atau tulis "lengkapi" / "nanti".' in plain
+    assert "1. 4 Sep" in plain
+    assert "2. 7 Sep" in plain
+    assert "3. Nanti" in plain
+    assert '"1 September cuti"' in plain
 
 
 def test_composer_skips_waiting_complete_and_unverified_only_talents() -> None:
@@ -238,6 +242,14 @@ def test_large_reminder_stays_concise_but_snapshot_keeps_every_actionable_key() 
     assert "8 Sep" in draft.text
     assert "9 Sep" not in draft.text
     assert "+1 attendance lainnya" in draft.text
+    assert tuple(action.label for action in draft.actions) == (
+        "4 Sep",
+        "5 Sep",
+        "6 Sep",
+        "7 Sep",
+        "8 Sep",
+        "Nanti",
+    )
     assert draft.context.attendance_keys == tuple(
         f"attendance:{day}" for day in (4, 5, 6, 7, 8, 9)
     )
