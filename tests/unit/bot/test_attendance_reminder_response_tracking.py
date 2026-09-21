@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from digital_bast.bot.attendance_context import AttendanceReminderContext
 from digital_bast.bot.attendance_reminder_routing import (
@@ -32,6 +32,20 @@ class _Routing:
     ) -> AttendanceReminderRouteResult:
         assert context == _CONTEXT
         assert employee_id == "EMP-1"
+        assert now == _NOW
+        return AttendanceReminderRouteResult(self.status)
+
+    async def actionable_on(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        work_date: date,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        assert context == _CONTEXT
+        assert employee_id == "EMP-1"
+        assert work_date == date(2026, 9, 4)
         assert now == _NOW
         return AttendanceReminderRouteResult(self.status)
 
@@ -75,3 +89,24 @@ async def test_non_actionable_route_does_not_count_as_response() -> None:
 
     assert result.status is AttendanceReminderRouteStatus.NO_ACTION
     assert deliveries.calls == []
+
+
+async def test_actionable_on_is_exposed_and_marks_correlated_response() -> None:
+    """Regression test: TrackedAttendanceReminderRoutingService wrapped
+    first_actionable() but had no passthrough for actionable_on(), so every
+    caller (dm_message_entry.py's exact-date revalidation) crashed with
+    AttributeError at runtime -- basedpyright caught it as a missing
+    attribute; this locks the fix at the behavior level.
+    """
+    deliveries = _Deliveries()
+    service = TrackedAttendanceReminderRoutingService(  # type: ignore[arg-type]
+        _Routing(AttendanceReminderRouteStatus.OPEN),
+        deliveries,  # type: ignore[arg-type]
+    )
+
+    result = await service.actionable_on(
+        _CONTEXT, employee_id="EMP-1", work_date=date(2026, 9, 4), now=_NOW
+    )
+
+    assert result.status is AttendanceReminderRouteStatus.OPEN
+    assert deliveries.calls == [(_CONTEXT.context_id, "EMP-1", _NOW)]

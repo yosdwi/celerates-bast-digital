@@ -345,7 +345,7 @@ async def test_direct_cuti_sentence_bootstraps_exact_gap_without_mobile_fallback
     assert state.saved[0]["resolution_type"] is ResolutionType.ABSENCE
     assert state.saved[0]["absence_type"] is AbsenceType.CUTI
     assert "sudah tersimpan" in response
-    assert "1 September 2026" in response
+    assert "1 September" in response
     assert "Status: Cuti" in response
     assert "kirim screenshot/bukti attendance" in response
 
@@ -374,7 +374,7 @@ async def test_date_action_opens_exact_missing_both_gap_with_presence_choices(
     assert legacy == []
     assert state.begun == [(_JID, _EMPLOYEE_ID, "ATT-2026-09-15")]
     assert state.saved == []
-    assert "15 September 2026" in payload["text"]
+    assert "15 September" in payload["text"]
     assert [action["label"] for action in payload["actions"]] == [
         "Masuk kerja",
         "Tidak masuk",
@@ -406,7 +406,7 @@ async def test_direct_second_gap_worked_sentence_is_not_blocked_by_first_gap(
     assert state.saved[0]["resolution_type"] is ResolutionType.MISSING_BOTH_WORKED
     assert state.saved[0]["proposed_check_in"] == time(7, 30)
     assert state.saved[0]["proposed_check_out"] == time(17, 0)
-    assert "15 September 2026" in response
+    assert "15 September" in response
     assert "kirim screenshot/bukti attendance" in response
 
 

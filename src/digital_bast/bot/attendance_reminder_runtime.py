@@ -20,7 +20,7 @@ from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.operations import OperationConfigurationError
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from datetime import date, datetime
 
     from digital_bast.bot.attendance_context import AttendanceReminderContext
     from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteResult
@@ -61,6 +61,28 @@ class TrackedAttendanceReminderRoutingService:
         result = await self._routing.first_actionable(
             context,
             employee_id=employee_id,
+            now=now,
+        )
+        if result.status is AttendanceReminderRouteStatus.OPEN:
+            _ = await self._deliveries.mark_attendance_response(
+                context_id=context.context_id,
+                employee_id=employee_id,
+                responded_at=now,
+            )
+        return result
+
+    async def actionable_on(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        work_date: date,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        result = await self._routing.actionable_on(
+            context,
+            employee_id=employee_id,
+            work_date=work_date,
             now=now,
         )
         if result.status is AttendanceReminderRouteStatus.OPEN:

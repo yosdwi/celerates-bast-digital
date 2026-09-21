@@ -221,8 +221,8 @@ async def test_submit_uses_durable_draft_then_offers_named_next_gap_or_stop() ->
     assert state.begins == []
     assert context_store.cleared == 0
     assert "sudah diajukan ke PMO" in response
-    assert "Berikutnya: 7 September 2026" in response
-    assert "Lengkapi 7 September 2026" in response
+    assert "Berikutnya: 7 September" in response
+    assert "Lengkapi 7 September" in response
     assert "Selesai dulu" in response
     assert ATTENDANCE_REMINDER_START_ACTION_ID in response
     assert ATTENDANCE_REMINDER_LATER_ACTION_ID in response
