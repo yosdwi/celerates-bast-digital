@@ -7,6 +7,7 @@ from digital_bast.bot.payroll_attendance_natural import (
     PayrollAttendanceCandidate,
     PayrollAttendanceNaturalInterpreter,
     explicit_work_date,
+    explicit_work_date_for_period,
     proposal_for_active_gap,
 )
 
@@ -51,6 +52,42 @@ def test_conflicting_date_references_fail_closed() -> None:
         "kemarin tanggal 8 jam pulang 17.40",
         message_at=_MESSAGE_AT,
         active_work_date=_ACTIVE_DATE,
+    )
+
+    assert result.mentioned is True
+    assert result.work_date is None
+
+
+def test_cycle_date_parser_resolves_day_only_inside_21_to_20_cycle() -> None:
+    result = explicit_work_date_for_period(
+        "aku tanggal 1 itu cuti",
+        message_at=datetime(2026, 9, 21, 8, 0, tzinfo=UTC),
+        period_start=date(2026, 8, 21),
+        period_end=date(2026, 9, 20),
+    )
+
+    assert result.mentioned is True
+    assert result.work_date == date(2026, 9, 1)
+
+
+def test_cycle_date_parser_resolves_month_name_across_previous_month() -> None:
+    result = explicit_work_date_for_period(
+        "22 Agustus saya sakit",
+        message_at=datetime(2026, 9, 21, 8, 0, tzinfo=UTC),
+        period_start=date(2026, 8, 21),
+        period_end=date(2026, 9, 20),
+    )
+
+    assert result.mentioned is True
+    assert result.work_date == date(2026, 8, 22)
+
+
+def test_cycle_date_parser_fails_closed_for_conflicting_dates() -> None:
+    result = explicit_work_date_for_period(
+        "1 September cuti, bukan 15 September",
+        message_at=datetime(2026, 9, 21, 8, 0, tzinfo=UTC),
+        period_start=date(2026, 8, 21),
+        period_end=date(2026, 9, 20),
     )
 
     assert result.mentioned is True
