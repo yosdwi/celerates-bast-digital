@@ -9,6 +9,7 @@ sent, so user-visible ordering is never reconstructed from a newer projection.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING, Final
 
 from digital_bast.application.attendance_closing import (
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 ATTENDANCE_REMINDER_START_ACTION_ID: Final = "payroll_attendance_start"
 ATTENDANCE_REMINDER_LATER_ACTION_ID: Final = "payroll_attendance_later"
+ATTENDANCE_REMINDER_DATE_ACTION_PREFIX: Final = "payroll_attendance_date:"
 _MAX_VISIBLE_GAPS: Final = 5
 _MONTH_LABELS: Final = (
     "Jan",
@@ -73,8 +75,30 @@ class AttendanceReminderDraft:
             f"{index}. {action.label}"
             for index, action in enumerate(self.actions, 1)
         )
-        lines.extend(("", 'Balas 1/2 atau tulis "lengkapi" / "nanti".'))
+        lines.extend(
+            (
+                "",
+                'Balas nomor tanggal, atau tulis langsung misalnya "1 September cuti".',
+            )
+        )
         return "\n".join(lines)
+
+
+def attendance_reminder_date_action(work_date: date) -> str:
+    """Return the stable transport action id for one Payroll work date."""
+    return f"{ATTENDANCE_REMINDER_DATE_ACTION_PREFIX}{work_date.isoformat()}"
+
+
+def parse_attendance_reminder_date_action(text: str) -> date | None:
+    """Parse only our explicit date-pick action id; free text is handled elsewhere."""
+    normalized = text.strip().casefold()
+    if not normalized.startswith(ATTENDANCE_REMINDER_DATE_ACTION_PREFIX):
+        return None
+    raw = normalized.removeprefix(ATTENDANCE_REMINDER_DATE_ACTION_PREFIX)
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
 
 
 def _date_label(day: PayrollDayView) -> str:
@@ -124,6 +148,14 @@ def _message_text(
     hidden_count = len(actionable) - len(visible)
     if hidden_count > 0:
         lines.append(f"+{hidden_count} attendance lainnya")
+    lines.extend(
+        (
+            "",
+            "Pilih tanggal yang mau dilengkapi.",
+            'Kamu juga bisa langsung tulis, misalnya "1 September cuti"',
+            'atau "15 September masuk 07:30 pulang 17:00".',
+        )
+    )
     return "\n".join(lines)
 
 
@@ -168,10 +200,11 @@ def compose_attendance_reminder(
     except ValueError:
         return None
 
-    actions = (
-        InteractiveAction(ATTENDANCE_REMINDER_START_ACTION_ID, "Lengkapi"),
-        InteractiveAction(ATTENDANCE_REMINDER_LATER_ACTION_ID, "Nanti"),
-    )
+    visible = actionable[:_MAX_VISIBLE_GAPS]
+    actions = tuple(
+        InteractiveAction(attendance_reminder_date_action(day.work_date), _date_label(day))
+        for day in visible
+    ) + (InteractiveAction(ATTENDANCE_REMINDER_LATER_ACTION_ID, "Nanti"),)
     return AttendanceReminderDraft(
         text=_message_text(talent, cycle, actionable),
         actions=actions,
