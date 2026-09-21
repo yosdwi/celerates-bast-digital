@@ -11,10 +11,10 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 import anyio
 
-from digital_bast.bot.attendance_context import AttendanceReminderContext
 from digital_bast.bot.attendance_reminder import parse_attendance_reminder_date_action
 from digital_bast.bot.attendance_reminder_routing import (
     AttendanceReminderRouteStatus,
@@ -25,11 +25,6 @@ from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_routing_service,
 )
 from digital_bast.bot.attendance_resolution import ResolutionType
-from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
-from digital_bast.bot.attendance_resolution_dm_state import (
-    AttendanceResolutionDmStateService,
-    AttendanceResolutionDraft,
-)
 from digital_bast.bot.dm_entry import reply as legacy_entry_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.payroll_attendance_draft import (
@@ -59,12 +54,21 @@ from digital_bast.operations import (
     create_attendance_resolution_dm_state_service,
 )
 
+if TYPE_CHECKING:
+    from digital_bast.bot.attendance_context import AttendanceReminderContext
+    from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
+    from digital_bast.bot.attendance_resolution_dm_state import (
+        AttendanceResolutionDmStateService,
+        AttendanceResolutionDraft,
+    )
+
 
 def _parse_message_at(raw: str) -> datetime:
     normalized = raw.strip().replace("Z", "+00:00")
     value = datetime.fromisoformat(normalized)
     if value.tzinfo is None:
-        raise ValueError("message timestamp must include timezone")
+        message = "message timestamp must include timezone"
+        raise ValueError(message)
     return value.astimezone(UTC)
 
 
@@ -121,7 +125,7 @@ async def _revalidate_exact_gap(
     )
 
 
-async def _save_proposal(
+async def _save_proposal(  # noqa: PLR0913, PLR0917 - explicit mutation boundary
     jid: str,
     state: AttendanceResolutionDmStateService,
     draft: AttendanceResolutionDraft,
@@ -156,7 +160,7 @@ async def _save_proposal(
     )
 
 
-async def _reply_with_active_draft(
+async def _reply_with_active_draft(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0917
     text: str,
     jid: str,
     message_at: datetime,
@@ -164,8 +168,8 @@ async def _reply_with_active_draft(
     draft: AttendanceResolutionDraft,
     context: AttendanceReminderContext,
 ) -> str:
-    # Existing explicit state-machine commands always win. Do not let natural
-    # interpretation shadow Same/Different or Ajukan/Ubah numeric/button actions.
+    # Explicit state-machine commands always win. Natural interpretation cannot
+    # shadow Same/Different or Ajukan/Ubah button/numeric actions.
     if not draft.has_proposal and parse_payroll_repeat_command(text) is not None:
         return await workflow_reply(text, jid)
     if draft.has_proposal and draft.has_evidence and parse_payroll_draft_command(text) is not None:
@@ -210,14 +214,17 @@ async def _reply_with_active_draft(
         active_resolution_type=draft.resolution_type,
     )
     if proposal is None:
-        candidate_reference = ExplicitWorkDate(candidate.work_date is not None, candidate.work_date)
+        candidate_reference = ExplicitWorkDate(
+            mentioned=candidate.work_date is not None,
+            work_date=candidate.work_date,
+        )
         if candidate_reference.mentioned and candidate_reference.work_date != draft.work_date:
             return _date_mismatch_reply(draft.work_date, candidate_reference)
         return render_payroll_draft_prompt(draft)
     return await _save_proposal(jid, state, draft, context, proposal, message_at)
 
 
-async def _bootstrap_payroll_draft(
+async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
     text: str,
     jid: str,
     message_at: datetime,
@@ -306,7 +313,7 @@ async def _bootstrap_payroll_draft(
     return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
 
 
-async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0911
+async def reply(text: str, jid: str, message_at: datetime) -> str:
     state, draft, context = await _active_payroll_draft(jid)
     if draft is not None and context is not None and draft.work_date is not None:
         return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
