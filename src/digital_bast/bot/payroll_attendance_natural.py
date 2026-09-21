@@ -139,17 +139,18 @@ def _safe_date(year: int, month: int, day: int) -> date | None:
 
 def _message_local_date(message_at: datetime) -> date:
     if message_at.tzinfo is None:
-        raise ValueError("message_at must be timezone-aware")
+        message = "message_at must be timezone-aware"
+        raise ValueError(message)
     return message_at.astimezone(JAKARTA).date()
 
 
 def _unique_reference(candidates: list[date | None]) -> ExplicitWorkDate:
     if not candidates:
-        return ExplicitWorkDate(False, None)
+        return ExplicitWorkDate(mentioned=False, work_date=None)
     unique = {item for item in candidates if item is not None}
     if len(unique) != 1 or any(item is None for item in candidates):
-        return ExplicitWorkDate(True, None)
-    return ExplicitWorkDate(True, next(iter(unique)))
+        return ExplicitWorkDate(mentioned=True, work_date=None)
+    return ExplicitWorkDate(mentioned=True, work_date=next(iter(unique)))
 
 
 def _period_matches(
@@ -183,7 +184,8 @@ def explicit_work_date_for_period(
     cycle; the caller then rejects them against the stable reminder snapshot.
     """
     if period_end < period_start:
-        raise ValueError("period_end must be on or after period_start")
+        message = "period_end must be on or after period_start"
+        raise ValueError(message)
 
     lowered = text.casefold()
     message_date = _message_local_date(message_at)
@@ -194,8 +196,10 @@ def explicit_work_date_for_period(
     if re.search(r"\b(?:hari\s+ini|today)\b", lowered):
         candidates.append(message_date)
 
-    for match in _ISO_DATE_RE.finditer(text):
-        candidates.append(_safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+    candidates.extend(
+        _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        for match in _ISO_DATE_RE.finditer(text)
+    )
 
     for match in _DMY_DATE_RE.finditer(text):
         day = int(match.group(1))
@@ -244,8 +248,10 @@ def explicit_work_date(
     if re.search(r"\b(?:hari\s+ini|today)\b", lowered):
         candidates.append(message_date)
 
-    for match in _ISO_DATE_RE.finditer(text):
-        candidates.append(_safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+    candidates.extend(
+        _safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        for match in _ISO_DATE_RE.finditer(text)
+    )
 
     for match in _DMY_DATE_RE.finditer(text):
         year = int(match.group(3)) if match.group(3) else message_date.year
@@ -256,10 +262,10 @@ def explicit_work_date(
         month = _MONTHS[match.group(2).casefold()]
         candidates.append(_safe_date(year, month, int(match.group(1))))
 
-    for match in _DAY_ONLY_RE.finditer(text):
-        candidates.append(
-            _safe_date(active_work_date.year, active_work_date.month, int(match.group(1)))
-        )
+    candidates.extend(
+        _safe_date(active_work_date.year, active_work_date.month, int(match.group(1)))
+        for match in _DAY_ONLY_RE.finditer(text)
+    )
 
     return _unique_reference(candidates)
 
