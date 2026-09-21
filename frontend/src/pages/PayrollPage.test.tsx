@@ -200,9 +200,14 @@ describe("PayrollPage", () => {
   it("shows concise closing status and keeps unverified source separate from Talent action", () => {
     render(<PayrollPage session={session} data={overview()} onNavigate={vi.fn()} />);
 
-    expect(screen.getByRole("heading", { name: "Payroll" })).toBeInTheDocument();
-    expect(screen.getByText(/Payroll September 2026/)).toBeInTheDocument();
-    expect(screen.getByText(/Dievaluasi s.d. 18 Sep 2026/)).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: "Payroll" });
+    expect(heading).toBeInTheDocument();
+    // The export panel further down the page repeats the same cycle label
+    // for its own confirmation line, so scope to the page-heading block
+    // rather than screen-wide getByText.
+    const headingBlock = heading.closest(".payroll-heading") as HTMLElement;
+    expect(within(headingBlock).getByText(/Payroll September 2026/)).toBeInTheDocument();
+    expect(within(headingBlock).getByText(/Dievaluasi s.d. 18 Sep 2026/)).toBeInTheDocument();
     expect(screen.getByText("1 Talent perlu cek data sumber.")).toBeInTheDocument();
 
     const summary = screen.getByRole("region", { name: "Ringkasan Payroll" });
@@ -224,7 +229,11 @@ describe("PayrollPage", () => {
     expect(screen.queryByText("Dimas")).not.toBeInTheDocument();
 
     fireEvent.click(within(filters).getByRole("button", { name: "Semua" }));
-    fireEvent.change(screen.getByLabelText("Search talents"), { target: { value: "B01" } });
+    // WorkspaceFrame's mobile search-toggle button shares the same
+    // aria-label as the actual search input; the textbox role disambiguates.
+    fireEvent.change(screen.getByRole("textbox", { name: "Search talents" }), {
+      target: { value: "B01" },
+    });
 
     expect(screen.getAllByText("Budi").length).toBeGreaterThan(0);
     expect(screen.queryByText("Citra")).not.toBeInTheDocument();
@@ -243,8 +252,11 @@ describe("PayrollPage", () => {
     await waitFor(() => expect(getDetail).toHaveBeenCalledWith("b", 2026, 9));
     expect(within(dialog).getByText("4 Sep 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("Pulang 17:40")).toBeInTheDocument();
-    expect(within(dialog).getByText("Evidence:").parentElement).toHaveTextContent("Ada");
-    expect(within(dialog).getByText("Review:").parentElement).toHaveTextContent("pending");
+    // The dialog lists one day-card per attendance day, each with its own
+    // "Evidence:"/"Review:" line, so scope to this day's card specifically.
+    const dayCard = within(dialog).getByText("4 Sep 2026").closest("article") as HTMLElement;
+    expect(within(dayCard).getByText("Evidence:").parentElement).toHaveTextContent("Ada");
+    expect(within(dayCard).getByText("Review:").parentElement).toHaveTextContent("pending");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Tutup detail" }));
     expect(screen.queryByRole("dialog", { name: "Detail attendance Budi" })).not.toBeInTheDocument();

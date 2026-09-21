@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as payrollApi from "../api/payroll";
 import type { PayrollOverviewResponse } from "../api/payroll";
@@ -149,10 +149,15 @@ describe("App global period", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Payroll" })).toBeInTheDocument();
+    const heading = await screen.findByRole("heading", { name: "Payroll" });
+    expect(heading).toBeInTheDocument();
     expect(getPayrollOverview).toHaveBeenCalledWith(2026, 9);
     expect(getCommandCenter).not.toHaveBeenCalled();
-    expect(screen.getByText(/Payroll September 2026/)).toBeInTheDocument();
+    // The export panel further down the page repeats the same cycle label
+    // for its own confirmation line, so scope to the page-heading block
+    // rather than screen-wide getByText.
+    const headingBlock = heading.closest(".payroll-heading") as HTMLElement;
+    expect(within(headingBlock).getByText(/Payroll September 2026/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Reporting period")).not.toBeInTheDocument();
   });
 });

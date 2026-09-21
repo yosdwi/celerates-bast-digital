@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "../api/client";
 import type { TalentOpsSession } from "../api/types";
@@ -93,9 +93,17 @@ describe("WhatsAppDirectorySettings", () => {
   it("shows live groups and exact mapped/unmapped Talent identities", async () => {
     render(<WhatsAppDirectorySettings session={session} />);
 
-    expect(await screen.findByText("Payroll Closing")).toBeInTheDocument();
-    expect(screen.getByText("Andi WA")).toBeInTheDocument();
-    expect(screen.getByText("Budi WA")).toBeInTheDocument();
+    const groupSummary = await screen.findByText("Payroll Closing");
+    expect(groupSummary).toBeInTheDocument();
+    // The Talent list further down the page also shows "Andi" for the same
+    // mapped employee, so scope to this group's own card. Andi is already
+    // mapped to a known Talent (full_name "Andi"), so the row shows that
+    // authoritative name, not the raw WhatsApp display_name "Andi WA" --
+    // Budi is unmapped (full_name null) and still shows the raw WhatsApp
+    // display_name.
+    const groupCard = groupSummary.closest("details") as HTMLElement;
+    expect(within(groupCard).getByText("Andi")).toBeInTheDocument();
+    expect(within(groupCard).getByText("Budi WA")).toBeInTheDocument();
     expect(screen.getByText("Mapped · 10001")).toBeInTheDocument();
     expect(screen.getByText("Unmapped")).toBeInTheDocument();
     expect(screen.getByText("Verified · Payroll Closing")).toBeInTheDocument();

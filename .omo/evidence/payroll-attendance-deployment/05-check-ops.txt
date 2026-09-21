@@ -1,0 +1,2 @@
+./scripts/load_pama_attendance.py:266:        password=args.sql_password,
+possible embedded secret detected

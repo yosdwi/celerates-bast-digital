@@ -1,0 +1,47 @@
+
+ RUN  v2.1.9 /home/debian/script/digital-bast-v2/frontend
+
+ ✓ src/pages/PayrollReviewQueuePanel.test.tsx (3 tests) 582ms
+   ✓ PayrollReviewQueuePanel > keeps stale requests visible but not selectable and exposes existing evidence 353ms
+ ✓ src/app/App.test.tsx (2 tests) 650ms
+   ✓ App global period > boots from the URL and keeps the selected month in global navigation state 324ms
+   ✓ App global period > boots Payroll from its own API without loading Command Center 325ms
+ ✓ src/pages/PayrollPage.test.tsx (4 tests) 1357ms
+   ✓ PayrollPage > shows concise closing status and keeps unverified source separate from Talent action 406ms
+   ✓ PayrollPage > filters the Talent list by status and global search 340ms
+   ✓ PayrollPage > loads attendance detail on demand and shows actual, proposed and evidence facts 315ms
+ ✓ src/pages/SystemSyncPage.test.tsx (2 tests) 980ms
+   ✓ SystemSyncPage > uses real health endpoints and keeps source freshness observation semantics 707ms
+ ✓ src/components/WhatsAppDirectorySettings.test.tsx (2 tests) 485ms
+   ✓ WhatsAppDirectorySettings > binds an unmapped discovered contact with CSRF and exact JID 302ms
+ ✓ src/pages/BastReadinessPage.test.tsx (2 tests) 1260ms
+   ✓ BastReadinessPage > shows deterministic blocker facts and signals before AI investigation 854ms
+   ✓ BastReadinessPage > keeps preview and final generation explicit and separate from readiness filtering 402ms
+ ✓ src/pages/PayrollExportPanel.test.tsx (2 tests) 344ms
+ ✓ src/pages/PayrollFollowUpPanel.test.tsx (2 tests) 279ms
+ ✓ src/pages/AttendanceGapsPage.test.tsx (1 test) 483ms
+   ✓ AttendanceGapsPage > lists gaps across talents and submits an absence resolution with optional clock values 481ms
+ ✓ src/api/payroll.test.ts (4 tests) 23ms
+ ✓ src/pages/Talent360Page.test.tsx (1 test) 387ms
+   ✓ Talent360Page > surfaces deterministic cross-domain dependencies without AI 385ms
+ ✓ src/pages/ActionCenterPage.test.tsx (2 tests) 1160ms
+   ✓ ActionCenterPage > renders a grounded queue and opens Talent 360 by NRP 1043ms
+ ✓ src/components/FollowUpComposer.test.tsx (2 tests) 332ms
+ ✓ src/pages/CommandCenterPage.test.tsx (1 test) 540ms
+   ✓ CommandCenterPage > renders values from the API contract and readiness states 533ms
+ ✓ src/api/payrollExport.test.ts (2 tests) 32ms
+ ✓ src/components/WorkspaceFrame.test.tsx (2 tests) 354ms
+ ✓ src/pages/DeliveryPage.test.tsx (1 test) 731ms
+   ✓ DeliveryPage > renders only supported delivery facts and drills into task blockers 728ms
+ ✓ src/domain/insights.test.ts (3 tests) 30ms
+ ✓ src/pages/TalentsPage.test.tsx (1 test) 470ms
+   ✓ TalentsPage > renders directory facts and opens a talent by NRP 467ms
+ ✓ src/pages/SettingsPage.test.tsx (1 test) 578ms
+   ✓ SettingsPage > shows real workflow controls and the authorization boundary 575ms
+ ✓ src/app/period.test.ts (5 tests) 13ms
+
+ Test Files  21 passed (21)
+      Tests  45 passed (45)
+   Start at  03:35:02
+   Duration  19.67s (transform 1.89s, setup 5.13s, collect 6.49s, tests 11.07s, environment 21.52s, prepare 3.89s)
+

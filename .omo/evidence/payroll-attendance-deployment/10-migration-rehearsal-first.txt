@@ -1,0 +1,29 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 20260803_0001
+INFO  [alembic.runtime.migration] Running upgrade 20260803_0001 -> 20260819_0002
+INFO  [alembic.runtime.migration] Running upgrade 20260819_0002 -> 20260819_0003
+INFO  [alembic.runtime.migration] Running upgrade 20260819_0003 -> 20260820_0004, Typed business tables replacing the durable_records jsonb blob.
+INFO  [alembic.runtime.migration] Running upgrade 20260820_0004 -> 20260820_0005, attendance_evidence table + bot_conversations.pending_attendance_id.
+INFO  [alembic.runtime.migration] Running upgrade 20260820_0005 -> 20260825_0006, Persist last successful server ingest per bridge source.
+INFO  [alembic.runtime.migration] Running upgrade 20260825_0006 -> 20260825_0007, Persist TalentOps outbound follow-up audit records.
+INFO  [alembic.runtime.migration] Running upgrade 20260825_0007 -> 20260828_0008, Attendance gap resolution requests with PMO approval.
+INFO  [alembic.runtime.migration] Running upgrade 20260828_0008 -> 20260829_0009, Mark new attendance evidence as requiring PMO resolution approval.
+INFO  [alembic.runtime.migration] Running upgrade 20260829_0009 -> 20260829_0010, Workflow authorization, PMO WhatsApp linking, rebind, and BAST audit.
+INFO  [alembic.runtime.migration] Running upgrade 20260829_0010 -> 20260829_0011, Allow repeated Task List evidence uploads.
+INFO  [alembic.runtime.migration] Running upgrade 20260829_0011 -> 20260829_0012, Durable PMO WhatsApp notification outbox.
+INFO  [alembic.runtime.migration] Running upgrade 20260829_0012 -> 20260829_0013, Separate Talent and PMO reminder dates by calendar day.
+INFO  [alembic.runtime.migration] Running upgrade 20260829_0013 -> 20260901_0014, Persist the Talent mobile public origin in the workflow control plane.
+INFO  [alembic.runtime.migration] Running upgrade 20260901_0014 -> 20260901_0015, Persist short-lived Talent WhatsApp intent/period context.
+INFO  [alembic.runtime.migration] Running upgrade 20260901_0015 -> 20260901_0016, Stage Task Evidence until Talent explicitly submits it to PMO.
+INFO  [alembic.runtime.migration] Running upgrade 20260901_0016 -> 20260901_0017, Make PMO-issued Talent Mobile link validity configurable.
+INFO  [alembic.runtime.migration] Running upgrade 20260901_0017 -> 20260902_0018, Expose attendance evidence metadata safely to NocoDB V2.
+INFO  [alembic.runtime.migration] Running upgrade 20260902_0018 -> 20260904_0019, Allow optional proposed clock in/out on an absence resolution request.
+INFO  [alembic.runtime.migration] Running upgrade 20260904_0019 -> 20260905_0020, Add "libur" as a valid absence_type for attendance resolution requests.
+INFO  [alembic.runtime.migration] Running upgrade 20260905_0020 -> 20260911_0021, Record task status transitions so PMO can see where a task sat longest.
+INFO  [alembic.runtime.migration] Running upgrade 20260911_0021 -> 20260919_0022, Add stable Payroll attendance reminder snapshots to bot conversations.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0022 -> 20260919_0023, Add the allowed WhatsApp group for Payroll closing operations.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0023 -> 20260919_0024, Add an independent Payroll closing reminder policy.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0024 -> 20260919_0025, Add durable Payroll reminder delivery and response correlation to follow-ups.
+INFO  [alembic.runtime.migration] Running upgrade 20260919_0025 -> 20260920_0026, Add durable delivery ledger for Payroll closing-group digests.
+INFO  [alembic.runtime.migration] Running upgrade 20260920_0026 -> 20260920_0027, Add metadata-only history for Payroll attendance CSV exports.
