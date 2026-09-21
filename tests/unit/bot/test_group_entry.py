@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 
+import anyio
 import pytest
 
+import digital_bast.cli as cli_module
 from digital_bast.bot import group_entry
 from digital_bast.bot.group_entry import GroupQuery, _interpret, _legacy_command, _status_reply
 from digital_bast.domain.completion import (
@@ -96,6 +98,39 @@ def test_only_explicit_operational_commands_bypass_group_natural_query() -> None
     assert _legacy_command("@conform system status") is True
     assert _legacy_command("@conform aku mau cek status tasklist iot") is False
     assert _legacy_command("@conform siapa yang evidence-nya kurang?") is False
+
+
+@pytest.mark.asyncio
+async def test_legacy_command_runs_bot_reply_without_nesting_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """reply() already runs inside an event loop (group_entry.main() drives it
+    via anyio.run). bot_reply() is sync and internally calls anyio.run() of
+    its own for its business logic -- calling it directly from here would
+    nest anyio.run() inside a running loop and raise "Already running
+    asyncio in this thread" (the exact bug this regression-tests against).
+    """
+    calls: list[str] = []
+
+    async def _inner() -> str:
+        return "export attendance ready"
+
+    def fake_bot_reply(text: str, *, jid: str | None = None, channel: str = "group") -> str:
+        assert jid is None
+        assert channel == "group"
+        calls.append(text)
+        # Real bot_reply() spins up its own event loop for its async
+        # business logic (LLM interpret, export, ...) -- reproduce that
+        # here so this test actually exercises the nested-loop hazard,
+        # not just the plumbing around a plain sync stub.
+        return anyio.run(_inner)
+
+    monkeypatch.setattr(cli_module, "bot_reply", fake_bot_reply)
+
+    result = await group_entry.reply("@conform export attendance developer 1 sampai 31 agustus")
+
+    assert result == "export attendance ready"
+    assert calls == ["@conform export attendance developer 1 sampai 31 agustus"]
 
 
 @pytest.mark.asyncio
