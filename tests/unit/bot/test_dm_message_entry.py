@@ -4,8 +4,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
-
-import pytest
+from typing import TYPE_CHECKING
 
 from digital_bast.bot import dm_message_entry
 from digital_bast.bot.attendance_context import AttendanceReminderContext
@@ -16,6 +15,9 @@ from digital_bast.bot.attendance_reminder_routing import (
 from digital_bast.bot.attendance_resolution import AbsenceType, ResolutionType
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.bot.payroll_attendance_natural import PayrollAttendanceCandidate
+
+if TYPE_CHECKING:
+    import pytest
 
 _EMPLOYEE_ID = "MTG-TF/TEST1"
 _JID = "628123@s.whatsapp.net"
@@ -181,7 +183,7 @@ def _wire(
         "create_attendance_resolution_dm_state_service",
         lambda: state,
     )
-    monkeypatch.setattr(dm_message_entry, "create_activation_service", lambda: _Activation())
+    monkeypatch.setattr(dm_message_entry, "create_activation_service", _Activation)
     monkeypatch.setattr(
         dm_message_entry,
         "create_attendance_reminder_context_service",
