@@ -93,6 +93,7 @@ _LATER_WORDS: Final = frozenset(
     }
 )
 _SINGLE_GAP_TYPES: Final = frozenset({"missing_clock_in", "missing_clock_out"})
+_CYCLE_ID_PARTS: Final = 3
 
 
 def parse_attendance_reminder_command(
@@ -111,7 +112,7 @@ def parse_attendance_reminder_command(
 
 def _cycle_from_id(cycle_id: str) -> PayrollCycle | None:
     parts = cycle_id.split(":")
-    if len(parts) != 3:
+    if len(parts) != _CYCLE_ID_PARTS:
         return None
     try:
         label_year_text, label_month_text = parts[0].split("-", 1)
@@ -194,7 +195,7 @@ def _same_gap_suggestion(
     return None
 
 
-def _selection(
+def _selection(  # noqa: PLR0913 - compact immutable routing inputs are clearer here
     *,
     cycle: PayrollCycle,
     context: AttendanceReminderContext,
