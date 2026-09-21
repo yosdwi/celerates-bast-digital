@@ -201,10 +201,16 @@ def compose_attendance_reminder(
         return None
 
     visible = actionable[:_MAX_VISIBLE_GAPS]
-    actions = tuple(
-        InteractiveAction(attendance_reminder_date_action(day.work_date), _date_label(day))
-        for day in visible
-    ) + (InteractiveAction(ATTENDANCE_REMINDER_LATER_ACTION_ID, "Nanti"),)
+    actions = (
+        *(
+            InteractiveAction(
+                attendance_reminder_date_action(day.work_date),
+                _date_label(day),
+            )
+            for day in visible
+        ),
+        InteractiveAction(ATTENDANCE_REMINDER_LATER_ACTION_ID, "Nanti"),
+    )
     return AttendanceReminderDraft(
         text=_message_text(talent, cycle, actionable),
         actions=actions,
