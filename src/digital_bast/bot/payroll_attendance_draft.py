@@ -1,8 +1,9 @@
 """Pure helpers for the Payroll attendance correction draft flow.
 
-A Payroll draft is filled time-first, then evidence is attached to that exact
-attendance identity. Only when both proposal and evidence are present does the
-Talent get an explicit review step. Nothing in this module submits a PMO request.
+A Payroll draft is filled with an explicit worked/absence proposal, then evidence
+is attached to that exact attendance identity. Only when both proposal and
+evidence are present does the Talent get an explicit review step. Nothing in
+this module submits a PMO request.
 """
 
 from __future__ import annotations
@@ -22,11 +23,18 @@ if TYPE_CHECKING:
 
 PAYROLL_DRAFT_SUBMIT_ACTION_ID: Final = "payroll_attendance_submit"
 PAYROLL_DRAFT_EDIT_ACTION_ID: Final = "payroll_attendance_edit"
+PAYROLL_PRESENCE_WORKED_ACTION_ID: Final = "payroll_attendance_worked"
+PAYROLL_PRESENCE_ABSENT_ACTION_ID: Final = "payroll_attendance_absent"
 
 
 class PayrollDraftCommand(StrEnum):
     SUBMIT = "submit"
     EDIT = "edit"
+
+
+class PayrollPresenceCommand(StrEnum):
+    WORKED = "worked"
+    ABSENT = "absent"
 
 
 _SUBMIT_WORDS: Final = frozenset(
@@ -45,6 +53,23 @@ _EDIT_WORDS: Final = frozenset(
         "2",
     }
 )
+_WORKED_WORDS: Final = frozenset(
+    {
+        PAYROLL_PRESENCE_WORKED_ACTION_ID,
+        "masuk kerja",
+        "bekerja",
+        "kerja",
+    }
+)
+_ABSENT_WORDS: Final = frozenset(
+    {
+        PAYROLL_PRESENCE_ABSENT_ACTION_ID,
+        "tidak masuk",
+        "nggak masuk",
+        "gak masuk",
+        "ga masuk",
+    }
+)
 
 
 def parse_payroll_draft_command(text: str) -> PayrollDraftCommand | None:
@@ -53,6 +78,16 @@ def parse_payroll_draft_command(text: str) -> PayrollDraftCommand | None:
         return PayrollDraftCommand.SUBMIT
     if normalized in _EDIT_WORDS:
         return PayrollDraftCommand.EDIT
+    return None
+
+
+def parse_payroll_presence_command(text: str) -> PayrollPresenceCommand | None:
+    """Parse only the explicit worked-vs-absent branch for a missing-both gap."""
+    normalized = text.strip().casefold()
+    if normalized in _WORKED_WORDS:
+        return PayrollPresenceCommand.WORKED
+    if normalized in _ABSENT_WORDS:
+        return PayrollPresenceCommand.ABSENT
     return None
 
 
@@ -106,6 +141,56 @@ def _review_prompt(lines: list[str]) -> str:
     )
 
 
+def _draft_intro(draft: AttendanceResolutionDraft, prefix: str = "") -> list[str]:
+    date_label = format_day(draft.work_date) if draft.work_date is not None else "Attendance ini"
+    lines: list[str] = []
+    if prefix.strip():
+        lines.extend((prefix.strip(), ""))
+    lines.append(date_label)
+    if draft.has_evidence:
+        lines.extend(("Bukti sudah ada.", ""))
+    return lines
+
+
+def render_payroll_presence_prompt(
+    draft: AttendanceResolutionDraft,
+    *,
+    prefix: str = "",
+) -> str:
+    """Ask worked vs absent without persisting a proposal yet."""
+    lines = _draft_intro(draft, prefix)
+    lines.extend(("Clock In dan Clock Out belum ada.", "", "Hari itu kamu:"))
+    return interactive(
+        "\n".join(lines),
+        (PAYROLL_PRESENCE_WORKED_ACTION_ID, "Masuk kerja"),
+        (PAYROLL_PRESENCE_ABSENT_ACTION_ID, "Tidak masuk"),
+        footer="Payroll Attendance",
+    )
+
+
+def render_payroll_worked_prompt(draft: AttendanceResolutionDraft) -> str:
+    lines = _draft_intro(draft)
+    lines.extend(
+        (
+            "Oke, kamu masuk kerja.",
+            "Kirim jam masuk dan jam pulang, contoh: 07:30 17:00.",
+        )
+    )
+    return "\n".join(lines)
+
+
+def render_payroll_absence_prompt(draft: AttendanceResolutionDraft) -> str:
+    lines = _draft_intro(draft)
+    lines.extend(("Oke, kamu tidak masuk.", "Pilih alasannya:"))
+    return interactive(
+        "\n".join(lines),
+        ("cuti", "Cuti"),
+        ("izin", "Izin"),
+        ("sakit", "Sakit"),
+        footer="Payroll Attendance",
+    )
+
+
 def render_payroll_draft_prompt(
     draft: AttendanceResolutionDraft,
     *,
@@ -130,19 +215,12 @@ def render_payroll_draft_prompt(
         )
         return "\n".join(lines)
 
-    lines.append(date_label)
-    if draft.has_evidence:
-        lines.extend(("Bukti sudah ada.", ""))
+    if draft.resolution_type is ResolutionType.MISSING_BOTH_WORKED:
+        return render_payroll_presence_prompt(draft, prefix=prefix)
 
+    lines.extend(_draft_intro(draft, prefix))
     if draft.resolution_type is ResolutionType.MISSING_CLOCK_IN:
         lines.append("Jam masuk berapa?")
     elif draft.resolution_type is ResolutionType.MISSING_CLOCK_OUT:
         lines.append("Jam pulang berapa?")
-    else:
-        lines.extend(
-            (
-                "Kirim jam masuk dan jam pulang, contoh: 07:30 17:00.",
-                "Kalau tidak masuk, kirim Cuti, Izin, atau Sakit.",
-            )
-        )
     return "\n".join(lines)
