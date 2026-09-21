@@ -19,6 +19,7 @@ from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRoute
 from digital_bast.bot.attendance_resolution import SubmitOutcome
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.payroll_attendance_draft import render_payroll_draft_prompt
+from digital_bast.domain.completion import format_day
 
 if TYPE_CHECKING:
     from datetime import datetime, time
@@ -113,13 +114,15 @@ async def _continue_to_next_gap(
         and routed.selection is not None
     ):
         remaining = routed.selection.remaining_actionable
+        next_label = format_day(routed.selection.day.work_date)
         body = (
             f"{prefix}\n\n"
-            f"Masih ada {remaining} tanggal yang perlu kamu lengkapi. Mau lanjut sekarang?"
+            f"Masih ada {remaining} tanggal yang perlu kamu lengkapi.\n"
+            f"Berikutnya: {next_label}."
         )
         return interactive(
             body,
-            (ATTENDANCE_REMINDER_START_ACTION_ID, "Lanjut"),
+            (ATTENDANCE_REMINDER_START_ACTION_ID, f"Lengkapi {next_label}"),
             (ATTENDANCE_REMINDER_LATER_ACTION_ID, "Selesai dulu"),
             footer="Payroll Attendance",
         )
