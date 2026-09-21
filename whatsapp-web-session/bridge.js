@@ -258,7 +258,13 @@ class Bridge {
     const { MessageMedia } = require("whatsapp-web.js");
     const media = MessageMedia.fromFilePath(file.path);
     if (file.filename) media.filename = file.filename;
-    await msg.reply(media, undefined, { caption: file.caption || "" });
+    // msg.reply(media, ...) quotes the original message, which drives
+    // whatsapp-web.js through an internal Store.Msg memoization getter that
+    // throws "Data passed to getter must include an id property" for media
+    // in groups. chat.sendMessage() is the same delivery without the quote
+    // and doesn't hit that path.
+    const chat = await msg.getChat();
+    await chat.sendMessage(media, { caption: file.caption || "" });
   }
 
   _cleanupExport(filePath) {
@@ -311,6 +317,12 @@ class Bridge {
           this._cleanupExport(file.path);
         } catch (err) {
           this.state.logf(`send group file failed in=${msgId(msg)}: ${err.message}`);
+          // Without this the sender only ever sees "tunggu sebentar" and
+          // then silence -- no error, no file, no way to tell it's over.
+          await this._reply(
+            msg,
+            friendlyError((l) => this.state.logf(l), "mengirim berkas", err.message),
+          );
         }
         return;
       }
