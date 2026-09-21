@@ -446,7 +446,9 @@ def payroll_router(  # noqa: C901, PLR0915 - route handlers stay co-located
         response_model=PayrollClosingSettingsResponse,
     )
     router.add_api_route(
-        "/talents/{employee_id}",
+        # employee_id (e.g. "MTG-TF/2025070332") contains a literal "/" --
+        # a plain {employee_id} segment stops at the first "/" and 404s.
+        "/talents/{employee_id:path}",
         talent_detail,
         methods=["GET"],
         response_model=PayrollTalentDetailResponse,

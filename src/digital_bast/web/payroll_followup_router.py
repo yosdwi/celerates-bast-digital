@@ -254,13 +254,17 @@ def payroll_followup_router(
         response_model=PayrollClosingQueryResponse,
     )
     router.add_api_route(
-        "/follow-up/{employee_id}/preview",
+        # employee_id (e.g. "MTG-TF/2025070332") contains a literal "/" --
+        # the :path converter is required so Starlette matches everything up
+        # to the "/preview" suffix instead of splitting on that slash and
+        # 404ing (a plain {employee_id} segment stops at the first "/").
+        "/follow-up/{employee_id:path}/preview",
         preview_reminder,
         methods=["GET"],
         response_model=PayrollManualReminderPreviewResponse,
     )
     router.add_api_route(
-        "/follow-up/{employee_id}/send",
+        "/follow-up/{employee_id:path}/send",
         send_reminder,
         methods=["POST"],
         response_model=PayrollManualReminderResponse,
