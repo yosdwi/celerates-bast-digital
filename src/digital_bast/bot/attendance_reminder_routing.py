@@ -124,6 +124,11 @@ def _cycle_from_id(cycle_id: str) -> PayrollCycle | None:
     return candidate
 
 
+def cycle_for_reminder_context(context: AttendanceReminderContext) -> PayrollCycle | None:
+    """Return the canonical cycle encoded in a durable reminder context."""
+    return _cycle_from_id(context.cycle_id)
+
+
 def _is_missing(value: str | None) -> bool:
     return value is None or not value.strip()
 
@@ -184,25 +189,57 @@ def _same_gap_suggestion(
     return None
 
 
+def _selection(
+    *,
+    cycle: PayrollCycle,
+    context: AttendanceReminderContext,
+    by_key: dict[str, PayrollDayView],
+    current_actionable: set[str],
+    position: int,
+    day: PayrollDayView,
+) -> AttendanceReminderRouteResult:
+    remaining = sum(
+        snapshot_key in current_actionable
+        for snapshot_key in context.attendance_keys
+    )
+    return AttendanceReminderRouteResult(
+        AttendanceReminderRouteStatus.OPEN,
+        AttendanceReminderGapSelection(
+            cycle,
+            day,
+            remaining,
+            _same_gap_suggestion(
+                context=context,
+                by_key=by_key,
+                current_position=position,
+                current_day=day,
+            ),
+        ),
+    )
+
+
 class AttendanceReminderRoutingService:
     def __init__(self, payroll: PayrollOverviewReader) -> None:
         self._payroll = payroll
 
-    async def first_actionable(
+    async def _current(
         self,
         context: AttendanceReminderContext,
         *,
         employee_id: str,
         now: datetime,
-    ) -> AttendanceReminderRouteResult:
+    ) -> tuple[
+        AttendanceReminderRouteStatus,
+        PayrollCycle | None,
+        dict[str, PayrollDayView],
+        set[str],
+    ]:
         if context.employee_id != employee_id:
-            return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NOT_OWNED)
+            return AttendanceReminderRouteStatus.NOT_OWNED, None, {}, set()
 
         cycle = _cycle_from_id(context.cycle_id)
         if cycle is None:
-            return AttendanceReminderRouteResult(
-                AttendanceReminderRouteStatus.INVALID_CONTEXT
-            )
+            return AttendanceReminderRouteStatus.INVALID_CONTEXT, None, {}, set()
 
         overview = await self._payroll.overview(cycle, now=now)
         talent = next(
@@ -210,9 +247,7 @@ class AttendanceReminderRoutingService:
             None,
         )
         if talent is None:
-            return AttendanceReminderRouteResult(
-                AttendanceReminderRouteStatus.INVALID_CONTEXT
-            )
+            return AttendanceReminderRouteStatus.INVALID_CONTEXT, cycle, {}, set()
 
         by_key = {
             day.attendance_key: day
@@ -222,29 +257,82 @@ class AttendanceReminderRoutingService:
         current_actionable = {
             key for key, day in by_key.items() if day.talent_action_required
         }
+        return AttendanceReminderRouteStatus.OPEN, cycle, by_key, current_actionable
+
+    async def first_actionable(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        status, cycle, by_key, current_actionable = await self._current(
+            context,
+            employee_id=employee_id,
+            now=now,
+        )
+        if status is not AttendanceReminderRouteStatus.OPEN or cycle is None:
+            return AttendanceReminderRouteResult(status)
+
         for position, key in enumerate(context.attendance_keys):
             day = by_key.get(key)
             if day is None or not day.talent_action_required:
                 continue
-            remaining = sum(
-                snapshot_key in current_actionable
-                for snapshot_key in context.attendance_keys
-            )
-            return AttendanceReminderRouteResult(
-                AttendanceReminderRouteStatus.OPEN,
-                AttendanceReminderGapSelection(
-                    cycle,
-                    day,
-                    remaining,
-                    _same_gap_suggestion(
-                        context=context,
-                        by_key=by_key,
-                        current_position=position,
-                        current_day=day,
-                    ),
-                ),
+            return _selection(
+                cycle=cycle,
+                context=context,
+                by_key=by_key,
+                current_actionable=current_actionable,
+                position=position,
+                day=day,
             )
         return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
+
+    async def actionable_on(
+        self,
+        context: AttendanceReminderContext,
+        *,
+        employee_id: str,
+        work_date: date,
+        now: datetime,
+    ) -> AttendanceReminderRouteResult:
+        """Select exactly one currently-actionable snapshot row for ``work_date``.
+
+        The requested date never expands the reminder scope. It must still map to
+        exactly one key from the durable reminder context and that row must still
+        be actionable in the latest Payroll projection.
+        """
+        status, cycle, by_key, current_actionable = await self._current(
+            context,
+            employee_id=employee_id,
+            now=now,
+        )
+        if status is not AttendanceReminderRouteStatus.OPEN or cycle is None:
+            return AttendanceReminderRouteResult(status)
+
+        matches: list[tuple[int, PayrollDayView]] = []
+        for position, key in enumerate(context.attendance_keys):
+            day = by_key.get(key)
+            if day is None or not day.talent_action_required:
+                continue
+            if day.work_date == work_date:
+                matches.append((position, day))
+
+        if not matches:
+            return AttendanceReminderRouteResult(AttendanceReminderRouteStatus.NO_ACTION)
+        if len(matches) != 1:
+            return AttendanceReminderRouteResult(
+                AttendanceReminderRouteStatus.INVALID_CONTEXT
+            )
+        position, day = matches[0]
+        return _selection(
+            cycle=cycle,
+            context=context,
+            by_key=by_key,
+            current_actionable=current_actionable,
+            position=position,
+            day=day,
+        )
 
 
 def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> str:
@@ -270,7 +358,7 @@ def render_attendance_gap_prompt(selection: AttendanceReminderGapSelection) -> s
                 (
                     "Clock In dan Clock Out belum ada.",
                     "",
-                    "Kirim jam masuk dan jam pulang, contoh: 07:30 17:00.",
+                    "Hari itu kamu masuk kerja atau tidak masuk?",
                 )
             )
     elif missing_in:
