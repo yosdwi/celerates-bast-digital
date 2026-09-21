@@ -61,6 +61,13 @@ ATTENDANCE = """
 # an approved attendance resolution may fill a missing punch or map a verified
 # absence onto the contractual schedule, without ever UPDATE-ing the client
 # source-of-truth attendance row.
+#
+# schedule_shift_name backs the shift/schedule_in/schedule_out fallback for a
+# row the sync never populated (e.g. an evidence-upload stub, origin =
+# 'manual', shift/schedule_in/schedule_out all ''): the roster's own
+# schedules.shift_name still has the assignment for that day even with no
+# punch data, and csv_export.py resolves it through the same SHIFT_LEGEND
+# pama_attendance.py uses so the two never drift apart.
 ATTENDANCE_LEGACY = """
     SELECT jsonb_build_object(
                'employee_id', a.employee_id,
@@ -69,6 +76,7 @@ ATTENDANCE_LEGACY = """
                'shift', a.shift,
                'schedule_in', a.schedule_in,
                'schedule_out', a.schedule_out,
+               'schedule_shift_name', s.shift_name,
                'attendance_code', a.attendance_code,
                'check_in',
                    CASE
@@ -109,6 +117,7 @@ ATTENDANCE_LEGACY = """
         ORDER BY rr.reviewed_at DESC
         LIMIT 1
     ) r ON true
+    LEFT JOIN schedules s ON s.employee_id = a.employee_id AND s.work_date = a.work_date
     WHERE a.work_date BETWEEN %s AND %s
       AND e.role = %s
       AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
