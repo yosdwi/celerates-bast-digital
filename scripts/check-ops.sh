@@ -19,7 +19,13 @@ NOCODB_V2_DB_PASSWORD=ci-placeholder \
 SECRETS_GID=${SECRETS_GID:-0} \
 docker compose --profile blue --profile green config --quiet
 
-if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[[:alnum:]])' .; then
+# The password sub-pattern requires a quote character immediately after the
+# assignment operator, so it matches an inline literal value but not a
+# variable/attribute reference passed as a keyword argument -- the previous
+# unquoted version had this backwards: it never matched a properly quoted
+# literal at all, while still flagging plain reference-passing as a false
+# positive.
+if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*['"'"'"][[:alnum:]])' .; then
     printf '%s\n' "possible embedded secret detected" >&2
     exit 1
 fi
