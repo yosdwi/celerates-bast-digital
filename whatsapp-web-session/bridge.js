@@ -258,13 +258,11 @@ class Bridge {
     const { MessageMedia } = require("whatsapp-web.js");
     const media = MessageMedia.fromFilePath(file.path);
     if (file.filename) media.filename = file.filename;
-    // msg.reply(media, ...) quotes the original message, which drives
-    // whatsapp-web.js through an internal Store.Msg memoization getter that
-    // throws "Data passed to getter must include an id property" for media
-    // in groups. chat.sendMessage() is the same delivery without the quote
-    // and doesn't hit that path.
-    const chat = await msg.getChat();
-    await chat.sendMessage(media, { caption: file.caption || "" });
+    // Media sends used to throw "Data passed to getter must include an id
+    // property" here (both msg.reply() and chat.sendMessage() go through
+    // the same injected WWebJS.sendMessage() and hit it equally) --
+    // patch-media-id-collision.js fixes the actual cause at the source.
+    await msg.reply(media, undefined, { caption: file.caption || "" });
   }
 
   _cleanupExport(filePath) {
