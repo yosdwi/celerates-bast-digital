@@ -330,6 +330,28 @@ class Bridge {
     await this._reply(msg, friendlyError((l) => this.state.logf(l), "menjalankan perintah", result.text));
   }
 
+  async _resolveIdentityJid(rawJid) {
+    // WhatsApp routes some DMs through a privacy "@lid" identifier that
+    // never matches the "@c.us" phone-number JID a Talent's wa_identity
+    // binding was made against, even when they're an already-known
+    // contact whose real number shows up fine in shared-group membership
+    // (confirmed live via CDP against window.WWebJS.getContact()) --
+    // without this, an already-bound Talent gets funneled into the
+    // "register your NRP" flow on every DM. Resolve to the underlying
+    // @c.us JID when the contact is known; fall back to the raw @lid
+    // (still routes through NRP registration, correctly, for a genuinely
+    // new/unknown sender) if resolution fails or doesn't land on @c.us.
+    if (!rawJid || !rawJid.endsWith("@lid")) return rawJid;
+    try {
+      const contact = await this.client.getContactById(rawJid);
+      const resolved = contact?.id?._serialized;
+      if (resolved && /^\d+@c\.us$/.test(resolved)) return resolved;
+    } catch (err) {
+      this.state.logf(`identity resolve failed for ${rawJid}: ${err.message}`);
+    }
+    return rawJid;
+  }
+
   async _handleDM(msg) {
     if (msg.hasMedia) {
       await this._handleEvidence(msg);
@@ -337,7 +359,7 @@ class Bridge {
     }
     const text = msg.body || "";
     if (!text) return;
-    const identityJid = msg.author || msg.from;
+    const identityJid = await this._resolveIdentityJid(msg.author || msg.from);
     this.state.logf(`dm text in=${msgId(msg)} identity=${identityJid} text=${text.slice(0, 120)}`);
     const resolved = this.menus.resolve(identityJid, text);
     const result = await this.callWorkerWithNotice(
@@ -355,7 +377,7 @@ class Bridge {
   }
 
   async _handleEvidence(msg) {
-    const identityJid = msg.author || msg.from;
+    const identityJid = await this._resolveIdentityJid(msg.author || msg.from);
     let media;
     try {
       media = await msg.downloadMedia();
