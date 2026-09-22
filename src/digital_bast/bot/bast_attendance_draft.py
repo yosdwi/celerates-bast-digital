@@ -175,13 +175,13 @@ async def natural_bast_attendance_reply(  # noqa: C901, PLR0911 - explicit fail-
             candidate = await interpreter.interpret(
                 text,
                 message_at=message_at,
-                active_work_date=draft.work_date,
+                active_work_date=target_date,
                 active_resolution_type=draft.resolution_type,
             )
             if candidate is not None:
                 proposal = proposal_for_active_gap(
                     candidate,
-                    active_work_date=draft.work_date,
+                    active_work_date=target_date,
                     active_resolution_type=draft.resolution_type,
                 )
 

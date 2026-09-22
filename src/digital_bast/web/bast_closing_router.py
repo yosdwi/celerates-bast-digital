@@ -125,7 +125,6 @@ def _require_admin(record: SessionRecord) -> None:
 def bast_closing_router(deps: WebDependencies) -> APIRouter:
     router = APIRouter(prefix=_API_PREFIX, tags=["talentops-bast-closing"])
 
-    @router.get("/settings")
     async def settings_view(
         request: Request,
         scope_key: ScopeKeyQuery = "default",
@@ -158,7 +157,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             },
         }
 
-    @router.put("/settings")
     async def save_settings(
         payload: BastClosingSettingsInput,
         request: Request,
@@ -190,7 +188,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             "pmo_group_jid": value.pmo_group_jid,
         }
 
-    @router.get("/evidence-rules")
     async def evidence_rules(
         request: Request,
         scope_key: ScopeKeyQuery = "default",
@@ -211,7 +208,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             ),
         }
 
-    @router.put("/evidence-rules")
     async def save_evidence_rules(
         payload: EvidenceRulesInput,
         request: Request,
@@ -240,7 +236,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             ),
         }
 
-    @router.get("/blast/preview")
     async def blast_preview(
         request: Request,
         year: YearQuery,
@@ -270,7 +265,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             ),
         }
 
-    @router.post("/blast/send", response_model=ManualBlastResponse)
     async def blast_send(
         request: Request,
         csrf: HeaderCsrf,
@@ -287,7 +281,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
         )
         return ManualBlastResponse.model_validate(result, from_attributes=True)
 
-    @router.get("/pmo-digest/preview")
     async def pmo_digest_preview(
         request: Request,
         year: YearQuery,
@@ -309,7 +302,6 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             "source_review": preview.source_review,
         }
 
-    @router.post("/pmo-digest/send", response_model=PmoDigestSendResponse)
     async def pmo_digest_send(
         request: Request,
         csrf: HeaderCsrf,
@@ -325,5 +317,21 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             deps.now(),
         )
         return PmoDigestSendResponse.model_validate(result, from_attributes=True)
+
+    router.add_api_route("/settings", settings_view, methods=["GET"])
+    router.add_api_route("/settings", save_settings, methods=["PUT"])
+    router.add_api_route("/evidence-rules", evidence_rules, methods=["GET"])
+    router.add_api_route("/evidence-rules", save_evidence_rules, methods=["PUT"])
+    router.add_api_route("/blast/preview", blast_preview, methods=["GET"])
+    router.add_api_route(
+        "/blast/send", blast_send, methods=["POST"], response_model=ManualBlastResponse
+    )
+    router.add_api_route("/pmo-digest/preview", pmo_digest_preview, methods=["GET"])
+    router.add_api_route(
+        "/pmo-digest/send",
+        pmo_digest_send,
+        methods=["POST"],
+        response_model=PmoDigestSendResponse,
+    )
 
     return router
