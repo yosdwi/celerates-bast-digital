@@ -18,7 +18,9 @@ from digital_bast.infrastructure.local_completion_source import (
     PostgresAttendanceFactReader,
     PostgresTaskEvidenceReader,
 )
-from digital_bast.infrastructure.payroll_group_digest import PostgresPayrollGroupDigestDeliveryStore
+from digital_bast.infrastructure.payroll_group_digest import (
+    PostgresPayrollGroupDigestDeliveryStore,
+)
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.repositories import PostgresDomainRepository
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
@@ -32,15 +34,17 @@ from digital_bast.infrastructure.whatsapp_outbound import (
 )
 
 OutboundGateway = BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway
+_SETTINGS_UNAVAILABLE = "BAST closing settings unavailable"
+_DATABASE_REQUIRED = "APP_DATABASE_DSN is required for BAST closing"
 
 
 def _settings_and_dsn() -> tuple[Settings, str]:
     try:
         settings = get_settings()
     except (ValidationError, SettingsConfigurationError, OSError) as error:
-        raise RuntimeError("BAST closing settings unavailable") from error
+        raise RuntimeError(_SETTINGS_UNAVAILABLE) from error
     if settings.database_dsn is None:
-        raise RuntimeError("APP_DATABASE_DSN is required for BAST closing")
+        raise RuntimeError(_DATABASE_REQUIRED)
     return settings, settings.database_dsn.get_secret_value()
 
 
