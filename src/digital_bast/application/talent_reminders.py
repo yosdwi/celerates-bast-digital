@@ -1,9 +1,4 @@
-"""Scheduled, context-aware Talent WhatsApp reminders.
-
-Admin chooses explicit calendar dates in TalentOps. The 15-minute notification
-worker evaluates those dates against Asia/Jakarta and only contacts Talent who
-still have deterministic BAST blockers at send time.
-"""
+"""Scheduled, context-aware Talent WhatsApp reminders for BAST closing."""
 
 from __future__ import annotations
 
@@ -11,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, final
 
+from digital_bast.application.bast_closing import BastClosingSettings, closing_schedule
 from digital_bast.application.talentops_followups import FollowUpSendCommand
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
@@ -18,11 +14,12 @@ from digital_bast.domain.time import JAKARTA, month_dates
 if TYPE_CHECKING:
     from digital_bast.application.talentops import AttentionItem, TalentOpsService
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
-    from digital_bast.application.workflow_control import NotificationSettings
 
 
 @dataclass(frozen=True, slots=True)
 class TalentReminderRunSummary:
+    enabled: bool = False
+    due: bool = False
     eligible: int = 0
     sent: int = 0
     skipped: int = 0
@@ -30,7 +27,7 @@ class TalentReminderRunSummary:
 
 
 class ReminderControlSource(Protocol):
-    async def notification_settings(self, scope_key: str = "default") -> NotificationSettings: ...
+    async def settings(self, scope_key: str = "default") -> BastClosingSettings: ...
 
 
 def _period_for(local: datetime) -> DateRange:
@@ -43,23 +40,32 @@ def _talent_reminder_message(item: AttentionItem, period: DateRange) -> str:
         "attendance": "Attendance",
         "timesheet": "Timesheet",
         "task": "Task List",
-        "evidence": "Task Evidence",
+        "evidence": "Evidence",
     }
+    blockers = [blocker for blocker in item.blockers if blocker.issues]
+    total = sum(len(blocker.issues) for blocker in blockers)
     lines = [
-        f"*Pengingat BAST — {period.label()}*",
+        f"*Kelengkapan BAST — {period.label()}*",
         "",
-        f"Halo {item.name}, masih ada yang perlu kamu lengkapi:",
+        f"Halo {item.name}, masih ada *{total} hal* yang perlu diperhatikan:",
+        "",
     ]
-    for blocker in item.blockers:
+    options: list[str] = []
+    for blocker in blockers:
         label = labels.get(blocker.domain, blocker.domain.title())
-        count = max(len(blocker.issues), 1)
-        lines.append(f"• {label}: {count} perlu tindakan")
-    lines.extend(
-        (
-            "",
-            "Kirim `menu` untuk buka Status Saya, Attendance, atau Task & Evidence.",
-        )
-    )
+        lines.append(f"*{label} — {len(blocker.issues)}*")
+        for issue in blocker.issues[:3]:
+            lines.append(f"• {issue}")
+        if len(blocker.issues) > 3:
+            lines.append(f"• +{len(blocker.issues) - 3} lainnya")
+        lines.append("")
+        options.append(label)
+    if options:
+        lines.append("Kamu bisa langsung balas bagian yang ingin dicek:")
+        lines.extend(f"{index}. {label}" for index, label in enumerate(options, start=1))
+        lines.append("")
+        lines.append("Atau tulis langsung kebutuhannya dengan bahasa biasa.")
+    lines.append("Status Task List mengikuti source (Redmine) dan tidak diubah dari chatbot.")
     return "\n".join(lines)
 
 
@@ -80,12 +86,14 @@ class TalentReminderService:
     async def run(self, now: datetime | None = None) -> TalentReminderRunSummary:
         current = (now or datetime.now(UTC)).astimezone(UTC)
         local = current.astimezone(JAKARTA)
-        settings = await self._control.notification_settings(self._scope_key)
-        if (
-            local.day not in settings.talent_reminder_days
-            or local.hour < settings.reminder_hour
-        ):
-            return TalentReminderRunSummary()
+        settings = await self._control.settings(self._scope_key)
+        if not settings.enabled or not settings.talent_reminder_enabled:
+            return TalentReminderRunSummary(enabled=settings.enabled)
+
+        schedule = closing_schedule(local.year, local.month, settings)
+        due = schedule.is_talent_reminder_date(local.date()) and local.hour >= settings.send_hour
+        if not due:
+            return TalentReminderRunSummary(enabled=True)
 
         period = _period_for(local)
         view = await self._talentops.command_center(period)
@@ -99,10 +107,10 @@ class TalentReminderService:
                     nrp=item.nrp,
                     message=_talent_reminder_message(item, period),
                     idempotency_key=(
-                        f"scheduled-reminder:{self._scope_key}:"
+                        f"bast-reminder:{self._scope_key}:"
                         f"{local.date().isoformat()}:{item.nrp.casefold()}"
                     ),
-                    created_by="system:scheduled-reminder",
+                    created_by="system:bast-closing",
                     source="deterministic",
                 )
             )
@@ -114,6 +122,8 @@ class TalentReminderService:
             else:
                 failed += 1
         return TalentReminderRunSummary(
+            enabled=True,
+            due=True,
             eligible=len(view.attention),
             sent=sent,
             skipped=skipped,
