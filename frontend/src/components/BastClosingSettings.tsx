@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getBastClosingSettings,
   getBastEvidenceRules,
+  getBastWhatsAppGroups,
   previewBastBlast,
   previewBastPmoDigest,
   saveBastClosingSettings,
@@ -16,6 +17,7 @@ import type {
   BastPmoDigestPreview,
   BastPmoDigestSendResult,
   EvidenceRule,
+  WhatsAppGroupOption,
 } from "../api/bastClosing";
 import type { TalentOpsSession } from "../api/types";
 
@@ -27,6 +29,7 @@ interface Props {
 export default function BastClosingSettings({ session, period }: Props) {
   const [settings, setSettings] = useState<BastClosingSettingsData | null>(null);
   const [rules, setRules] = useState<EvidenceRule[]>([]);
+  const [groups, setGroups] = useState<WhatsAppGroupOption[]>([]);
   const [preview, setPreview] = useState<BastBlastPreview | null>(null);
   const [result, setResult] = useState<BastManualBlastResult | null>(null);
   const [pmoPreview, setPmoPreview] = useState<BastPmoDigestPreview | null>(null);
@@ -45,12 +48,14 @@ export default function BastClosingSettings({ session, period }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [nextSettings, nextRules] = await Promise.all([
+      const [nextSettings, nextRules, discoveredGroups] = await Promise.all([
         getBastClosingSettings(period.year, period.month),
         getBastEvidenceRules(),
+        getBastWhatsAppGroups().catch(() => [] as WhatsAppGroupOption[]),
       ]);
       setSettings(nextSettings);
       setRules(nextRules.rules);
+      setGroups(discoveredGroups);
       setPreview(null);
       setResult(null);
       setPmoPreview(null);
@@ -149,6 +154,10 @@ export default function BastClosingSettings({ session, period }: Props) {
     return <section className="panel settings-card"><h2>BAST Closing</h2><p>{error ?? "Configuration unavailable."}</p></section>;
   }
 
+  const savedGroupMissing = Boolean(
+    settings.pmo_group_jid && !groups.some((group) => group.jid === settings.pmo_group_jid),
+  );
+
   return (
     <section className="panel settings-card bast-closing-settings">
       <div className="panel-title-row">
@@ -218,13 +227,24 @@ export default function BastClosingSettings({ session, period }: Props) {
             /> PMO summary
           </label>
           <label>
-            PMO group JID
-            <input
-              type="text"
+            PMO group
+            <select
               value={settings.pmo_group_jid ?? ""}
               disabled={!isAdmin}
               onChange={(event) => setSettings({ ...settings, pmo_group_jid: event.target.value || null })}
-            />
+            >
+              <option value="">No PMO group</option>
+              {savedGroupMissing && settings.pmo_group_jid ? (
+                <option value={settings.pmo_group_jid}>
+                  Saved group · {settings.pmo_group_jid} · not in current discovery
+                </option>
+              ) : null}
+              {groups.map((group) => (
+                <option key={group.jid} value={group.jid}>
+                  {group.subject || group.jid} · {group.member_count} members
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </div>
