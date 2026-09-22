@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, ValidationError
@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 
 _API_PREFIX = "/api/talentops/v1/bast-closing"
 _ADMIN_ROLES = frozenset({"owner", "admin"})
+ScopeKeyQuery = Annotated[str, Query()]
+YearQuery = Annotated[int, Query(ge=2020, le=2100)]
+MonthQuery = Annotated[int, Query(ge=1, le=12)]
+OptionalYearQuery = Annotated[int | None, Query(ge=2020, le=2100)]
+OptionalMonthQuery = Annotated[int | None, Query(ge=1, le=12)]
+TargetQuery = Annotated[Literal["talent"], Query()]
 
 
 class BastClosingSettingsInput(BaseModel):
@@ -122,9 +128,9 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     @router.get("/settings")
     async def settings_view(
         request: Request,
-        scope_key: str = Query(default="default"),
-        year: int | None = Query(default=None, ge=2020, le=2100),
-        month: int | None = Query(default=None, ge=1, le=12),
+        scope_key: ScopeKeyQuery = "default",
+        year: OptionalYearQuery = None,
+        month: OptionalMonthQuery = None,
     ) -> dict[str, object]:
         _ = await _require_bast_operator(deps, request)
         current = deps.now().astimezone(JAKARTA)
@@ -157,7 +163,7 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
         payload: BastClosingSettingsInput,
         request: Request,
         csrf: HeaderCsrf,
-        scope_key: str = Query(default="default"),
+        scope_key: ScopeKeyQuery = "default",
     ) -> dict[str, object]:
         record = await _session(deps, request)
         _require_admin(record)
@@ -187,7 +193,7 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     @router.get("/evidence-rules")
     async def evidence_rules(
         request: Request,
-        scope_key: str = Query(default="default"),
+        scope_key: ScopeKeyQuery = "default",
     ) -> dict[str, object]:
         _ = await _require_bast_operator(deps, request)
         configured = {
@@ -210,7 +216,7 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
         payload: EvidenceRulesInput,
         request: Request,
         csrf: HeaderCsrf,
-        scope_key: str = Query(default="default"),
+        scope_key: ScopeKeyQuery = "default",
     ) -> dict[str, object]:
         record = await _session(deps, request)
         _require_admin(record)
@@ -237,14 +243,16 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     @router.get("/blast/preview")
     async def blast_preview(
         request: Request,
-        year: int = Query(ge=2020, le=2100),
-        month: int = Query(ge=1, le=12),
-        scope_key: str = Query(default="default"),
-        target: Literal["talent"] = Query(default="talent"),
+        year: YearQuery,
+        month: MonthQuery,
+        scope_key: ScopeKeyQuery = "default",
+        target: TargetQuery = "talent",
     ) -> dict[str, object]:
         _ = target
         _ = await _require_bast_operator(deps, request)
-        preview = await create_bast_talent_reminder_service(scope_key).preview(_period(year, month))
+        preview = await create_bast_talent_reminder_service(scope_key).preview(
+            _period(year, month)
+        )
         return {
             "total": preview.total,
             "will_send": preview.will_send,
@@ -266,9 +274,9 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     async def blast_send(
         request: Request,
         csrf: HeaderCsrf,
-        year: int = Query(ge=2020, le=2100),
-        month: int = Query(ge=1, le=12),
-        scope_key: str = Query(default="default"),
+        year: YearQuery,
+        month: MonthQuery,
+        scope_key: ScopeKeyQuery = "default",
     ) -> ManualBlastResponse:
         record = await _require_bast_operator(deps, request)
         verify_csrf(record, csrf)
@@ -282,12 +290,14 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     @router.get("/pmo-digest/preview")
     async def pmo_digest_preview(
         request: Request,
-        year: int = Query(ge=2020, le=2100),
-        month: int = Query(ge=1, le=12),
-        scope_key: str = Query(default="default"),
+        year: YearQuery,
+        month: MonthQuery,
+        scope_key: ScopeKeyQuery = "default",
     ) -> dict[str, object]:
         _ = await _require_bast_operator(deps, request)
-        preview = await create_bast_group_digest_service(scope_key).preview(_period(year, month))
+        preview = await create_bast_group_digest_service(scope_key).preview(
+            _period(year, month)
+        )
         return {
             "configured": preview.configured,
             "group_jid": preview.group_jid,
@@ -303,9 +313,9 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
     async def pmo_digest_send(
         request: Request,
         csrf: HeaderCsrf,
-        year: int = Query(ge=2020, le=2100),
-        month: int = Query(ge=1, le=12),
-        scope_key: str = Query(default="default"),
+        year: YearQuery,
+        month: MonthQuery,
+        scope_key: ScopeKeyQuery = "default",
     ) -> PmoDigestSendResponse:
         record = await _require_bast_operator(deps, request)
         verify_csrf(record, csrf)
