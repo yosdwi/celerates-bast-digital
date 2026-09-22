@@ -10,7 +10,6 @@ mutated here.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from digital_bast.application.attendance_closing_policy import payroll_cycle_for
@@ -37,7 +36,7 @@ from digital_bast.operations import (
 )
 
 if TYPE_CHECKING:
-    from datetime import date
+    from datetime import date, datetime
 
     from digital_bast.bot.attendance_evidence import AttendanceEvidenceCandidate
     from digital_bast.bot.bast_reminder_context import BastReminderContext
@@ -100,7 +99,7 @@ async def _seed_canonical_attendance_context(
     await create_attendance_reminder_context_service().save(jid, stable)
 
 
-async def natural_bast_attendance_reply(
+async def natural_bast_attendance_reply(  # noqa: C901, PLR0911 - explicit fail-closed routing
     *,
     text: str,
     jid: str,
