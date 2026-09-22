@@ -6,14 +6,15 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from digital_bast.bot import bast_attendance_draft
-from digital_bast.bot.attendance_context import AttendanceReminderContext
 from digital_bast.bot.attendance_resolution import ResolutionType
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.bot.bast_reminder_context import BastReminderContext
-from digital_bast.domain.completion import DateRange
 
 if TYPE_CHECKING:
     import pytest
+
+    from digital_bast.bot.attendance_context import AttendanceReminderContext
+    from digital_bast.domain.completion import DateRange
 
 _JID = "628123@c.us"
 _EMPLOYEE_ID = "EMP-1"
