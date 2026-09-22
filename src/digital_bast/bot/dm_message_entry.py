@@ -4,6 +4,8 @@ The deterministic Payroll reminder context remains the authority. This wrapper c
 now bootstrap an exact actionable gap directly from a date-pick action or a
 natural sentence such as ``1 September cuti``; it never selects outside the
 stable reminder snapshot and revalidates current projection state before saving.
+BAST closing reminders have their own bounded context and are checked after an
+already-open Payroll draft but before bootstrapping an older Payroll reminder.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_routing_service,
 )
 from digital_bast.bot.attendance_resolution import ResolutionType
+from digital_bast.bot.bast_reminder_reply import reply_from_bast_context
 from digital_bast.bot.dm_entry import reply as legacy_entry_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.payroll_attendance_draft import (
@@ -168,8 +171,6 @@ async def _reply_with_active_draft(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
     draft: AttendanceResolutionDraft,
     context: AttendanceReminderContext,
 ) -> str:
-    # Explicit state-machine commands always win. Natural interpretation cannot
-    # shadow Same/Different or Ajukan/Ubah button/numeric actions.
     if not draft.has_proposal and parse_payroll_repeat_command(text) is not None:
         return await workflow_reply(text, jid)
     if draft.has_proposal and draft.has_evidence and parse_payroll_draft_command(text) is not None:
@@ -225,11 +226,6 @@ async def _reply_with_active_draft(  # noqa: C901, PLR0911, PLR0912, PLR0913, PL
 
 
 def _bare_position(text: str) -> int | None:
-    """A bare digit reply to a reminder's own numbered list (e.g. "1" for
-    the "1. 1 Sep" line) -- the reminder text explicitly tells the Talent
-    they can answer this way. Reject "1." etc: only a plain integer counts,
-    so stray punctuation doesn't silently misresolve to the wrong gap.
-    """
     stripped = text.strip()
     return int(stripped) if stripped.isdigit() else None
 
@@ -339,13 +335,6 @@ async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
             "Pilih lagi tanggal dari reminder untuk memuat kondisi terbaru."
         )
 
-    # A date button or a bare position digit only selects the exact gap --
-    # the digit itself must never be re-read as the answer content by
-    # _reply_with_active_draft below (confirmed live: replying "1" to pick
-    # a gap was falling through and getting matched as a same-gap proposal
-    # shortcut, auto-submitting an absence nobody claimed). Natural text may
-    # additionally carry the proposal itself and can therefore skip the
-    # extra question.
     if (picked_date is not None or position is not None) and not natural:
         return render_payroll_draft_prompt(draft)
     return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
@@ -355,6 +344,10 @@ async def reply(text: str, jid: str, message_at: datetime) -> str:
     state, draft, context = await _active_payroll_draft(jid)
     if draft is not None and context is not None and draft.work_date is not None:
         return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
+
+    bast_reply = await reply_from_bast_context(text, jid, message_at)
+    if bast_reply is not None:
+        return bast_reply
 
     bootstrapped = await _bootstrap_payroll_draft(text, jid, message_at, state)
     if bootstrapped is not None:
@@ -379,7 +372,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         message_at = _parse_message_at(args.message_at)
     except ValueError:
-        # Invalid transport metadata must not make a valid user message fail.
         result = anyio.run(legacy_entry_reply, args.text, args.jid)
     else:
         result = anyio.run(reply, args.text, args.jid, message_at)
