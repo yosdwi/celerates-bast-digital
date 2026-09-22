@@ -32,9 +32,6 @@ class LocalEmployeeSource:
 
     async def load(self) -> tuple[Employee, ...]:
         raw = json.loads(self._path.read_text(encoding="utf-8"))
-        # employee_data.json historically wrote "IoT Operation" while the
-        # EmployeeRole enum and NocoDB both say "IoT Operations". Accept both
-        # so a roster file from either era loads.
         role_by_name = {
             "Developer": EmployeeRole.DEVELOPER,
             "IoT Operation": EmployeeRole.IOT_OPERATIONS,
@@ -61,7 +58,7 @@ class _AttendanceFactRow:
         "work_date",
     )
 
-    def __init__(  # noqa: PLR0913, PLR0917 -- one field per selected column
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         employee_id: str,
         work_date: date,
@@ -80,14 +77,6 @@ class _AttendanceFactRow:
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the `attendance` table.
-
-    `evidence_note` is the human-maintained column NocoDB edits (it carries the
-    old NocoDB "Evidence" text field). `evidence_photo_count` is the WhatsApp
-    DM upload path (bot/attendance_evidence.py, attendance_evidence table) --
-    either one satisfies has_evidence.
-    """
-
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
         self._dsn = dsn
         self._connect_timeout_seconds = connect_timeout_seconds
@@ -98,19 +87,15 @@ class PostgresAttendanceFactReader:
     def _load(self, period: DateRange) -> dict[tuple[str, date], AttendanceFact]:
         try:
             with (
-                psycopg.connect(
-                    self._dsn, connect_timeout=self._connect_timeout_seconds
-                ) as connection,
+                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
                 connection.cursor(row_factory=class_row(_AttendanceFactRow)) as cursor,
             ):
                 _ = cursor.execute(
                     """
-                    SELECT a.employee_id,
-                           a.work_date,
+                    SELECT a.employee_id, a.work_date,
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
-                           a.evidence_note,
-                           COUNT(ae.id) AS evidence_photo_count
+                           a.evidence_note, COUNT(ae.id) AS evidence_photo_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s
@@ -142,24 +127,28 @@ class _TaskEvidenceCountRow:
 
 @final
 class PostgresTaskEvidenceReader:
-    """Per-task evidence counts from task_evidence (talent uploads over WhatsApp DM,
-    see bot/evidence.py), keyed by tasks.record_key -- the same key domain Task
-    records expose as str(task.key).
-    """
+    """Task evidence counts plus category-level BAST evidence requirements."""
 
-    def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        connect_timeout_seconds: int = 5,
+        scope_key: str = "default",
+    ) -> None:
         self._dsn = dsn
         self._connect_timeout_seconds = connect_timeout_seconds
+        self._scope_key = scope_key
 
     async def counts(self, period: DateRange) -> dict[str, int]:
         return await run_sync(self._counts, period)
 
+    async def requirements(self) -> dict[str, bool]:
+        return await run_sync(self._requirements)
+
     def _counts(self, period: DateRange) -> dict[str, int]:
         try:
             with (
-                psycopg.connect(
-                    self._dsn, connect_timeout=self._connect_timeout_seconds
-                ) as connection,
+                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
                 connection.cursor(row_factory=class_row(_TaskEvidenceCountRow)) as cursor,
             ):
                 _ = cursor.execute(
@@ -174,7 +163,24 @@ class PostgresTaskEvidenceReader:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(
-                service="postgres", operation="task_evidence_counts"
-            ) from error
+            raise InfrastructureError(service="postgres", operation="task_evidence_counts") from error
         return {row.task_key: row.total for row in rows}
+
+    def _requirements(self) -> dict[str, bool]:
+        try:
+            with (
+                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
+                connection.cursor() as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT task_category, evidence_required
+                    FROM bast_evidence_rules
+                    WHERE scope_key = %s
+                    """,
+                    (self._scope_key,),
+                )
+                rows = cursor.fetchall()
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="bast_evidence_requirements") from error
+        return {str(category): bool(required) for category, required in rows}
