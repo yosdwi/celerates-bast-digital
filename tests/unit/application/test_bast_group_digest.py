@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from typing import Any
 
 from digital_bast.application.bast_closing import BastClosingSettings
 from digital_bast.application.bast_group_digest import (
@@ -28,10 +27,14 @@ class _Control:
 
 class _CaptureService(BastGroupDigestService):
     def __init__(self) -> None:
-        super().__init__("default", _Control(), None, None, None)  # type: ignore[arg-type]
-        self.call: dict[str, Any] | None = None
+        super().__init__("default", _Control(), object(), object(), object())  # type: ignore[arg-type]
+        self.call: dict[str, object] | None = None
 
-    async def _deliver(self, period: DateRange, **kwargs: Any) -> BastGroupDigestRunSummary:
+    async def _deliver(
+        self,
+        period: DateRange,
+        **kwargs: object,
+    ) -> BastGroupDigestRunSummary:
         self.call = {"period": period, **kwargs}
         return BastGroupDigestRunSummary(
             enabled=True,
