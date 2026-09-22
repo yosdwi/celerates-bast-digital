@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -12,6 +12,7 @@ from digital_bast.application.talentops_followups import FollowUpSendCommand, Fo
 from digital_bast.domain.completion import CheckState, DateRange
 
 _NOW = datetime(2026, 8, 29, 2, 5, tzinfo=UTC)  # 09:05 Jakarta
+_PERIOD = DateRange(date(2026, 8, 1), date(2026, 8, 31))
 
 
 def _settings(*, initial_day: int = 29, hour: int = 9) -> BastClosingSettings:
@@ -149,3 +150,38 @@ async def test_talent_reminder_skips_wrong_date_before_hour_and_no_attention() -
     assert wrong_date_followups.commands == []
     assert before_followups.commands == []
     assert empty_followups.commands == []
+
+
+@pytest.mark.asyncio
+async def test_manual_send_on_scheduled_date_consumes_same_slot_as_scheduler() -> None:
+    snapshot = Snapshot()
+    followups = FollowUps()
+    service = TalentReminderService("default", Control(_settings()), snapshot, followups)  # type: ignore[arg-type]
+
+    manual = await service.send_manual(_PERIOD, "admin@example.com", _NOW)
+    scheduled = await service.run(_NOW)
+
+    assert manual.scheduled_slot_consumed is True
+    assert manual.sent == 1
+    assert scheduled.sent == 0
+    assert scheduled.skipped == 1
+    assert followups.commands[0].idempotency_key == followups.commands[1].idempotency_key
+    assert followups.commands[0].idempotency_key == "bast-reminder:default:2026-08-29:jimt24002"
+
+
+@pytest.mark.asyncio
+async def test_manual_send_outside_scheduled_date_is_unique_ad_hoc_batch() -> None:
+    snapshot = Snapshot()
+    followups = FollowUps()
+    service = TalentReminderService("default", Control(_settings()), snapshot, followups)  # type: ignore[arg-type]
+
+    off_schedule = datetime(2026, 8, 20, 2, 0, tzinfo=UTC)
+    first = await service.send_manual(_PERIOD, "admin@example.com", off_schedule)
+    second = await service.send_manual(_PERIOD, "admin@example.com", off_schedule)
+
+    assert first.scheduled_slot_consumed is False
+    assert second.scheduled_slot_consumed is False
+    assert first.sent == 1
+    assert second.sent == 1
+    assert followups.commands[0].idempotency_key != followups.commands[1].idempotency_key
+    assert followups.commands[0].idempotency_key.startswith("bast-manual:default:")
