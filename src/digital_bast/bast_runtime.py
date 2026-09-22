@@ -12,7 +12,7 @@ from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.bast_reminder_context import BastReminderContextService
-from digital_bast.config import SettingsConfigurationError, get_settings
+from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.local_completion_source import (
     PostgresAttendanceFactReader,
@@ -31,8 +31,10 @@ from digital_bast.infrastructure.whatsapp_outbound import (
     UnavailableWhatsAppOutboundGateway,
 )
 
+OutboundGateway = BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway
 
-def _settings_and_dsn():
+
+def _settings_and_dsn() -> tuple[Settings, str]:
     try:
         settings = get_settings()
     except (ValidationError, SettingsConfigurationError, OSError) as error:
@@ -46,7 +48,7 @@ def _configured_dsn() -> str:
     return _settings_and_dsn()[1]
 
 
-def _outbound(settings):
+def _outbound(settings: Settings) -> OutboundGateway:
     if settings.bot_bridge_base_url is None or settings.sync_ingest_token is None:
         return UnavailableWhatsAppOutboundGateway()
     return BotBridgeWhatsAppOutboundGateway(
