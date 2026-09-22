@@ -13,10 +13,14 @@ from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
 
 if TYPE_CHECKING:
-    from digital_bast.application.bast_snapshot import BastClosingSnapshotService, BastTalentSnapshot
+    from digital_bast.application.bast_snapshot import (
+        BastClosingSnapshotService,
+        BastTalentSnapshot,
+    )
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
 
 _CONTEXT_TTL = timedelta(days=7)
+_MAX_ISSUES_PER_DOMAIN = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,10 +97,9 @@ def _talent_reminder_message(item: BastTalentSnapshot, period: DateRange) -> str
     for blocker in item.actionable:
         label = labels.get(blocker.domain, blocker.domain.title())
         lines.append(f"*{label} — {max(len(blocker.issues), 1)}*")
-        for issue in blocker.issues[:3]:
-            lines.append(f"• {issue}")
-        if len(blocker.issues) > 3:
-            lines.append(f"• +{len(blocker.issues) - 3} lainnya")
+        lines.extend(f"• {issue}" for issue in blocker.issues[:_MAX_ISSUES_PER_DOMAIN])
+        if len(blocker.issues) > _MAX_ISSUES_PER_DOMAIN:
+            lines.append(f"• +{len(blocker.issues) - _MAX_ISSUES_PER_DOMAIN} lainnya")
         lines.append("")
         options.append(label)
     lines.append("Pilih bagian yang mau dicek:")
