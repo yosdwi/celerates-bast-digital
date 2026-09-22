@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, ValidationError
@@ -17,7 +17,8 @@ from digital_bast.domain.models import TaskCategory
 from digital_bast.domain.time import JAKARTA, month_dates
 from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
 
-if False:  # pragma: no cover
+if TYPE_CHECKING:
+    from digital_bast.web.contracts import SessionRecord
     from digital_bast.web.dependencies import WebDependencies
 
 _API_PREFIX = "/api/talentops/v1/bast-closing"
@@ -73,26 +74,35 @@ def _period(year: int, month: int) -> DateRange:
     return DateRange(dates[0], dates[-1])
 
 
-async def _session(deps: WebDependencies, request: Request):
+async def _session(deps: WebDependencies, request: Request) -> SessionRecord:
     _, record = await require_session(request, deps.sessions, deps.cookie, deps.now, api=True)
     return record
 
 
-async def _require_bast_operator(deps: WebDependencies, request: Request):
+async def _require_bast_operator(deps: WebDependencies, request: Request) -> SessionRecord:
     record = await _session(deps, request)
     if record.user.role.casefold() in _ADMIN_ROLES:
         return record
     if deps.workflow_control is None:
-        raise HTTPException(status_code=503, detail="Workflow authorization is unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Workflow authorization is unavailable",
+        )
     operator = await deps.workflow_control.operator(record.user.email)
     if operator is None or not operator.active or not operator.can_generate_bast:
-        raise HTTPException(status_code=403, detail="BAST operation permission is required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="BAST operation permission is required",
+        )
     return record
 
 
-def _require_admin(record) -> None:
+def _require_admin(record: SessionRecord) -> None:
     if record.user.role.casefold() not in _ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="Admin access is required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access is required",
+        )
 
 
 def bast_closing_router(deps: WebDependencies) -> APIRouter:
