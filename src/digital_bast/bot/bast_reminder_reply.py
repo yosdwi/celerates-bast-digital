@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
+from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bast_runtime import create_bast_snapshot_service
 from digital_bast.bot.bast_reminder_context import BastReminderContextService
 from digital_bast.bot.identity import ActivationService
+from digital_bast.bot.payroll_attendance_natural import looks_like_natural_attendance_input
 from digital_bast.config import get_settings
 from digital_bast.domain.completion import DateRange
 from digital_bast.infrastructure.errors import InfrastructureError
-from digital_bast.application.workflow_control import WorkflowControlService
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -61,6 +62,8 @@ def _selected_domain(text: str, domains: tuple[str, ...]) -> tuple[str | None, b
             return domains[position - 1], True
         return None, True
     hinted = _domain_hint(text)
+    if hinted is None and "attendance" in domains and looks_like_natural_attendance_input(text):
+        hinted = "attendance"
     if hinted is None:
         return None, False
     return (hinted if hinted in domains else None), True
@@ -108,7 +111,7 @@ async def reply_from_bast_context(
         )
         return f"Pilihan itu tidak ada di reminder BAST ini. Pilih salah satu:\n\n{options}"
 
-    period = DateRange(context.period_start, context.period_end)  # type: ignore[arg-type]
+    period = DateRange(context.period_start, context.period_end)
     snapshot = await create_bast_snapshot_service().build(period)
     talent = next(
         (item for item in snapshot.talents if item.employee_id == employee_id),
@@ -148,7 +151,11 @@ async def reply_from_bast_context(
         tab,
         public_url=await _public_url(dsn),
     )
-    title = "Attendance yang perlu dilengkapi" if domain == "attendance" else "Evidence yang wajib dilengkapi"
+    title = (
+        "Attendance yang perlu dilengkapi"
+        if domain == "attendance"
+        else "Evidence yang wajib dilengkapi"
+    )
     lines = _issues(title, blocker.issues)
     if domain == "evidence":
         lines.extend(("", "Daftar ini hanya berisi task yang memang dikonfigurasi wajib evidence."))
