@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, final
 
 from digital_bast.application.talentops import Blocker
-from digital_bast.domain.completion import CheckState
+from digital_bast.domain.completion import CheckState, format_day
 
 if TYPE_CHECKING:
+    from datetime import date
+
     from digital_bast.application.talentops import AttentionItem, TalentOpsService
     from digital_bast.domain.completion import DateRange
 
@@ -41,29 +43,62 @@ class BastClosingSnapshot:
     talents: tuple[BastTalentSnapshot, ...]
 
 
-def _pending_nrps(requests: tuple[object, ...]) -> frozenset[str]:
-    values: set[str] = set()
+def _pending_dates(
+    requests: tuple[object, ...],
+    period: DateRange,
+) -> dict[str, frozenset[date]]:
+    values: dict[str, set[date]] = {}
     for request in requests:
-        nrp = getattr(request, "nrp", None)
-        if isinstance(nrp, str) and nrp.strip():
-            values.add(nrp.strip().casefold())
-    return frozenset(values)
+        employee_id = getattr(request, "employee_id", None)
+        work_date = getattr(request, "work_date", None)
+        if (
+            isinstance(employee_id, str)
+            and employee_id.strip()
+            and work_date is not None
+            and period.start <= work_date <= period.end
+        ):
+            values.setdefault(employee_id, set()).add(work_date)
+    return {employee_id: frozenset(days) for employee_id, days in values.items()}
 
 
-def _actionable_blockers(item: AttentionItem, attendance_pending: bool) -> tuple[Blocker, ...]:
+def _matches_pending_day(issue: str, pending_dates: frozenset[date]) -> bool:
+    return any(issue.startswith(f"{format_day(work_date)} —") for work_date in pending_dates)
+
+
+def _actionable_blockers(
+    item: AttentionItem,
+    pending_dates: frozenset[date],
+) -> tuple[Blocker, ...]:
+    """Suppress only the exact attendance dates already waiting for PMO.
+
+    A Talent may have one submitted correction and another unresolved gap in the
+    same month.  A coarse employee-level suppression would hide the second gap
+    and incorrectly stop reminders, so filtering is deliberately per work date.
+    """
     result: list[Blocker] = []
     for blocker in item.blockers:
         if blocker.state is not CheckState.INCOMPLETE:
             continue
-        if attendance_pending and blocker.domain == "attendance":
-            continue
-        if attendance_pending and blocker.domain == "timesheet":
+        if blocker.domain == "attendance" and pending_dates:
             remaining = tuple(
-                issue for issue in blocker.issues if "Log 1 PAMA belum valid" not in issue
+                issue
+                for issue in blocker.issues
+                if not _matches_pending_day(issue, pending_dates)
             )
-            if not remaining:
-                continue
-            result.append(Blocker(blocker.domain, blocker.state, remaining))
+            if remaining:
+                result.append(Blocker(blocker.domain, blocker.state, remaining))
+            continue
+        if blocker.domain == "timesheet" and pending_dates:
+            remaining = tuple(
+                issue
+                for issue in blocker.issues
+                if not (
+                    "Log 1 PAMA belum valid" in issue
+                    and _matches_pending_day(issue, pending_dates)
+                )
+            )
+            if remaining:
+                result.append(Blocker(blocker.domain, blocker.state, remaining))
             continue
         result.append(blocker)
     return tuple(result)
@@ -81,19 +116,21 @@ class BastClosingSnapshotService:
 
     async def build(self, period: DateRange) -> BastClosingSnapshot:
         view = await self._talentops.command_center(period)
-        pending = _pending_nrps(await self._attendance_resolutions.pending())
+        pending = _pending_dates(await self._attendance_resolutions.pending(), period)
         talents: list[BastTalentSnapshot] = []
         waiting = 0
         source_review_count = 0
         actionable_count = 0
+        seen: set[str] = set()
 
         for item in view.attention:
-            attendance_pending = item.nrp.strip().casefold() in pending
-            actionable = _actionable_blockers(item, attendance_pending)
+            seen.add(item.employee_id)
+            employee_pending = pending.get(item.employee_id, frozenset())
+            actionable = _actionable_blockers(item, employee_pending)
             source_review = tuple(
                 blocker for blocker in item.blockers if blocker.state is CheckState.NEEDS_REVIEW
             )
-            is_waiting = attendance_pending and not actionable and not source_review
+            is_waiting = bool(employee_pending) and not actionable and not source_review
             actionable_count += int(bool(actionable))
             waiting += int(is_waiting)
             source_review_count += int(bool(source_review) and not actionable)
@@ -108,7 +145,34 @@ class BastClosingSnapshotService:
                 )
             )
 
-        complete = max(view.summary.active_talents - len(view.attention), 0)
+        # A submitted correction carries evidence. The legacy completion rule
+        # intentionally accepts evidence for Log 1 PAMA, so a Talent whose only
+        # remaining state is a pending PMO correction can disappear from
+        # ``view.attention``. Re-insert that factual WAITING_PMO state here so
+        # closing summaries never misclassify it as COMPLETE.
+        readiness_by_employee = {item.employee_id: item for item in view.readiness}
+        for employee_id in pending:
+            if employee_id in seen:
+                continue
+            readiness = readiness_by_employee.get(employee_id)
+            if readiness is None:
+                continue
+            waiting += 1
+            talents.append(
+                BastTalentSnapshot(
+                    employee_id=readiness.employee_id,
+                    nrp=readiness.nrp,
+                    name=readiness.name,
+                    actionable=(),
+                    waiting_pmo=True,
+                    source_review=(),
+                )
+            )
+
+        complete = max(
+            view.summary.active_talents - actionable_count - waiting - source_review_count,
+            0,
+        )
         return BastClosingSnapshot(
             total_talents=view.summary.active_talents,
             complete=complete,
