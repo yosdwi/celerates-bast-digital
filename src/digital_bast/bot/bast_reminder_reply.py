@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bast_runtime import create_bast_snapshot_service
+from digital_bast.bot.bast_attendance_draft import natural_bast_attendance_reply
 from digital_bast.bot.bast_reminder_context import BastReminderContextService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.payroll_attendance_natural import looks_like_natural_attendance_input
@@ -126,6 +127,16 @@ async def reply_from_bast_context(
             f"Bagian {domain.title()} dari reminder ini sudah tidak perlu action dari kamu. "
             "Status terbaru sudah dimuat ulang."
         )
+
+    if domain == "attendance" and looks_like_natural_attendance_input(text):
+        natural_reply = await natural_bast_attendance_reply(
+            text=text,
+            jid=jid,
+            message_at=message_at,
+            context=context,
+        )
+        if natural_reply is not None:
+            return natural_reply
 
     if domain == "task":
         lines = _issues("Task List yang masih perlu perhatian", blocker.issues)
