@@ -11,14 +11,16 @@ from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDmStateService
-from digital_bast.bot.evidence import EvidenceService
 from digital_bast.bot.identity import ActivationService
 from digital_bast.bot.llm import LlmInterpreter
 from digital_bast.bot.pmo_state import PmoDmStateService
 from digital_bast.bot.rebind import IdentityRebindService
 from digital_bast.bot.rebind_onboarding import RebindOnboardingService
+from digital_bast.bot.requirement_aware_evidence import (
+    RequirementAwareEvidenceService,
+    RequirementAwareTaskEvidenceSubmissionService,
+)
 from digital_bast.bot.talent_context import TalentConversationContextService
-from digital_bast.bot.task_evidence_submission import TaskEvidenceSubmissionService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import CompletionReport, evaluate_completion
 from digital_bast.infrastructure.cloudflare_workers_ai_chat import CloudflareWorkersAiChatClient
@@ -121,12 +123,12 @@ def create_activation_service() -> ActivationService:
     return ActivationService(_application_dsn())
 
 
-def create_evidence_service() -> EvidenceService:
-    return EvidenceService(_application_dsn())
+def create_evidence_service() -> RequirementAwareEvidenceService:
+    return RequirementAwareEvidenceService(_application_dsn())
 
 
-def create_task_evidence_submission_service() -> TaskEvidenceSubmissionService:
-    return TaskEvidenceSubmissionService(_application_dsn())
+def create_task_evidence_submission_service() -> RequirementAwareTaskEvidenceSubmissionService:
+    return RequirementAwareTaskEvidenceSubmissionService(_application_dsn())
 
 
 def create_attendance_evidence_service() -> AttendanceEvidenceService:
@@ -175,65 +177,13 @@ def create_pmo_notification_service(scope_key: str = "default") -> PmoNotificati
 
 
 def create_talent_reminder_service(scope_key: str = "default") -> TalentReminderService:
-    """Build deterministic scheduled Talent reminders from production sources."""
-    from digital_bast.application.talentops import TalentOpsService  # noqa: PLC0415
-    from digital_bast.application.talentops_followups import (  # noqa: PLC0415
-        TalentOpsFollowUpService,
-    )
-    from digital_bast.infrastructure.local_completion_source import (  # noqa: PLC0415
-        PostgresAttendanceFactReader,
-        PostgresTaskEvidenceReader,
-    )
-    from digital_bast.infrastructure.postgres_employees import (  # noqa: PLC0415
-        PostgresEmployeeSource,
-    )
-    from digital_bast.infrastructure.repositories import (  # noqa: PLC0415
-        PostgresDomainRepository,
-    )
-    from digital_bast.infrastructure.source_sync_state import (  # noqa: PLC0415
-        PostgresSourceSyncStateStore,
-    )
-    from digital_bast.infrastructure.talentops_followup_store import (  # noqa: PLC0415
-        PostgresTalentOpsFollowUpRepository,
-        PostgresWhatsAppIdentityResolver,
-    )
+    """Backward-compatible factory for the independent BAST closing reminder."""
+    from digital_bast.bast_runtime import create_bast_talent_reminder_service  # noqa: PLC0415
 
-    settings = _settings()
-    dsn = _application_dsn()
-    employees = PostgresEmployeeSource(dsn)
-    records = PostgresDomainRepository(dsn)
-    completion = CompletionSource(
-        employees,
-        records,
-        PostgresAttendanceFactReader(dsn),
-        PostgresTaskEvidenceReader(dsn),
-    )
-    talentops = TalentOpsService(
-        completion,
-        employees,
-        records,
-        PostgresSourceSyncStateStore(dsn),
-    )
-    followups = TalentOpsFollowUpService(
-        talentops,
-        employees,
-        PostgresWhatsAppIdentityResolver(dsn),
-        _outbound_gateway(settings),
-        PostgresTalentOpsFollowUpRepository(dsn),
-        ai=None,
-    )
-    return TalentReminderService(
-        scope_key,
-        WorkflowControlService(dsn),
-        talentops,
-        followups,
-    )
+    return create_bast_talent_reminder_service(scope_key)
 
 
 def create_llm_interpreter() -> LlmInterpreter | None:
-    # Same Cloudflare Workers AI provider as TalentOps AI (web/production.py) --
-    # one LLM backend for the bot's own interpreter, not a second one pointed at
-    # a local Ollama instance the account no longer runs.
     settings = _settings()
     if settings.cloudflare_account_id is None or settings.cloudflare_api_token is None:
         return None
@@ -321,6 +271,7 @@ async def generate_bast(
     report_type: str = "developer",
 ) -> tuple[Path, AssembledReport]:
     from digital_bast.infrastructure.pdf_export import render_pdf  # noqa: PLC0415
+    from digital_bast.web.bast_all_status_tasks import include_all_task_statuses  # noqa: PLC0415
     from digital_bast.web.bast_assembler import (  # noqa: PLC0415
         PostgresBastArtifactStore,
         assemble,
@@ -328,6 +279,7 @@ async def generate_bast(
 
     secret = _application_dsn()
     report = await assemble(report_type, period.start.year, period.start.month, secret)
+    report = await include_all_task_statuses(report, secret)
     pdf_bytes = await render_pdf(report.editor_html)
     _ = await PostgresBastArtifactStore(secret).save(report)
     path = bast_artifact_path(report_type, report.year, report.month)
