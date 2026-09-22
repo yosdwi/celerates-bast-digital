@@ -5,9 +5,11 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from digital_bast.application.bast_closing import BastClosingControlService
+from digital_bast.application.bast_snapshot import BastClosingSnapshotService
 from digital_bast.application.talent_reminders import TalentReminderService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.config import SettingsConfigurationError, get_settings
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.local_completion_source import (
@@ -51,6 +53,7 @@ def create_bast_talent_reminder_service(scope_key: str = "default") -> TalentRem
         records,
         PostgresSourceSyncStateStore(dsn),
     )
+    snapshot = BastClosingSnapshotService(talentops, AttendanceResolutionService(dsn))
 
     outbound: BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway
     if settings.bot_bridge_base_url is None or settings.sync_ingest_token is None:
@@ -73,6 +76,6 @@ def create_bast_talent_reminder_service(scope_key: str = "default") -> TalentRem
     return TalentReminderService(
         scope_key,
         BastClosingControlService(dsn),
-        talentops,
+        snapshot,
         followups,
     )
