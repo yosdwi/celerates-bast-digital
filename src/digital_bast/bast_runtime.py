@@ -10,6 +10,7 @@ from digital_bast.application.talent_reminders import TalentReminderService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
+from digital_bast.bot.bast_reminder_context import BastReminderContextService
 from digital_bast.config import SettingsConfigurationError, get_settings
 from digital_bast.infrastructure.completion_source import CompletionSource
 from digital_bast.infrastructure.local_completion_source import (
@@ -27,6 +28,36 @@ from digital_bast.infrastructure.whatsapp_outbound import (
     BotBridgeWhatsAppOutboundGateway,
     UnavailableWhatsAppOutboundGateway,
 )
+
+
+def _configured_dsn() -> str:
+    try:
+        settings = get_settings()
+    except (ValidationError, SettingsConfigurationError, OSError) as error:
+        raise RuntimeError("BAST closing settings unavailable") from error
+    if settings.database_dsn is None:
+        raise RuntimeError("APP_DATABASE_DSN is required for BAST closing")
+    return settings.database_dsn.get_secret_value()
+
+
+def create_bast_snapshot_service(scope_key: str = "default") -> BastClosingSnapshotService:
+    dsn = _configured_dsn()
+    employees = PostgresEmployeeSource(dsn)
+    records = PostgresDomainRepository(dsn)
+    evidence = PostgresTaskEvidenceReader(dsn, scope_key=scope_key)
+    completion = CompletionSource(
+        employees,
+        records,
+        PostgresAttendanceFactReader(dsn),
+        evidence,
+    )
+    talentops = TalentOpsService(
+        completion,
+        employees,
+        records,
+        PostgresSourceSyncStateStore(dsn),
+    )
+    return BastClosingSnapshotService(talentops, AttendanceResolutionService(dsn))
 
 
 def create_bast_talent_reminder_service(scope_key: str = "default") -> TalentReminderService:
@@ -78,4 +109,5 @@ def create_bast_talent_reminder_service(scope_key: str = "default") -> TalentRem
         BastClosingControlService(dsn),
         snapshot,
         followups,
+        BastReminderContextService(dsn),
     )
