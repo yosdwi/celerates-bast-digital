@@ -9,7 +9,7 @@ infrastructure.local_completion_source and infrastructure.postgres_employees.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, Protocol, final, runtime_checkable
 
 from digital_bast.domain.completion import (
     EmployeeFacts,
@@ -54,6 +54,7 @@ class TaskEvidenceReader(Protocol):
     async def counts(self, period: DateRange) -> dict[str, int]: ...
 
 
+@runtime_checkable
 class TaskEvidenceRequirementReader(Protocol):
     async def requirements(self) -> dict[str, bool]: ...
 
@@ -83,10 +84,11 @@ class CompletionSource:
         holidays, schedules, timesheets, tasks = await self._load_period(period)
         attendance = await self._attendance.load(period) if self._attendance is not None else {}
         evidence = await self._evidence.counts(period) if self._evidence is not None else {}
+        requirement_source = self._evidence_requirements
+        if requirement_source is None and isinstance(self._evidence, TaskEvidenceRequirementReader):
+            requirement_source = self._evidence
         requirements = (
-            await self._evidence_requirements.requirements()
-            if self._evidence_requirements is not None
-            else {}
+            await requirement_source.requirements() if requirement_source is not None else {}
         )
         holiday_by_day = {record.work_date: record for record in holidays}
         return tuple(
