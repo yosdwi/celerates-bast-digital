@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.web.attendance_router import attendance_router
 from digital_bast.web.auth_router import auth_router
+from digital_bast.web.bast_closing_router import bast_closing_router
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.errors import (
     AuthenticationUnavailableError,
@@ -48,8 +49,6 @@ def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - exp
     app.add_middleware(GZipMiddleware, minimum_size=1_000)
     app.mount("/static", StaticFiles(directory=project_root / "static"), name="static")
     app.mount("/admin/static", StaticFiles(directory=project_root / "static"), name="admin-static")
-    # check_dir=False keeps ordinary Python import/test collection working before
-    # a local frontend build exists. Production images always copy frontend/dist.
     app.mount(
         "/admin/talentops/assets",
         StaticFiles(directory=talentops_dist / "assets", check_dir=False),
@@ -60,6 +59,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - exp
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
     app.include_router(talentops_router(dependencies))
+    app.include_router(bast_closing_router(dependencies))
     app.include_router(whatsapp_directory_router(dependencies))
     app.include_router(whatsapp_ops_router(dependencies))
     app.include_router(payroll_router(dependencies))
@@ -70,8 +70,6 @@ def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - exp
     app.include_router(talent_mobile_router())
     app.include_router(talent_mobile_page_router(talentops_dist))
     app.include_router(talentops_page_router(dependencies, talentops_dist))
-    # Machine-to-machine ingest from the PAMA bridge: bearer-token auth of
-    # its own, no session cookie, and excluded from the schema.
     app.include_router(sync_router)
 
     async def _security_headers(
