@@ -116,6 +116,11 @@ class TaskFact:
     status: str
     evidence_count: int = 0
     record_key: str = ""
+    category: str = ""
+    source: str = ""
+    source_id: str = ""
+    issue_type: str | None = None
+    evidence_required: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,13 +318,16 @@ def _task_list(facts: EmployeeFacts) -> CheckResult:
 
 
 def _evidence(facts: EmployeeFacts) -> CheckResult:
-    if not facts.evidence_available:
-        return CheckResult(CheckState.NEEDS_REVIEW, (TASK_EVIDENCE_MAPPING_ISSUE,))
-    missing = tuple(
+    required = tuple(
         task
         for task in facts.tasks
-        if task.status.strip().casefold() == CLOSED_STATUS and task.evidence_count == 0
+        if task.evidence_required and task.status.strip().casefold() == CLOSED_STATUS
     )
+    if not required:
+        return CheckResult(CheckState.COMPLETE, ())
+    if not facts.evidence_available:
+        return CheckResult(CheckState.NEEDS_REVIEW, (TASK_EVIDENCE_MAPPING_ISSUE,))
+    missing = tuple(task for task in required if task.evidence_count == 0)
     if not missing:
         return CheckResult(CheckState.COMPLETE, ())
     issues = tuple(f'Task "{task.title}" belum ada evidence.' for task in missing)
