@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING, final
 import psycopg
 from anyio.to_thread import run_sync
 
-from digital_bast.bot.evidence import EvidenceCandidate, EvidenceService, UploadOutcome, UploadResult
+from digital_bast.bot.evidence import (
+    EvidenceCandidate,
+    EvidenceService,
+    UploadOutcome,
+    UploadResult,
+)
 from digital_bast.bot.task_evidence_submission import (
     TASK_EVIDENCE_SOURCES,
     TaskEvidenceCandidate,
@@ -131,7 +136,13 @@ class RequirementAwareEvidenceService:
     async def active_kind(self, wa_jid: str) -> str | None:
         return await self._base.active_kind(wa_jid)
 
-    async def stash_image(self, wa_jid: str, image: bytes, content_type: str, caption: str) -> None:
+    async def stash_image(
+        self,
+        wa_jid: str,
+        image: bytes,
+        content_type: str,
+        caption: str,
+    ) -> None:
         await self._base.stash_image(wa_jid, image, content_type, caption)
 
     async def stashed_image(self, wa_jid: str) -> tuple[bytes, str, str] | None:
@@ -156,12 +167,21 @@ class RequirementAwareEvidenceService:
 class RequirementAwareTaskEvidenceSubmissionService:
     """Talent Mobile staging/submission narrowed to required task categories."""
 
-    def __init__(self, dsn: str, scope_key: str = "default", connect_timeout_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        scope_key: str = "default",
+        connect_timeout_seconds: int = 5,
+    ) -> None:
         self._dsn = dsn
         self._scope_key = scope_key
         self._connect_timeout_seconds = connect_timeout_seconds
         self._base = TaskEvidenceSubmissionService(dsn, connect_timeout_seconds)
-        self._policy = RequiredTaskEvidencePolicy(dsn, scope_key, connect_timeout_seconds)
+        self._policy = RequiredTaskEvidencePolicy(
+            dsn,
+            scope_key,
+            connect_timeout_seconds,
+        )
 
     async def list_candidates(self, employee_id: str) -> tuple[TaskEvidenceCandidate, ...]:
         allowed = await self._policy.keys_for_employee(employee_id)
@@ -193,10 +213,13 @@ class RequirementAwareTaskEvidenceSubmissionService:
         jid: str,
     ) -> int:
         try:
-            with psycopg.connect(
-                self._dsn,
-                connect_timeout=self._connect_timeout_seconds,
-            ) as connection, connection.cursor() as cursor:
+            with (
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
                 _ = cursor.execute(
                     """
                     WITH moved AS (
