@@ -29,6 +29,7 @@ _DOMAIN_ALIASES: Final = {
     "evidence": "evidence",
     "bukti": "evidence",
 }
+_MAX_ISSUES = 8
 
 
 def _dsn() -> str | None:
@@ -63,7 +64,11 @@ def _selected_domain(text: str, domains: tuple[str, ...]) -> tuple[str | None, b
             return domains[position - 1], True
         return None, True
     hinted = _domain_hint(text)
-    if hinted is None and "attendance" in domains and looks_like_natural_attendance_input(text):
+    if (
+        hinted is None
+        and "attendance" in domains
+        and looks_like_natural_attendance_input(text)
+    ):
         hinted = "attendance"
     if hinted is None:
         return None, False
@@ -72,9 +77,9 @@ def _selected_domain(text: str, domains: tuple[str, ...]) -> tuple[str | None, b
 
 def _issues(title: str, issues: tuple[str, ...]) -> list[str]:
     lines = [f"*{title}*", ""]
-    lines.extend(f"• {issue}" for issue in issues[:8])
-    if len(issues) > 8:
-        lines.append(f"• +{len(issues) - 8} lainnya")
+    lines.extend(f"• {issue}" for issue in issues[:_MAX_ISSUES])
+    if len(issues) > _MAX_ISSUES:
+        lines.append(f"• +{len(issues) - _MAX_ISSUES} lainnya")
     return lines
 
 
@@ -85,7 +90,7 @@ async def _public_url(dsn: str) -> str | None:
         return None
 
 
-async def reply_from_bast_context(
+async def reply_from_bast_context(  # noqa: C901, PLR0911, PLR0912 - bounded domain router
     text: str,
     jid: str,
     message_at: datetime,
@@ -169,10 +174,14 @@ async def reply_from_bast_context(
     )
     lines = _issues(title, blocker.issues)
     if domain == "evidence":
-        lines.extend(("", "Daftar ini hanya berisi task yang memang dikonfigurasi wajib evidence."))
+        lines.extend(
+            ("", "Daftar ini hanya berisi task yang memang dikonfigurasi wajib evidence.")
+        )
     if url is None:
         command = "attendance" if domain == "attendance" else "tasklist"
-        lines.extend(("", f"Ketik `{command}` untuk membuka flow existing dan memuat data terbaru."))
+        lines.extend(
+            ("", f"Ketik `{command}` untuk membuka flow existing dan memuat data terbaru.")
+        )
     else:
         lines.extend(("", "Buka item ini untuk menyelesaikannya:", url))
     return "\n".join(lines)
