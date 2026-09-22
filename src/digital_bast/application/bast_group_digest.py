@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Protocol, final
 from uuid import uuid4
 
@@ -56,7 +56,7 @@ def _period(year: int, month: int) -> DateRange:
     return DateRange(dates[0], dates[-1])
 
 
-def _milestone(schedule: BastClosingSchedule, day: object) -> str | None:
+def _milestone(schedule: BastClosingSchedule, day: date) -> str | None:
     if day == schedule.closing_date:
         return "FINAL"
     if day == schedule.initial_date:
@@ -68,7 +68,11 @@ def _milestone(schedule: BastClosingSchedule, day: object) -> str | None:
     return None
 
 
-def compose_bast_group_digest(snapshot: BastClosingSnapshot, period: DateRange, milestone: str) -> str:
+def compose_bast_group_digest(
+    snapshot: BastClosingSnapshot,
+    period: DateRange,
+    milestone: str,
+) -> str:
     domain_counts = {"task": 0, "attendance": 0, "timesheet": 0, "evidence": 0}
     for talent in snapshot.talents:
         for blocker in talent.actionable:
@@ -117,7 +121,11 @@ class BastGroupDigestService:
         self._outbound = outbound
         self._deliveries = deliveries
 
-    async def preview(self, period: DateRange, milestone: str = "MANUAL") -> BastGroupDigestPreview:
+    async def preview(
+        self,
+        period: DateRange,
+        milestone: str = "MANUAL",
+    ) -> BastGroupDigestPreview:
         settings = await self._control.settings(self._scope_key)
         snapshot = await self._snapshot.build(period)
         return BastGroupDigestPreview(
@@ -150,8 +158,9 @@ class BastGroupDigestService:
         period = _period(local.year, local.month)
         return await self._deliver(
             period,
-            milestone,
-            settings.pmo_group_jid,
+            display_milestone=milestone,
+            delivery_milestone=milestone,
+            group_jid=settings.pmo_group_jid,
             created_by="system:bast-closing",
             idempotency_key=(
                 f"bast-digest:{self._scope_key}:{local.year}-{local.month:02d}:{milestone}"
@@ -171,59 +180,69 @@ class BastGroupDigestService:
         same_period = (local.year, local.month) == (period.start.year, period.start.month)
         scheduled = _milestone(schedule, local.date()) if same_period else None
         if scheduled is not None and local.hour >= settings.send_hour:
-            milestone = scheduled
+            display_milestone = scheduled
+            delivery_milestone = scheduled
             key = (
                 f"bast-digest:{self._scope_key}:"
-                f"{period.start.year}-{period.start.month:02d}:{milestone}"
+                f"{period.start.year}-{period.start.month:02d}:{scheduled}"
             )
         else:
-            milestone = "MANUAL"
-            key = f"bast-digest-manual:{self._scope_key}:{uuid4().hex}"
+            batch = uuid4().hex
+            display_milestone = "MANUAL"
+            delivery_milestone = f"MANUAL:{batch}"
+            key = f"bast-digest-manual:{self._scope_key}:{batch}"
         return await self._deliver(
             period,
-            milestone,
-            settings.pmo_group_jid,
+            display_milestone=display_milestone,
+            delivery_milestone=delivery_milestone,
+            group_jid=settings.pmo_group_jid,
             created_by=actor,
             idempotency_key=key,
         )
 
-    async def _deliver(  # noqa: C901, PLR0911
+    async def _deliver(  # noqa: C901, PLR0911, PLR0913, PLR0917
         self,
         period: DateRange,
-        milestone: str,
-        group_jid: str | None,
         *,
+        display_milestone: str,
+        delivery_milestone: str,
+        group_jid: str | None,
         created_by: str,
         idempotency_key: str,
     ) -> BastGroupDigestRunSummary:
         if not group_jid:
-            return BastGroupDigestRunSummary(True, True, milestone, "group_not_configured")
+            return BastGroupDigestRunSummary(
+                True,
+                True,
+                display_milestone,
+                "group_not_configured",
+            )
         snapshot = await self._snapshot.build(period)
-        message = compose_bast_group_digest(snapshot, period, milestone)
+        message = compose_bast_group_digest(snapshot, period, display_milestone)
         cycle_id = f"bast:{period.start.year}-{period.start.month:02d}"
         reservation = await self._deliveries.reserve(
             idempotency_key=idempotency_key,
             scope_key=self._scope_key,
             cycle_id=cycle_id,
-            milestone=milestone,
+            milestone=delivery_milestone,
             group_jid=group_jid,
             message=message,
             created_by=created_by,
         )
         record = reservation.record
         if record.state is PayrollDeliveryState.SENT:
-            return BastGroupDigestRunSummary(True, True, milestone, "duplicate")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "duplicate")
         if record.state is PayrollDeliveryState.UNKNOWN:
-            return BastGroupDigestRunSummary(True, True, milestone, "unknown")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "unknown")
         if record.state is PayrollDeliveryState.FAILED_FINAL:
-            return BastGroupDigestRunSummary(True, True, milestone, "failed_final")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "failed_final")
         if record.state is PayrollDeliveryState.SENDING:
             _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code="interrupted_after_delivery_claim",
             )
-            return BastGroupDigestRunSummary(True, True, milestone, "unknown")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "unknown")
 
         refreshed = await self._deliveries.refresh_retryable(
             idempotency_key,
@@ -231,10 +250,10 @@ class BastGroupDigestService:
             message=message,
         )
         if refreshed is None:
-            return BastGroupDigestRunSummary(True, True, milestone, "unsafe_skipped")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "unsafe_skipped")
         claimed = await self._deliveries.claim(idempotency_key)
         if claimed is None:
-            return BastGroupDigestRunSummary(True, True, milestone, "unsafe_skipped")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "unsafe_skipped")
 
         receipt = await self._outbound.send_group(
             group_jid,
@@ -247,24 +266,29 @@ class BastGroupDigestService:
                 PayrollDeliveryState.SENT,
                 provider_message_id=receipt.provider_message_id,
             )
-            return BastGroupDigestRunSummary(True, True, milestone, "sent", sent=1)
+            return BastGroupDigestRunSummary(True, True, display_milestone, "sent", sent=1)
         if receipt.error_code in _GATEWAY_UNKNOWN_ERRORS:
             _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.UNKNOWN,
                 error_code=receipt.error_code,
             )
-            return BastGroupDigestRunSummary(True, True, milestone, "unknown")
+            return BastGroupDigestRunSummary(True, True, display_milestone, "unknown")
         if receipt.status == "bridge_unavailable":
             _ = await self._deliveries.finish(
                 idempotency_key,
                 PayrollDeliveryState.FAILED_RETRYABLE,
                 error_code=receipt.error_code,
             )
-            return BastGroupDigestRunSummary(True, True, milestone, "retryable_failed")
+            return BastGroupDigestRunSummary(
+                True,
+                True,
+                display_milestone,
+                "retryable_failed",
+            )
         _ = await self._deliveries.finish(
             idempotency_key,
             PayrollDeliveryState.FAILED_FINAL,
             error_code=receipt.error_code or receipt.status,
         )
-        return BastGroupDigestRunSummary(True, True, milestone, "failed_final")
+        return BastGroupDigestRunSummary(True, True, display_milestone, "failed_final")
