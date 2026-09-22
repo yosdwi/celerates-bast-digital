@@ -179,7 +179,7 @@ class BastGroupDigestService:
         schedule = closing_schedule(period.start.year, period.start.month, settings)
         same_period = (local.year, local.month) == (period.start.year, period.start.month)
         scheduled = _milestone(schedule, local.date()) if same_period else None
-        if scheduled is not None and local.hour >= settings.send_hour:
+        if scheduled is not None:
             display_milestone = scheduled
             delivery_milestone = scheduled
             key = (
