@@ -5,6 +5,26 @@
 **Validation PR:** #77 `[validation only] BAST closing campaign completion`  
 **Do not merge or deploy automatically.**
 
+## 0. Implementation completion snapshot
+
+**Feature implementation code HEAD before this handover-document update:** `3ed4b44e548cca4c3d641b90e37beffe71b1289c`.
+
+The requested BAST Closing feature scope is **implementation-complete** at that code HEAD. There is no known remaining product-feature coding item in scope. The next agent must perform validation, audit, and narrowly scoped corrective fixes only.
+
+Latest CI evidence collected from validation-only PR #77 / CI run #565 on code HEAD `3ed4b44e...`:
+
+- `uv run python -m compileall -q src tests` — **PASS**.
+- Gitleaks / secrets job — **PASS**.
+- Migration smoke job reached and passed:
+  - migration gate — **PASS**;
+  - migration idempotency gate — **PASS**;
+  - smoke and shadow gate — **PASS**.
+- Global Ruff — **FAIL**, with **112 repository-wide findings**. After the final wave-local cleanup, the Ruff output no longer reports the newly added BAST Closing modules nor the shared files `domain/completion.py`, `infrastructure/completion_source.py`, or `web/app.py` touched by this wave. Treat the remaining Ruff set as pre-existing/shared-branch debt unless a fresh diff proves otherwise; do not mass-fix it as part of this handover.
+- `basedpyright` and full `pytest` — **not executed by CI**, because the quality job stops after global Ruff failure. Do not claim these as passed.
+- Container job — **FAIL before checkout/execution** because GitHub Actions could not resolve `aquasecurity/trivy-action@0.30.0`. This is a CI dependency/action-resolution failure, not evidence of a BAST runtime failure.
+
+The handoff agent must therefore finish **validation completeness**, not feature implementation. It should run focused BAST tests/type checks/builds (or isolate the baseline Ruff debt cleanly), correct only real regressions, and return explicit deploy-ready/not-deploy-ready evidence.
+
 This handover is **validation / audit / corrective-fix only**. The product and feature implementation decisions below are locked. Do not redesign the flow unless a verified contradiction in the existing source-of-truth requires a narrowly scoped corrective change.
 
 ## 1. Preflight
@@ -59,6 +79,7 @@ Before any write:
 - No `ketik menu` dependency.
 - Numbered fallback is supported through durable BAST reminder context.
 - Natural domain phrases are accepted; natural Attendance-like text resolves to the BAST Attendance domain when present.
+- Natural Attendance text such as `25 September pulang 17.31` seeds the existing canonical Attendance correction context; BAST does not own a second attendance mutation engine.
 - Every reply is revalidated against current BAST snapshot before presenting current work.
 - Task reply is read-only and explicitly points back to source authority.
 - Evidence surface must only show configured-required tasks.
@@ -126,10 +147,11 @@ Before any write:
 
 The low-level legacy Evidence service still knows the old Closed-task mechanics, but production factories wrap it with `RequirementAwareEvidenceService` / `RequirementAwareTaskEvidenceSubmissionService`. Validation must verify no production caller bypasses those factories for Talent evidence flows.
 
-### BAST reply context
+### BAST reply context / natural Attendance handoff
 
 - `src/digital_bast/bot/bast_reminder_context.py`
 - `src/digital_bast/bot/bast_reminder_reply.py`
+- `src/digital_bast/bot/bast_attendance_draft.py`
 - `src/digital_bast/bot/dm_message_entry.py`
 
 Routing precedence is intentionally:
@@ -139,7 +161,7 @@ Routing precedence is intentionally:
 3. Payroll reminder bootstrap;
 4. legacy DM entry.
 
-This prevents an older Payroll reminder context from stealing the bare numeric reply to a newer BAST reminder, while still letting an already-open Payroll correction finish safely.
+This prevents an older Payroll reminder context from stealing the bare numeric reply to a newer BAST reminder, while still letting an already-open Payroll correction finish safely. Natural BAST Attendance replies use the existing Attendance resolution state/context after exact-date revalidation.
 
 ### PMO BAST digest
 
@@ -186,8 +208,8 @@ A canonical all-status section is injected into both document/editor representat
 ### Source / migration
 
 - Confirm exact branch HEAD before work.
-- Run migration smoke from existing 0027 through 0028 and 0029.
-- Verify clean DB upgrade and idempotent application startup after upgrade.
+- Migration smoke for 0028/0029 already passed in CI #565, but re-run if validation work changes migration/runtime wiring.
+- Verify clean DB upgrade and idempotent application startup after any corrective changes.
 - Do not downgrade production as part of normal validation.
 
 ### Python quality
@@ -195,11 +217,12 @@ A canonical all-status section is injected into both document/editor representat
 Run at minimum:
 
 - Python compile / import check for changed modules.
-- Ruff using the repository CI scope.
-- basedpyright/type check if available in the repo workflow.
-- focused BAST tests plus the relevant full Python suite.
+- Focused Ruff against the BAST-wave file set or an equivalent baseline-diff lint check.
+- basedpyright/type check if available.
+- focused BAST tests plus relevant Payroll regression tests.
+- full Python suite only after distinguishing global pre-existing lint debt from wave-local failures.
 
-The repository historically has unrelated global Ruff/type debt. Do not mass-edit unrelated files. Classify findings into:
+Current CI global Ruff baseline is red (112 findings) and therefore blocks later quality steps. Do not mass-edit unrelated files. Classify findings into:
 
 1. wave-local BAST regression — fix;
 2. historical/unrelated baseline — report only.
@@ -233,6 +256,7 @@ Validate the PMO group selector works with live-directory success and with disco
    - stale/changed domain revalidates and does not mutate stale facts.
    - a current BAST reminder wins over an old Payroll reminder for bare-number/domain replies.
    - an already-open Payroll draft still wins and can finish normally.
+   - natural Attendance reply such as `25 September pulang 17.31` seeds the canonical Attendance draft/context rather than creating a BAST-specific mutation path.
 7. **Waiting PMO**
    - pending Attendance correction does not get re-blasted as Talent action.
 8. **Source review**
