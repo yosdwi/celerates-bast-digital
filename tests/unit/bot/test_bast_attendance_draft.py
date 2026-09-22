@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from digital_bast.bot import bast_attendance_draft
+from digital_bast.bot.attendance_context import AttendanceReminderContext
 from digital_bast.bot.attendance_resolution import ResolutionType
 from digital_bast.bot.attendance_resolution_dm_state import AttendanceResolutionDraft
 from digital_bast.bot.bast_reminder_context import BastReminderContext
+from digital_bast.domain.completion import DateRange
 
 if TYPE_CHECKING:
     import pytest
@@ -58,9 +60,10 @@ class _State:
         assert employee_id == _EMPLOYEE_ID
         assert attendance_key == _KEY
         assert resolution_type is ResolutionType.MISSING_CLOCK_OUT
+        proposed_check_out = cast("time | None", kwargs.get("proposed_check_out"))
         self.saved = replace(
             self.draft,
-            proposed_check_out=kwargs.get("proposed_check_out"),
+            proposed_check_out=proposed_check_out,
         )
         return self.saved
 
@@ -70,9 +73,9 @@ class _State:
 
 class _ContextStore:
     def __init__(self) -> None:
-        self.saved = None
+        self.saved: AttendanceReminderContext | None = None
 
-    async def save(self, wa_jid: str, context: object) -> None:
+    async def save(self, wa_jid: str, context: AttendanceReminderContext) -> None:
         assert wa_jid == _JID
         self.saved = context
 
@@ -93,10 +96,14 @@ async def test_natural_bast_reply_seeds_single_gap_canonical_context(
         expires_at=_MESSAGE_AT + timedelta(days=7),
     )
 
-    async def candidate(employee_id: str, period: object, work_date: date) -> object:
+    async def candidate(
+        employee_id: str,
+        period: DateRange,
+        work_date: date,
+    ) -> object:
         assert employee_id == _EMPLOYEE_ID
         assert work_date == date(2026, 9, 25)
-        assert getattr(period, "start") == date(2026, 9, 1)
+        assert period.start == date(2026, 9, 1)
         return SimpleNamespace(attendance_key=_KEY)
 
     monkeypatch.setattr(
@@ -127,5 +134,5 @@ async def test_natural_bast_reply_seeds_single_gap_canonical_context(
     assert state.saved is not None
     assert state.saved.proposed_check_out == time(17, 31)
     assert contexts.saved is not None
-    assert getattr(contexts.saved, "attendance_keys") == (_KEY,)
-    assert getattr(contexts.saved, "cycle_id") == "2026-10:2026-09-21:2026-10-20"
+    assert contexts.saved.attendance_keys == (_KEY,)
+    assert contexts.saved.cycle_id == "2026-10:2026-09-21:2026-10-20"
