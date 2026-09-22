@@ -8,7 +8,7 @@ this context never becomes a second source of business truth.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, final
 
 import psycopg
@@ -26,8 +26,8 @@ _ALLOWED_DOMAINS = frozenset({"attendance", "timesheet", "task", "evidence"})
 @dataclass(frozen=True, slots=True)
 class BastReminderContext:
     employee_id: str
-    period_start: object
-    period_end: object
+    period_start: date
+    period_end: date
     domains: tuple[str, ...]
     expires_at: datetime
 
@@ -43,8 +43,8 @@ class _ContextRow:
     def __init__(
         self,
         employee_id: str,
-        period_start: object,
-        period_end: object,
+        period_start: date,
+        period_end: date,
         domains: list[str],
         expires_at: datetime,
     ) -> None:
@@ -97,8 +97,8 @@ class BastReminderContextService:
     def _save_for_employee(
         self,
         employee_id: str,
-        period_start: object,
-        period_end: object,
+        period_start: date,
+        period_end: date,
         domains: tuple[str, ...],
         expires_at: datetime,
     ) -> bool:
