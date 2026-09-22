@@ -69,6 +69,16 @@ export interface BastPmoDigestSendResult {
   sent: number;
 }
 
+export interface WhatsAppGroupOption {
+  jid: string;
+  subject: string;
+  member_count: number;
+}
+
+interface WhatsAppDirectoryResponse {
+  groups: WhatsAppGroupOption[];
+}
+
 export async function getBastClosingSettings(year: number, month: number) {
   const query = new URLSearchParams({ year: String(year), month: String(month) });
   return apiFetch<BastClosingSettings>(`/api/talentops/v1/bast-closing/settings?${query}`);
@@ -100,6 +110,13 @@ export async function saveBastEvidenceRules(csrfToken: string, rules: EvidenceRu
       body: JSON.stringify({ rules }),
     },
   );
+}
+
+export async function getBastWhatsAppGroups(): Promise<WhatsAppGroupOption[]> {
+  const directory = await apiFetch<WhatsAppDirectoryResponse>(
+    "/api/talentops/v1/whatsapp-directory",
+  );
+  return directory.groups;
 }
 
 export async function previewBastBlast(year: number, month: number) {
