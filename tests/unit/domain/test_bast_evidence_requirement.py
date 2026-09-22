@@ -4,20 +4,24 @@ from datetime import date
 
 from digital_bast.domain.completion import (
     CheckState,
+    DateRange,
     EmployeeFacts,
     TaskFact,
-    _evidence,
-    _task_list,
+    TimesheetFact,
+    evaluate_employee,
 )
+
+_DAY = date(2026, 9, 10)
+_PERIOD = DateRange(_DAY, _DAY)
 
 
 def _facts(task: TaskFact) -> EmployeeFacts:
     return EmployeeFacts(
         employee_id="EMP-1",
         name="Talent One",
-        off_days=frozenset(),
+        off_days=frozenset({_DAY}),
         attendance=(),
-        timesheets=(),
+        timesheets=(TimesheetFact(work_date=_DAY, remarks="OFF"),),
         tasks=(task,),
         evidence_available=True,
         attendance_available=True,
@@ -25,49 +29,56 @@ def _facts(task: TaskFact) -> EmployeeFacts:
 
 
 def test_closed_task_without_requirement_does_not_need_evidence() -> None:
-    facts = _facts(
-        TaskFact(
-            work_date=date(2026, 9, 10),
-            title="Monitoring Dashboard",
-            status="Closed",
-            evidence_count=0,
-            evidence_required=False,
-        )
+    result = evaluate_employee(
+        _facts(
+            TaskFact(
+                work_date=_DAY,
+                title="Monitoring Dashboard",
+                status="Closed",
+                evidence_count=0,
+                evidence_required=False,
+            )
+        ),
+        _PERIOD,
     )
 
-    assert _task_list(facts).state is CheckState.COMPLETE
-    assert _evidence(facts).state is CheckState.COMPLETE
-    assert _evidence(facts).issues == ()
+    assert result.task_list.state is CheckState.COMPLETE
+    assert result.evidence.state is CheckState.COMPLETE
+    assert result.evidence.issues == ()
 
 
 def test_closed_required_task_without_evidence_is_blocker() -> None:
-    facts = _facts(
-        TaskFact(
-            work_date=date(2026, 9, 10),
-            title="Production Deployment",
-            status="Closed",
-            evidence_count=0,
-            evidence_required=True,
-        )
+    result = evaluate_employee(
+        _facts(
+            TaskFact(
+                work_date=_DAY,
+                title="Production Deployment",
+                status="Closed",
+                evidence_count=0,
+                evidence_required=True,
+            )
+        ),
+        _PERIOD,
     )
 
-    result = _evidence(facts)
-
-    assert result.state is CheckState.INCOMPLETE
-    assert result.issues == ('Task "Production Deployment" belum ada evidence.',)
+    assert result.evidence.state is CheckState.INCOMPLETE
+    assert result.evidence.issues == ('Task "Production Deployment" belum ada evidence.',)
 
 
 def test_open_task_remains_task_blocker_even_when_evidence_not_required() -> None:
-    facts = _facts(
-        TaskFact(
-            work_date=date(2026, 9, 10),
-            title="API Integration",
-            status="In Progress",
-            evidence_count=0,
-            evidence_required=False,
-        )
+    result = evaluate_employee(
+        _facts(
+            TaskFact(
+                work_date=_DAY,
+                title="API Integration",
+                status="In Progress",
+                evidence_count=0,
+                evidence_required=False,
+            )
+        ),
+        _PERIOD,
     )
 
-    assert _task_list(facts).state is CheckState.INCOMPLETE
-    assert _task_list(facts).issues == ('Task "API Integration" belum Closed.',)
-    assert _evidence(facts).state is CheckState.COMPLETE
+    assert result.task_list.state is CheckState.INCOMPLETE
+    assert result.task_list.issues == ('Task "API Integration" belum Closed.',)
+    assert result.evidence.state is CheckState.COMPLETE
