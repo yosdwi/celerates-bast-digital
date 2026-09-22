@@ -26,7 +26,10 @@ from digital_bast.web.bast_assembler import AssembledReport
 _ITEMS_PER_PAGE = 18
 _ROLE_BY_REPORT = {"developer": "Developer", "shifting": "IoT Operations"}
 _DOCUMENT_MARKER = "    <!-- Document Footer -->"
-_EDITOR_MARKER = "    <script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js\"></script>"
+_EDITOR_MARKER = (
+    '    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/'
+    'dist/js/bootstrap.bundle.min.js"></script>'
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +45,7 @@ class _TaskStatusRow:
 class _TaskRow:
     __slots__ = ("name", "nrp", "source", "status", "title", "work_date")
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - mirrors selected task row
         self,
         nrp: str | None,
         name: str | None,
@@ -65,10 +68,20 @@ class AllStatusTaskSectionService:
         self._dsn = dsn
         self._connect_timeout_seconds = connect_timeout_seconds
 
-    async def rows(self, report_type: str, year: int, month: int) -> tuple[_TaskStatusRow, ...]:
+    async def rows(
+        self,
+        report_type: str,
+        year: int,
+        month: int,
+    ) -> tuple[_TaskStatusRow, ...]:
         return await run_sync(self._rows, report_type, year, month)
 
-    def _rows(self, report_type: str, year: int, month: int) -> tuple[_TaskStatusRow, ...]:
+    def _rows(
+        self,
+        report_type: str,
+        year: int,
+        month: int,
+    ) -> tuple[_TaskStatusRow, ...]:
         role = _ROLE_BY_REPORT.get(report_type)
         if role is None:
             return ()
@@ -131,16 +144,17 @@ def _table(rows: tuple[_TaskStatusRow, ...]) -> str:
         for index, item in enumerate(rows, start=1)
     )
     return (
-        "<div class=\"bast-all-status-tasks\">"
-        "<table style=\"width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:10px\">"
+        '<div class="bast-all-status-tasks">'
+        '<table style="width:100%;border-collapse:collapse;'
+        'font-family:Arial,sans-serif;font-size:10px">'
         "<thead><tr>"
-        "<th style=\"border:1px solid #000;padding:5px\">No</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">Tanggal</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">Task</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">Status</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">PIC</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">NRP</th>"
-        "<th style=\"border:1px solid #000;padding:5px\">Source</th>"
+        '<th style="border:1px solid #000;padding:5px">No</th>'
+        '<th style="border:1px solid #000;padding:5px">Tanggal</th>'
+        '<th style="border:1px solid #000;padding:5px">Task</th>'
+        '<th style="border:1px solid #000;padding:5px">Status</th>'
+        '<th style="border:1px solid #000;padding:5px">PIC</th>'
+        '<th style="border:1px solid #000;padding:5px">NRP</th>'
+        '<th style="border:1px solid #000;padding:5px">Source</th>'
         "</tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
     )
@@ -153,11 +167,11 @@ def _document_pages(rows: tuple[_TaskStatusRow, ...]) -> str:
         chunk = rows[page * _ITEMS_PER_PAGE : (page + 1) * _ITEMS_PER_PAGE]
         suffix = f" — Halaman {page + 1}/{total}" if total > 1 else ""
         pages.append(
-            "<div class=\"page-break\">"
-            "<div class=\"page-header\"><div class=\"section-title\">"
+            '<div class="page-break">'
+            '<div class="page-header"><div class="section-title">'
             f"Task List — All Status{suffix}"
             "</div></div>"
-            f"<div class=\"section-content\">{_table(chunk)}</div>"
+            f'<div class="section-content">{_table(chunk)}</div>'
             "</div>"
         )
     return "\n".join(pages)
@@ -170,11 +184,11 @@ def _editor_pages(rows: tuple[_TaskStatusRow, ...]) -> str:
         chunk = rows[page * _ITEMS_PER_PAGE : (page + 1) * _ITEMS_PER_PAGE]
         suffix = f" — Halaman {page + 1}/{total}" if total > 1 else ""
         pages.append(
-            "<div class=\"page portrait tasklist-page\">"
-            "<div class=\"page-header\"><div class=\"section-title\">"
+            '<div class="page portrait tasklist-page">'
+            '<div class="page-header"><div class="section-title">'
             f"Task List — All Status{suffix}"
             "</div></div>"
-            "<div class=\"section-container tasklist-container\" data-section=\"tasklist\">"
+            '<div class="section-container tasklist-container" data-section="tasklist">'
             f"{_table(chunk)}"
             "</div></div>"
         )
@@ -197,15 +211,26 @@ def _fingerprint(report: AssembledReport, rows: tuple[_TaskStatusRow, ...]) -> s
         sort_keys=True,
         separators=(",", ":"),
     )
-    return hashlib.sha256(f"{report.fingerprint}:all-status:{serialized}".encode()).hexdigest()
+    source = f"{report.fingerprint}:all-status:{serialized}"
+    return hashlib.sha256(source.encode()).hexdigest()
 
 
-async def include_all_task_statuses(report: AssembledReport, dsn: str) -> AssembledReport:
-    rows = await AllStatusTaskSectionService(dsn).rows(report.report_type, report.year, report.month)
+async def include_all_task_statuses(
+    report: AssembledReport,
+    dsn: str,
+) -> AssembledReport:
+    rows = await AllStatusTaskSectionService(dsn).rows(
+        report.report_type,
+        report.year,
+        report.month,
+    )
     if not rows:
         return report
     if _DOCUMENT_MARKER not in report.document or _EDITOR_MARKER not in report.editor_html:
-        raise InfrastructureError(service="bast", operation="inject_all_status_task_section")
+        raise InfrastructureError(
+            service="bast",
+            operation="inject_all_status_task_section",
+        )
     document = report.document.replace(
         _DOCUMENT_MARKER,
         f"{_document_pages(rows)}\n{_DOCUMENT_MARKER}",
