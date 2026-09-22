@@ -62,26 +62,35 @@ ATTENDANCE = """
 # absence onto the contractual schedule, without ever UPDATE-ing the client
 # source-of-truth attendance row.
 #
-# Driven from `schedules`, not `attendance`: a day the sync never sent (e.g.
-# an evidence-upload stub, or a day PAMA dropped entirely) used to vanish
-# from the export outright rather than show up empty -- confirmed against
-# real exports where IoT Operations talents had as few as 19 of 31 days in a
-# cycle. schedules has near-complete day coverage independent of any punch,
-# so LEFT JOIN attendance onto it instead of the other way around. Rows with
-# no schedules entry either (a genuinely deeper roster gap) still won't
-# appear; that's a schedules-sync completeness problem, out of scope here.
+# Driven from a generated day series CROSS JOIN employees, not `attendance`:
+# a day the sync never sent (e.g. an evidence-upload stub, or a day PAMA
+# dropped entirely) used to vanish from the export outright rather than show
+# up empty -- confirmed against real exports where IoT Operations talents
+# had as few as 19 of 31 days in a cycle. An earlier version of this query
+# drove off `schedules` instead of a plain day series on the (correct, for
+# IoT Operations) assumption that it has near-complete day coverage -- but
+# Developer role NEVER writes to `schedules` at all (confirmed: 0 rows for
+# any Developer, vs. thousands for IoT Operations; pama_attendance.py's
+# derive_day() only reads a roster shift_code for IoT Operations, and gives
+# Developers a fixed 07:30-16:30 window instead), which made every
+# Developer export come back with zero rows. A calendar day series has no
+# such asymmetry.
 #
 # schedule_shift_name backs the shift/schedule_in/schedule_out fallback
 # csv_export.py applies through the same SHIFT_LEGEND pama_attendance.py
 # uses (reversed by name, not duplicated), for a day missing shift and/or
 # schedule_in/out -- confirmed against real data: both "no attendance row at
 # all" and "a real shift like SHIFT 2 with schedule_in/out sync never sent"
-# happen independently.
+# happen independently. It's simply NULL for Developer rows (no schedules
+# entry to fall back to), which csv_export.py already handles.
 ATTENDANCE_LEGACY = """
+    WITH days AS (
+        SELECT generate_series(%s::date, %s::date, interval '1 day')::date AS work_date
+    )
     SELECT jsonb_build_object(
-               'employee_id', s.employee_id,
+               'employee_id', e.employee_id,
                'full_name', e.full_name,
-               'work_date', s.work_date::text,
+               'work_date', d.work_date::text,
                'shift', a.shift,
                'schedule_in', a.schedule_in,
                'schedule_out', a.schedule_out,
@@ -107,7 +116,7 @@ ATTENDANCE_LEGACY = """
                            THEN to_char(r.proposed_check_out, 'HH24:MI')
                        WHEN r.resolution_type = 'absence' AND e.role = 'Developer'
                            THEN CASE
-                               WHEN EXTRACT(ISODOW FROM s.work_date) = 5 THEN '17:00'
+                               WHEN EXTRACT(ISODOW FROM d.work_date) = 5 THEN '17:00'
                                ELSE '16:30'
                            END
                        WHEN r.resolution_type = 'absence' AND e.role = 'IoT Operations'
@@ -116,9 +125,13 @@ ATTENDANCE_LEGACY = """
                    END,
                'notes', a.notes
            ) AS payload
-    FROM schedules s
-    JOIN employees e ON e.employee_id = s.employee_id
-    LEFT JOIN attendance a ON a.employee_id = s.employee_id AND a.work_date = s.work_date
+    FROM days d
+    JOIN employees e
+        ON e.role = %s
+       AND e.status = 'Active'
+       AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
+    LEFT JOIN attendance a ON a.employee_id = e.employee_id AND a.work_date = d.work_date
+    LEFT JOIN schedules s ON s.employee_id = e.employee_id AND s.work_date = d.work_date
     LEFT JOIN LATERAL (
         SELECT resolution_type, proposed_check_in, proposed_check_out
         FROM attendance_resolution_requests rr
@@ -127,11 +140,7 @@ ATTENDANCE_LEGACY = """
         ORDER BY rr.reviewed_at DESC
         LIMIT 1
     ) r ON true
-    WHERE s.work_date BETWEEN %s AND %s
-      AND e.role = %s
-      AND e.status = 'Active'
-      AND (%s::text IS NULL OR e.full_name ILIKE '%%' || %s || '%%')
-    ORDER BY e.full_name, s.work_date
+    ORDER BY e.full_name, d.work_date
 """
 
 INSERT_PLAN = """
