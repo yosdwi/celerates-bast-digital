@@ -27,7 +27,12 @@ class _Pending:
         return self.rows
 
 
-def _view(*, attention: tuple[object, ...], readiness: tuple[object, ...], total: int = 1) -> object:
+def _view(
+    *,
+    attention: tuple[object, ...],
+    readiness: tuple[object, ...],
+    total: int = 1,
+) -> object:
     return SimpleNamespace(
         attention=attention,
         readiness=readiness,
