@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Final, override
 from pydantic import ValidationError
 
 from digital_bast.application.pmo_notifications import PmoNotificationService
-from digital_bast.application.talent_reminders import TalentReminderService
 from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
@@ -32,6 +31,7 @@ from digital_bast.infrastructure.whatsapp_outbound import (
 )
 
 if TYPE_CHECKING:
+    from digital_bast.application.talent_reminders import TalentReminderService
     from digital_bast.domain.completion import DateRange
     from digital_bast.domain.models import Employee
     from digital_bast.web.bast_assembler import AssembledReport
