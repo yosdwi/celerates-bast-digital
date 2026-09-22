@@ -39,6 +39,7 @@ from digital_bast.operations import (
 if TYPE_CHECKING:
     from datetime import date
 
+    from digital_bast.bot.attendance_evidence import AttendanceEvidenceCandidate
     from digital_bast.bot.bast_reminder_context import BastReminderContext
 
 
@@ -50,7 +51,7 @@ async def _candidate_for_date(
     employee_id: str,
     period: DateRange,
     work_date: date,
-):
+) -> AttendanceEvidenceCandidate | None:
     report = await completion_status(period)
     mine = next(
         (item for item in report.employees if item.employee_id == employee_id),
