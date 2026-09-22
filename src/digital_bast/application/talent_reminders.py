@@ -12,7 +12,7 @@ from digital_bast.domain.completion import DateRange
 from digital_bast.domain.time import JAKARTA, month_dates
 
 if TYPE_CHECKING:
-    from digital_bast.application.talentops import AttentionItem, TalentOpsService
+    from digital_bast.application.bast_snapshot import BastClosingSnapshotService, BastTalentSnapshot
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
 
 
@@ -35,37 +35,35 @@ def _period_for(local: datetime) -> DateRange:
     return DateRange(dates[0], dates[-1])
 
 
-def _talent_reminder_message(item: AttentionItem, period: DateRange) -> str:
+def _talent_reminder_message(item: BastTalentSnapshot, period: DateRange) -> str:
     labels = {
         "attendance": "Attendance",
         "timesheet": "Timesheet",
         "task": "Task List",
         "evidence": "Evidence",
     }
-    blockers = [blocker for blocker in item.blockers if blocker.issues]
-    total = sum(len(blocker.issues) for blocker in blockers)
+    total = item.actionable_count
     lines = [
         f"*Kelengkapan BAST — {period.label()}*",
         "",
-        f"Halo {item.name}, masih ada *{total} hal* yang perlu diperhatikan:",
+        f"Halo {item.name}, masih ada *{total} hal* yang perlu kamu selesaikan:",
         "",
     ]
     options: list[str] = []
-    for blocker in blockers:
+    for blocker in item.actionable:
         label = labels.get(blocker.domain, blocker.domain.title())
-        lines.append(f"*{label} — {len(blocker.issues)}*")
+        lines.append(f"*{label} — {max(len(blocker.issues), 1)}*")
         for issue in blocker.issues[:3]:
             lines.append(f"• {issue}")
         if len(blocker.issues) > 3:
             lines.append(f"• +{len(blocker.issues) - 3} lainnya")
         lines.append("")
         options.append(label)
-    if options:
-        lines.append("Kamu bisa langsung balas bagian yang ingin dicek:")
-        lines.extend(f"{index}. {label}" for index, label in enumerate(options, start=1))
-        lines.append("")
-        lines.append("Atau tulis langsung kebutuhannya dengan bahasa biasa.")
-    lines.append("Status Task List mengikuti source (Redmine) dan tidak diubah dari chatbot.")
+    lines.append("Pilih bagian yang mau dicek:")
+    lines.extend(f"{index}. {label}" for index, label in enumerate(options, start=1))
+    lines.extend(("", "Atau langsung tulis kebutuhannya dengan bahasa biasa."))
+    if any(blocker.domain == "task" for blocker in item.actionable):
+        lines.append("Status Task List mengikuti Redmine/source dan tidak diubah dari chatbot.")
     return "\n".join(lines)
 
 
@@ -75,12 +73,12 @@ class TalentReminderService:
         self,
         scope_key: str,
         control: ReminderControlSource,
-        talentops: TalentOpsService,
+        snapshot: BastClosingSnapshotService,
         followups: TalentOpsFollowUpService,
     ) -> None:
         self._scope_key = scope_key
         self._control = control
-        self._talentops = talentops
+        self._snapshot = snapshot
         self._followups = followups
 
     async def run(self, now: datetime | None = None) -> TalentReminderRunSummary:
@@ -96,11 +94,13 @@ class TalentReminderService:
             return TalentReminderRunSummary(enabled=True)
 
         period = _period_for(local)
-        view = await self._talentops.command_center(period)
+        snapshot = await self._snapshot.build(period)
         sent = 0
         skipped = 0
         failed = 0
-        for item in view.attention:
+        for item in snapshot.talents:
+            if not item.actionable:
+                continue
             result = await self._followups.send(
                 FollowUpSendCommand(
                     period=period,
@@ -124,7 +124,7 @@ class TalentReminderService:
         return TalentReminderRunSummary(
             enabled=True,
             due=True,
-            eligible=len(view.attention),
+            eligible=snapshot.need_talent_action,
             sent=sent,
             skipped=skipped,
             failed=failed,
