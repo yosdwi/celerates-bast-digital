@@ -87,7 +87,10 @@ class PostgresAttendanceFactReader:
     def _load(self, period: DateRange) -> dict[tuple[str, date], AttendanceFact]:
         try:
             with (
-                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
                 connection.cursor(row_factory=class_row(_AttendanceFactRow)) as cursor,
             ):
                 _ = cursor.execute(
@@ -105,13 +108,17 @@ class PostgresAttendanceFactReader:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="attendance_facts") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="attendance_facts",
+            ) from error
         return {
             (row.employee_id, row.work_date): AttendanceFact(
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=bool(row.evidence_note.strip()) or row.evidence_photo_count > 0,
+                has_evidence=bool(row.evidence_note.strip())
+                or row.evidence_photo_count > 0,
             )
             for row in rows
         }
@@ -148,7 +155,10 @@ class PostgresTaskEvidenceReader:
     def _counts(self, period: DateRange) -> dict[str, int]:
         try:
             with (
-                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
                 connection.cursor(row_factory=class_row(_TaskEvidenceCountRow)) as cursor,
             ):
                 _ = cursor.execute(
@@ -163,13 +173,19 @@ class PostgresTaskEvidenceReader:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="task_evidence_counts") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="task_evidence_counts",
+            ) from error
         return {row.task_key: row.total for row in rows}
 
     def _requirements(self) -> dict[str, bool]:
         try:
             with (
-                psycopg.connect(self._dsn, connect_timeout=self._connect_timeout_seconds) as connection,
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
                 connection.cursor() as cursor,
             ):
                 _ = cursor.execute(
@@ -182,5 +198,8 @@ class PostgresTaskEvidenceReader:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="bast_evidence_requirements") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="bast_evidence_requirements",
+            ) from error
         return {str(category): bool(required) for category, required in rows}
