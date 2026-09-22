@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol, final
 from uuid import uuid4
 
@@ -15,6 +15,8 @@ from digital_bast.domain.time import JAKARTA, month_dates
 if TYPE_CHECKING:
     from digital_bast.application.bast_snapshot import BastClosingSnapshotService, BastTalentSnapshot
     from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+
+_CONTEXT_TTL = timedelta(days=7)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +59,16 @@ class BastManualBlastSummary:
 
 class ReminderControlSource(Protocol):
     async def settings(self, scope_key: str = "default") -> BastClosingSettings: ...
+
+
+class ReminderContextWriter(Protocol):
+    async def save_for_employee(
+        self,
+        employee_id: str,
+        period: DateRange,
+        domains: tuple[str, ...],
+        expires_at: datetime,
+    ) -> bool: ...
 
 
 def _period_for(local: datetime) -> DateRange:
@@ -103,11 +115,29 @@ class TalentReminderService:
         control: ReminderControlSource,
         snapshot: BastClosingSnapshotService,
         followups: TalentOpsFollowUpService,
+        contexts: ReminderContextWriter | None = None,
     ) -> None:
         self._scope_key = scope_key
         self._control = control
         self._snapshot = snapshot
         self._followups = followups
+        self._contexts = contexts
+
+    async def _remember_reply_context(
+        self,
+        item: BastTalentSnapshot,
+        period: DateRange,
+        instant: datetime,
+    ) -> None:
+        if self._contexts is None:
+            return
+        domains = tuple(blocker.domain for blocker in item.actionable)
+        _ = await self._contexts.save_for_employee(
+            item.employee_id,
+            period,
+            domains,
+            instant + _CONTEXT_TTL,
+        )
 
     async def preview(self, period: DateRange) -> BastBlastPreview:
         snapshot = await self._snapshot.build(period)
@@ -173,6 +203,7 @@ class TalentReminderService:
             if result is None or result.status in {"not_bound", "no_blockers"}:
                 skipped += 1
             elif result.status == "sent":
+                await self._remember_reply_context(item, period, current)
                 sent += int(not result.duplicate)
                 skipped += int(result.duplicate)
             else:
@@ -221,6 +252,7 @@ class TalentReminderService:
             if result is None or result.status in {"not_bound", "no_blockers"}:
                 skipped += 1
             elif result.status == "sent":
+                await self._remember_reply_context(item, period, current)
                 sent += int(not result.duplicate)
                 skipped += int(result.duplicate)
             else:
