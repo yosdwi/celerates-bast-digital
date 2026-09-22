@@ -25,6 +25,10 @@ if TYPE_CHECKING:
 _DEFAULT_INITIAL_DAY = 25
 _DEFAULT_FOLLOWUP_OFFSETS = (3, 1)
 _DEFAULT_SEND_HOUR = 9
+_MAX_CALENDAR_DAY = 31
+_MAX_HOUR = 23
+_INITIAL_DAY_ERROR = "initial_day must be between 1 and 31"
+_SEND_HOUR_ERROR = "send_hour must be between 0 and 23"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +78,7 @@ class _SettingsRow:
         "talent_reminder_enabled",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - mirrors one settings row
         self,
         scope_key: str,
         enabled: bool,
@@ -104,7 +108,16 @@ class _EvidenceRuleRow:
 
 
 def _normalize_offsets(values: Sequence[int]) -> tuple[int, ...]:
-    return tuple(sorted({int(value) for value in values if 1 <= int(value) <= 31}, reverse=True))
+    return tuple(
+        sorted(
+            {
+                int(value)
+                for value in values
+                if 1 <= int(value) <= _MAX_CALENDAR_DAY
+            },
+            reverse=True,
+        )
+    )
 
 
 def closing_schedule(
@@ -145,7 +158,7 @@ class BastClosingControlService:
     async def settings(self, scope_key: str = "default") -> BastClosingSettings:
         return await run_sync(self._settings, scope_key)
 
-    async def save_settings(
+    async def save_settings(  # noqa: PLR0913 - explicit persisted settings contract
         self,
         *,
         scope_key: str,
@@ -204,7 +217,10 @@ class BastClosingControlService:
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="bast_closing_settings") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="bast_closing_settings",
+            ) from error
         if row is None:
             return BastClosingSettings(scope_key=scope_key)
         return BastClosingSettings(
@@ -233,10 +249,10 @@ class BastClosingControlService:
         normalized_scope = scope_key.strip() or "default"
         normalized_offsets = _normalize_offsets(followup_offsets)
         normalized_group = (pmo_group_jid or "").strip() or None
-        if not 1 <= initial_day <= 31:
-            raise ValueError("initial_day must be between 1 and 31")
-        if not 0 <= send_hour <= 23:
-            raise ValueError("send_hour must be between 0 and 23")
+        if not 1 <= initial_day <= _MAX_CALENDAR_DAY:
+            raise ValueError(_INITIAL_DAY_ERROR)
+        if not 0 <= send_hour <= _MAX_HOUR:
+            raise ValueError(_SEND_HOUR_ERROR)
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
@@ -270,7 +286,10 @@ class BastClosingControlService:
                     ),
                 )
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="save_bast_closing_settings") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="save_bast_closing_settings",
+            ) from error
         return BastClosingSettings(
             scope_key=normalized_scope,
             enabled=enabled,
@@ -299,7 +318,10 @@ class BastClosingControlService:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="bast_evidence_rules") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="bast_evidence_rules",
+            ) from error
         return tuple(BastEvidenceRule(row.task_category, row.evidence_required) for row in rows)
 
     def _save_evidence_rules(
@@ -330,7 +352,10 @@ class BastClosingControlService:
                         (normalized_scope, category, required, actor),
                     )
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="save_bast_evidence_rules") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="save_bast_evidence_rules",
+            ) from error
         return tuple(
             BastEvidenceRule(task_category=category, evidence_required=required)
             for category, required in sorted(normalized.items())
