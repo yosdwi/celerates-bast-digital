@@ -10,7 +10,10 @@ from digital_bast.application.bast_closing import (
     BastEvidenceRule,
     closing_schedule,
 )
-from digital_bast.bast_runtime import create_bast_talent_reminder_service
+from digital_bast.bast_runtime import (
+    create_bast_group_digest_service,
+    create_bast_talent_reminder_service,
+)
 from digital_bast.config import SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.models import TaskCategory
@@ -51,6 +54,14 @@ class ManualBlastResponse(BaseModel):
     skipped: int
     failed: int
     scheduled_slot_consumed: bool
+
+
+class PmoDigestSendResponse(BaseModel):
+    enabled: bool
+    due: bool
+    milestone: str | None
+    outcome: str
+    sent: int
 
 
 def _control() -> BastClosingControlService:
@@ -267,5 +278,42 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             deps.now(),
         )
         return ManualBlastResponse.model_validate(result, from_attributes=True)
+
+    @router.get("/pmo-digest/preview")
+    async def pmo_digest_preview(
+        request: Request,
+        year: int = Query(ge=2020, le=2100),
+        month: int = Query(ge=1, le=12),
+        scope_key: str = Query(default="default"),
+    ) -> dict[str, object]:
+        _ = await _require_bast_operator(deps, request)
+        preview = await create_bast_group_digest_service(scope_key).preview(_period(year, month))
+        return {
+            "configured": preview.configured,
+            "group_jid": preview.group_jid,
+            "message": preview.message,
+            "total": preview.total,
+            "complete": preview.complete,
+            "need_talent_action": preview.need_talent_action,
+            "waiting_pmo": preview.waiting_pmo,
+            "source_review": preview.source_review,
+        }
+
+    @router.post("/pmo-digest/send", response_model=PmoDigestSendResponse)
+    async def pmo_digest_send(
+        request: Request,
+        csrf: HeaderCsrf,
+        year: int = Query(ge=2020, le=2100),
+        month: int = Query(ge=1, le=12),
+        scope_key: str = Query(default="default"),
+    ) -> PmoDigestSendResponse:
+        record = await _require_bast_operator(deps, request)
+        verify_csrf(record, csrf)
+        result = await create_bast_group_digest_service(scope_key).send_manual(
+            _period(year, month),
+            record.user.email,
+            deps.now(),
+        )
+        return PmoDigestSendResponse.model_validate(result, from_attributes=True)
 
     return router
