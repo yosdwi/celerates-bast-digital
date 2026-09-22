@@ -50,6 +50,25 @@ export interface BastManualBlastResult {
   scheduled_slot_consumed: boolean;
 }
 
+export interface BastPmoDigestPreview {
+  configured: boolean;
+  group_jid: string | null;
+  message: string;
+  total: number;
+  complete: number;
+  need_talent_action: number;
+  waiting_pmo: number;
+  source_review: number;
+}
+
+export interface BastPmoDigestSendResult {
+  enabled: boolean;
+  due: boolean;
+  milestone: string | null;
+  outcome: string;
+  sent: number;
+}
+
 export async function getBastClosingSettings(year: number, month: number) {
   const query = new URLSearchParams({ year: String(year), month: String(month) });
   return apiFetch<BastClosingSettings>(`/api/talentops/v1/bast-closing/settings?${query}`);
@@ -94,4 +113,22 @@ export async function sendBastBlast(csrfToken: string, year: number, month: numb
     method: "POST",
     headers: { "X-CSRF-Token": csrfToken },
   });
+}
+
+export async function previewBastPmoDigest(year: number, month: number) {
+  const query = new URLSearchParams({ year: String(year), month: String(month) });
+  return apiFetch<BastPmoDigestPreview>(
+    `/api/talentops/v1/bast-closing/pmo-digest/preview?${query}`,
+  );
+}
+
+export async function sendBastPmoDigest(csrfToken: string, year: number, month: number) {
+  const query = new URLSearchParams({ year: String(year), month: String(month) });
+  return apiFetch<BastPmoDigestSendResult>(
+    `/api/talentops/v1/bast-closing/pmo-digest/send?${query}`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    },
+  );
 }
