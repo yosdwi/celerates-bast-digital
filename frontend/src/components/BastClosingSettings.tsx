@@ -3,14 +3,18 @@ import {
   getBastClosingSettings,
   getBastEvidenceRules,
   previewBastBlast,
+  previewBastPmoDigest,
   saveBastClosingSettings,
   saveBastEvidenceRules,
   sendBastBlast,
+  sendBastPmoDigest,
 } from "../api/bastClosing";
 import type {
   BastBlastPreview,
   BastClosingSettings as BastClosingSettingsData,
   BastManualBlastResult,
+  BastPmoDigestPreview,
+  BastPmoDigestSendResult,
   EvidenceRule,
 } from "../api/bastClosing";
 import type { TalentOpsSession } from "../api/types";
@@ -25,9 +29,12 @@ export default function BastClosingSettings({ session, period }: Props) {
   const [rules, setRules] = useState<EvidenceRule[]>([]);
   const [preview, setPreview] = useState<BastBlastPreview | null>(null);
   const [result, setResult] = useState<BastManualBlastResult | null>(null);
+  const [pmoPreview, setPmoPreview] = useState<BastPmoDigestPreview | null>(null);
+  const [pmoResult, setPmoResult] = useState<BastPmoDigestSendResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [pmoSending, setPmoSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isAdmin = useMemo(
     () => ["owner", "admin"].includes(session.user.role.toLowerCase()),
@@ -44,6 +51,10 @@ export default function BastClosingSettings({ session, period }: Props) {
       ]);
       setSettings(nextSettings);
       setRules(nextRules.rules);
+      setPreview(null);
+      setResult(null);
+      setPmoPreview(null);
+      setPmoResult(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load BAST Closing settings.");
     } finally {
@@ -106,6 +117,31 @@ export default function BastClosingSettings({ session, period }: Props) {
     }
   }
 
+  async function previewPmo() {
+    setError(null);
+    setPmoResult(null);
+    try {
+      setPmoPreview(await previewBastPmoDigest(period.year, period.month));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to preview PMO BAST summary.");
+    }
+  }
+
+  async function sendPmo() {
+    if (!pmoPreview?.configured || pmoSending) return;
+    if (!window.confirm("Kirim ringkasan BAST terbaru ke group PMO sekarang?")) return;
+    setPmoSending(true);
+    setError(null);
+    try {
+      setPmoResult(await sendBastPmoDigest(session.csrf_token, period.year, period.month));
+      setPmoPreview(await previewBastPmoDigest(period.year, period.month));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to send PMO BAST summary.");
+    } finally {
+      setPmoSending(false);
+    }
+  }
+
   if (loading) {
     return <section className="panel settings-card"><h2>BAST Closing</h2><p>Loading configuration…</p></section>;
   }
@@ -118,7 +154,7 @@ export default function BastClosingSettings({ session, period }: Props) {
       <div className="panel-title-row">
         <div>
           <h2>BAST Closing</h2>
-          <span>Schedule, evidence rules, dan manual reminder Talent</span>
+          <span>Schedule, evidence rules, Talent blast, dan PMO summary</span>
         </div>
         <label>
           <input
@@ -219,10 +255,10 @@ export default function BastClosingSettings({ session, period }: Props) {
       ) : null}
 
       <div>
-        <h3>Manual Blast</h3>
+        <h3>Manual Talent Blast</h3>
         <p>Preview selalu menghitung ulang blocker aktual. Waiting PMO, Complete, dan source-review tidak diblast sebagai action Talent.</p>
         <button className="secondary-button" type="button" onClick={() => void previewBlast()}>
-          Preview Blast
+          Preview Talent Blast
         </button>
         {preview ? (
           <>
@@ -246,6 +282,36 @@ export default function BastClosingSettings({ session, period }: Props) {
           <div className="settings-status">
             Sent {result.sent} · Skipped {result.skipped} · Failed {result.failed}
             {result.scheduled_slot_consumed ? " · Scheduled slot fulfilled" : " · Ad-hoc manual batch"}
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <h3>PMO Summary</h3>
+        <p>Satu ringkasan aggregate ke group PMO. Tidak ada chat individual per Talent.</p>
+        <button className="secondary-button" type="button" onClick={() => void previewPmo()}>
+          Preview PMO Summary
+        </button>
+        {pmoPreview ? (
+          <>
+            <div className="settings-status">
+              Complete {pmoPreview.complete} · Need Talent {pmoPreview.need_talent_action} · Waiting PMO {pmoPreview.waiting_pmo} · Source review {pmoPreview.source_review}
+            </div>
+            <pre style={{ whiteSpace: "pre-wrap" }}>{pmoPreview.message}</pre>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!pmoPreview.configured || pmoSending}
+              onClick={() => void sendPmo()}
+            >
+              {pmoSending ? "Sending…" : "Send PMO Summary"}
+            </button>
+            {!pmoPreview.configured ? <p>PMO group belum dikonfigurasi.</p> : null}
+          </>
+        ) : null}
+        {pmoResult ? (
+          <div className="settings-status">
+            PMO summary: {pmoResult.outcome}{pmoResult.milestone ? ` · ${pmoResult.milestone}` : ""}
           </div>
         ) : null}
       </div>
