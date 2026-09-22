@@ -54,6 +54,10 @@ class TaskEvidenceReader(Protocol):
     async def counts(self, period: DateRange) -> dict[str, int]: ...
 
 
+class TaskEvidenceRequirementReader(Protocol):
+    async def requirements(self) -> dict[str, bool]: ...
+
+
 @final
 class CompletionSource:
     def __init__(
@@ -62,11 +66,13 @@ class CompletionSource:
         records: MonthlyRecordSource,
         attendance: AttendanceReader | None = None,
         evidence: TaskEvidenceReader | None = None,
+        evidence_requirements: TaskEvidenceRequirementReader | None = None,
     ) -> None:
         self._employees = employees
         self._records = records
         self._attendance = attendance
         self._evidence = evidence
+        self._evidence_requirements = evidence_requirements
 
     async def load(
         self,
@@ -77,6 +83,11 @@ class CompletionSource:
         holidays, schedules, timesheets, tasks = await self._load_period(period)
         attendance = await self._attendance.load(period) if self._attendance is not None else {}
         evidence = await self._evidence.counts(period) if self._evidence is not None else {}
+        requirements = (
+            await self._evidence_requirements.requirements()
+            if self._evidence_requirements is not None
+            else {}
+        )
         holiday_by_day = {record.work_date: record for record in holidays}
         return tuple(
             EmployeeFacts(
@@ -114,6 +125,11 @@ class CompletionSource:
                         record.status,
                         evidence.get(str(record.key), 0),
                         record_key=str(record.key),
+                        category=record.category.value,
+                        source=record.source.value,
+                        source_id=record.source_id,
+                        issue_type=record.issue_type,
+                        evidence_required=requirements.get(record.category.value, False),
                     )
                     for record in tasks
                     if record.employee_id == person.id
