@@ -285,6 +285,47 @@ async function handleGroups(req, res) {
   }
 }
 
+async function handleLeaveGroups(req, res) {
+  if (!bridgeAuthorized(req)) {
+    writeJson(res, 403, { status: "forbidden" });
+    return;
+  }
+  if (!messagingReady()) {
+    writeJson(res, 503, { status: "unavailable", error: "whatsapp_not_connected" });
+    return;
+  }
+  let payload;
+  try {
+    payload = await readJsonBody(req, 16 * 1024);
+  } catch {
+    writeJson(res, 400, { status: "invalid", error: "invalid_json" });
+    return;
+  }
+  const jids = Array.isArray(payload.jids) ? payload.jids.map((v) => String(v).trim()) : [];
+  if (jids.length === 0 || jids.some((jid) => !validGroupJid(jid))) {
+    writeJson(res, 422, { status: "invalid", error: "invalid_group_jid" });
+    return;
+  }
+  const results = [];
+  for (const jid of jids) {
+    try {
+      const chat = await bridge.client.getChatById(jid);
+      if (!chat || !chat.isGroup) {
+        results.push({ jid, status: "not_found" });
+        continue;
+      }
+      await chat.leave();
+      await chat.delete();
+      results.push({ jid, status: "left" });
+      state.logf(`left and deleted group jid=${jid}`);
+    } catch (err) {
+      results.push({ jid, status: "failed", error: err.message });
+      state.logf(`leave group failed jid=${jid}: ${err && err.stack ? err.stack : err}`);
+    }
+  }
+  writeJson(res, 200, { status: "done", results });
+}
+
 async function handleSendOutbound(req, res, jidValidator) {
   if (!bridgeAuthorized(req)) {
     writeJson(res, 403, { status: "forbidden" });
@@ -445,6 +486,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/internal/v1/groups") {
       await handleGroups(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/internal/v1/groups/leave") {
+      await handleLeaveGroups(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/internal/v1/messages") {
