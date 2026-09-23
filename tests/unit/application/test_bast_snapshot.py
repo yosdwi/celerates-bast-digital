@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from types import SimpleNamespace
 
 from digital_bast.application.bast_snapshot import BastClosingSnapshotService
@@ -88,6 +88,35 @@ async def test_pending_only_talent_is_not_misclassified_complete() -> None:
     assert snapshot.complete == 0
     assert snapshot.talents[0].waiting_pmo is True
     assert snapshot.talents[0].actionable == ()
+
+
+async def test_pending_approval_keeps_actionable_change_for_pmo_digest() -> None:
+    readiness = SimpleNamespace(employee_id="EMP-1", nrp="1001", name="Talent One")
+    pending = SimpleNamespace(
+        id="REQ-1",
+        employee_id="EMP-1",
+        nrp="1001",
+        full_name="Talent One",
+        work_date=date(2026, 9, 18),
+        resolution_type="missing_clock_out",
+        absence_type=None,
+        proposed_check_in=None,
+        proposed_check_out=time(17, 31),
+    )
+    service = BastClosingSnapshotService(
+        _TalentOps(_view(attention=(), readiness=(readiness,))),
+        _Pending((pending,)),
+    )
+
+    snapshot = await service.build(_PERIOD)
+
+    assert len(snapshot.pending_approvals) == 1
+    approval = snapshot.pending_approvals[0]
+    assert approval.request_id == "REQ-1"
+    assert approval.name == "Talent One"
+    assert approval.nrp == "1001"
+    assert approval.work_date == date(2026, 9, 18)
+    assert approval.change == "Clock Out → 17:31"
 
 
 async def test_source_review_is_separate_from_talent_action() -> None:
