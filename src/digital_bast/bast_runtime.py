@@ -10,6 +10,7 @@ from digital_bast.application.bast_snapshot import BastClosingSnapshotService
 from digital_bast.application.talent_reminders import TalentReminderService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
+from digital_bast.application.workflow_control import WorkflowControlService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService
 from digital_bast.bot.bast_reminder_context import BastReminderContextService
 from digital_bast.config import Settings, SettingsConfigurationError, get_settings
@@ -125,4 +126,5 @@ def create_bast_group_digest_service(scope_key: str = "default") -> BastGroupDig
         create_bast_snapshot_service(scope_key),
         _outbound(settings),
         PostgresPayrollGroupDigestDeliveryStore(dsn),
+        WorkflowControlService(dsn),
     )
