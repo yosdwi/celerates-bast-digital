@@ -134,7 +134,7 @@ export default function BastClosingSettings({ session, period }: Props) {
 
   async function sendPmo() {
     if (!pmoPreview?.configured || pmoSending) return;
-    if (!window.confirm("Kirim ringkasan BAST terbaru ke group PMO sekarang?")) return;
+    if (!window.confirm("Kirim BAST action briefing terbaru ke group PMO sekarang?")) return;
     setPmoSending(true);
     setError(null);
     try {
@@ -307,15 +307,15 @@ export default function BastClosingSettings({ session, period }: Props) {
       </div>
 
       <div>
-        <h3>PMO Summary</h3>
-        <p>Satu ringkasan aggregate ke group PMO. Tidak ada chat individual per Talent.</p>
+        <h3>PMO Action Briefing</h3>
+        <p>Satu briefing aggregate: approval yang perlu dikerjakan, Talent yang masih perlu follow-up, dan progress BAST.</p>
         <button className="secondary-button" type="button" onClick={() => void previewPmo()}>
-          Preview PMO Summary
+          Preview PMO Briefing
         </button>
         {pmoPreview ? (
           <>
             <div className="settings-status">
-              Complete {pmoPreview.complete} · Need Talent {pmoPreview.need_talent_action} · Waiting PMO {pmoPreview.waiting_pmo} · Source review {pmoPreview.source_review}
+              Pending approval {pmoPreview.pending_approvals} · Waiting PMO {pmoPreview.waiting_pmo} Talent · Need Talent {pmoPreview.need_talent_action} · Complete {pmoPreview.complete} · Source review {pmoPreview.source_review}
             </div>
             <pre style={{ whiteSpace: "pre-wrap" }}>{pmoPreview.message}</pre>
             <button
@@ -324,14 +324,14 @@ export default function BastClosingSettings({ session, period }: Props) {
               disabled={!pmoPreview.configured || pmoSending}
               onClick={() => void sendPmo()}
             >
-              {pmoSending ? "Sending…" : "Send PMO Summary"}
+              {pmoSending ? "Sending…" : "Send PMO Briefing"}
             </button>
             {!pmoPreview.configured ? <p>PMO group belum dikonfigurasi.</p> : null}
           </>
         ) : null}
         {pmoResult ? (
           <div className="settings-status">
-            PMO summary: {pmoResult.outcome}{pmoResult.milestone ? ` · ${pmoResult.milestone}` : ""}
+            PMO briefing: {pmoResult.outcome}{pmoResult.milestone ? ` · ${pmoResult.milestone}` : ""}
           </div>
         ) : null}
       </div>
