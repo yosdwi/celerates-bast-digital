@@ -132,9 +132,7 @@ def _admin_links(public_url: str | None, period: DateRange) -> BastWebLinks | No
     origin = f"{parsed.scheme}://{parsed.netloc}"
     query = urlencode({"year": period.start.year, "month": period.start.month})
     return BastWebLinks(
-        approval_url=(
-            f"{origin}/admin/talentops/actions?{query}#approval-queue"
-        ),
+        approval_url=f"{origin}/admin/talentops/actions?{query}#approval-queue",
         readiness_url=f"{origin}/admin/talentops/bast-readiness?{query}",
     )
 
@@ -233,7 +231,7 @@ def compose_bast_group_digest(
 
 @final
 class BastGroupDigestService:
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - explicit digest dependencies
         self,
         scope_key: str,
         control: BastClosingControlService,
