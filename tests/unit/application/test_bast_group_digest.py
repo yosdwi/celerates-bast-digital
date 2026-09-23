@@ -6,9 +6,14 @@ from digital_bast.application.bast_closing import BastClosingSettings
 from digital_bast.application.bast_group_digest import (
     BastGroupDigestRunSummary,
     BastGroupDigestService,
+    BastWebLinks,
     compose_bast_group_digest,
 )
-from digital_bast.application.bast_snapshot import BastClosingSnapshot, BastTalentSnapshot
+from digital_bast.application.bast_snapshot import (
+    BastClosingSnapshot,
+    BastPendingApproval,
+    BastTalentSnapshot,
+)
 from digital_bast.application.talentops import Blocker
 from digital_bast.domain.completion import CheckState, DateRange
 
@@ -44,7 +49,7 @@ class _CaptureService(BastGroupDigestService):
         )
 
 
-def test_digest_is_aggregate_and_counts_only_actionable_blockers() -> None:
+def test_digest_is_pmo_action_briefing_with_clear_units_and_links() -> None:
     snapshot = BastClosingSnapshot(
         total_talents=3,
         complete=1,
@@ -72,17 +77,40 @@ def test_digest_is_aggregate_and_counts_only_actionable_blockers() -> None:
                 source_review=(),
             ),
         ),
+        pending_approvals=(
+            BastPendingApproval(
+                request_id="REQ-1",
+                employee_id="EMP-2",
+                nrp="1002",
+                name="Talent Two",
+                work_date=date(2026, 9, 18),
+                change="Clock Out → 17:31",
+            ),
+        ),
+    )
+    links = BastWebLinks(
+        approval_url=(
+            "https://bast.example.com/admin/talentops/actions?year=2026&month=9#approval-queue"
+        ),
+        readiness_url=(
+            "https://bast.example.com/admin/talentops/bast-readiness?year=2026&month=9"
+        ),
     )
 
-    message = compose_bast_group_digest(snapshot, _PERIOD, "INITIAL")
+    message = compose_bast_group_digest(snapshot, _PERIOD, "EOM-3", links)
 
-    assert "Total Talent: 3" in message
-    assert "Complete: 1" in message
-    assert "Perlu action Talent: 1" in message
-    assert "Menunggu PMO: 1" in message
-    assert "• Task List: 2" in message
-    assert "• Attendance: 1" in message
-    assert "Talent One" not in message
+    assert "Closing 30 Sep · H-3" in message
+    assert "*Perlu tindakan PMO — 1 approval*" in message
+    assert "Talent Two — 18 Sep — Clock Out → 17:31" in message
+    assert links.approval_url in message
+    assert "*Masih menunggu Talent — 1 orang*" in message
+    assert "• 1 Talent: 2 Task Redmine belum Closed" in message
+    assert "• 1 Talent: 1 tanggal attendance belum lengkap" in message
+    assert "✅ Complete: 1 / 3" in message
+    assert "🕒 Menunggu PMO: 1 Talent" in message
+    assert links.readiness_url in message
+    assert "Outstanding factual" not in message
+    assert "• Task List:" not in message
 
 
 async def test_manual_send_on_scheduled_date_consumes_same_slot_even_before_send_hour() -> None:
