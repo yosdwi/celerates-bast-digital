@@ -300,6 +300,7 @@ def bast_closing_router(deps: WebDependencies) -> APIRouter:
             "need_talent_action": preview.need_talent_action,
             "waiting_pmo": preview.waiting_pmo,
             "source_review": preview.source_review,
+            "pending_approvals": preview.pending_approvals,
         }
 
     async def pmo_digest_send(
