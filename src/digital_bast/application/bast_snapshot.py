@@ -20,6 +20,16 @@ class PendingAttendanceSource(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class BastPendingApproval:
+    request_id: str
+    employee_id: str
+    nrp: str
+    name: str
+    work_date: date
+    change: str
+
+
+@dataclass(frozen=True, slots=True)
 class BastTalentSnapshot:
     employee_id: str
     nrp: str
@@ -41,6 +51,78 @@ class BastClosingSnapshot:
     waiting_pmo: int
     source_review: int
     talents: tuple[BastTalentSnapshot, ...]
+    pending_approvals: tuple[BastPendingApproval, ...] = ()
+
+
+def _text_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    raw = getattr(value, "value", value)
+    text = str(raw).strip()
+    return text or None
+
+
+def _clock_label(value: object | None) -> str:
+    if value is None:
+        return "-"
+    return str(value)[:5]
+
+
+def _approval_change(request: object) -> str:
+    resolution_type = _text_value(getattr(request, "resolution_type", None))
+    check_in = _clock_label(getattr(request, "proposed_check_in", None))
+    check_out = _clock_label(getattr(request, "proposed_check_out", None))
+    if resolution_type == "missing_clock_in":
+        return f"Clock In → {check_in}"
+    if resolution_type == "missing_clock_out":
+        return f"Clock Out → {check_out}"
+    if resolution_type == "missing_both_worked":
+        return f"Clock In {check_in} · Clock Out {check_out}"
+    if resolution_type == "absence":
+        absence_type = _text_value(getattr(request, "absence_type", None))
+        return (absence_type or "Tidak masuk").replace("_", " ").title()
+    return "Koreksi attendance"
+
+
+def _pending_approvals(
+    requests: tuple[object, ...],
+    period: DateRange,
+) -> tuple[BastPendingApproval, ...]:
+    values: list[BastPendingApproval] = []
+    for request in requests:
+        employee_id = getattr(request, "employee_id", None)
+        work_date = getattr(request, "work_date", None)
+        if (
+            not isinstance(employee_id, str)
+            or not employee_id.strip()
+            or work_date is None
+            or not period.start <= work_date <= period.end
+        ):
+            continue
+        request_id = str(getattr(request, "id", "")).strip()
+        nrp = str(getattr(request, "nrp", "")).strip()
+        name = str(
+            getattr(request, "full_name", None)
+            or getattr(request, "name", None)
+            or nrp
+            or employee_id
+        ).strip()
+        values.append(
+            BastPendingApproval(
+                request_id=request_id,
+                employee_id=employee_id,
+                nrp=nrp,
+                name=name,
+                work_date=work_date,
+                change=_approval_change(request),
+            )
+        )
+    return tuple(
+        sorted(
+            values,
+            key=lambda item: (item.work_date, item.name.casefold(), item.request_id),
+        )
+    )
 
 
 def _pending_dates(
@@ -72,7 +154,7 @@ def _actionable_blockers(
     """Suppress only the exact attendance dates already waiting for PMO.
 
     A Talent may have one submitted correction and another unresolved gap in the
-    same month.  A coarse employee-level suppression would hide the second gap
+    same month. A coarse employee-level suppression would hide the second gap
     and incorrectly stop reminders, so filtering is deliberately per work date.
     """
     result: list[Blocker] = []
@@ -116,7 +198,9 @@ class BastClosingSnapshotService:
 
     async def build(self, period: DateRange) -> BastClosingSnapshot:
         view = await self._talentops.command_center(period)
-        pending = _pending_dates(await self._attendance_resolutions.pending(), period)
+        pending_requests = await self._attendance_resolutions.pending()
+        pending = _pending_dates(pending_requests, period)
+        pending_approvals = _pending_approvals(pending_requests, period)
         talents: list[BastTalentSnapshot] = []
         waiting = 0
         source_review_count = 0
@@ -180,4 +264,5 @@ class BastClosingSnapshotService:
             waiting_pmo=waiting,
             source_review=source_review_count,
             talents=tuple(talents),
+            pending_approvals=pending_approvals,
         )
