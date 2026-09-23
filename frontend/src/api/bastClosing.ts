@@ -59,6 +59,7 @@ export interface BastPmoDigestPreview {
   need_talent_action: number;
   waiting_pmo: number;
   source_review: number;
+  pending_approvals: number;
 }
 
 export interface BastPmoDigestSendResult {
