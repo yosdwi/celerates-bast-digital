@@ -175,6 +175,7 @@ def _legacy_command(text: str) -> bool:
     prefixes = (
         "export attendance",
         "export absensi",
+        "export bast",
         "generate bast",
         "buat bast",
         "bikin bast",

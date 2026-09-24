@@ -100,6 +100,14 @@ def test_only_explicit_operational_commands_bypass_group_natural_query() -> None
     assert _legacy_command("@conform siapa yang evidence-nya kurang?") is False
 
 
+def test_export_bast_bypasses_group_natural_query_like_generate_bast() -> None:
+    # Confirmed live: "export bast september ini untuk developer ya" fell
+    # through to the status-only natural query path (no "export bast" prefix
+    # recognized), so the Talent got a readiness summary instead of the
+    # actual BAST document.
+    assert _legacy_command("@conform export bast september ini untuk developer ya") is True
+
+
 @pytest.mark.asyncio
 async def test_legacy_command_runs_bot_reply_without_nesting_event_loop(
     monkeypatch: pytest.MonkeyPatch,
