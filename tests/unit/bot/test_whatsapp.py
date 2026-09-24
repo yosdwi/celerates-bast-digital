@@ -244,6 +244,23 @@ def test_conversation_never_wins_over_a_business_keyword() -> None:
     )
 
 
+def test_export_bast_routes_to_generate_bast_not_export_attendance() -> None:
+    # "export" alone is EXPORT_ATTENDANCE's trigger word, so "export bast"
+    # would otherwise match it first and never reach GENERATE_BAST -- a real
+    # production bug where a Talent asking to export the BAST document
+    # instead got sent a raw attendance CSV.
+    command = parse_command(
+        "@conform export bast september ini untuk developer ya", TODAY
+    )
+    assert command.intent is Intent.GENERATE_BAST
+
+    # A plain export-attendance request with no mention of "bast" must be
+    # completely unaffected by the new rule.
+    assert parse_command("@conform export attendance developer 5 juni", TODAY).intent is (
+        Intent.EXPORT_ATTENDANCE
+    )
+
+
 def test_persona_fallback_names_no_unshipped_capability() -> None:
     from digital_bast.bot.whatsapp import PERSONA_FALLBACK_REPLY  # noqa: PLC0415
 
