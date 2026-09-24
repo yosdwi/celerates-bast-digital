@@ -271,7 +271,6 @@ async def generate_bast(
     report_type: str = "developer",
 ) -> tuple[Path, AssembledReport]:
     from digital_bast.infrastructure.pdf_export import render_pdf  # noqa: PLC0415
-    from digital_bast.web.bast_all_status_tasks import include_all_task_statuses  # noqa: PLC0415
     from digital_bast.web.bast_assembler import (  # noqa: PLC0415
         PostgresBastArtifactStore,
         assemble,
@@ -279,7 +278,6 @@ async def generate_bast(
 
     secret = _application_dsn()
     report = await assemble(report_type, period.start.year, period.start.month, secret)
-    report = await include_all_task_statuses(report, secret)
     pdf_bytes = await render_pdf(report.editor_html)
     _ = await PostgresBastArtifactStore(secret).save(report)
     path = bast_artifact_path(report_type, report.year, report.month)

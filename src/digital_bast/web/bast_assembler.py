@@ -673,11 +673,7 @@ def _developer_category_sections(  # noqa: PLR0913, PLR0917
     section_label: str,
     month_name: str,
 ) -> list[dict[str, object]]:
-    closed = [
-        task
-        for task in tasks
-        if task.category == category and task.status.strip().casefold() == _CLOSED
-    ]
+    category_tasks = [task for task in tasks if task.category == category]
     items = [
         {
             "no": index,
@@ -687,17 +683,24 @@ def _developer_category_sections(  # noqa: PLR0913, PLR0917
             "status": task.status,
             "start_date": task.work_date.strftime("%Y/%m/%d"),
             "end_date": task.end_date.strftime("%Y/%m/%d") if task.end_date else "N/A",
-            # `closed` above is already filtered to Closed-status tasks only --
-            # a task the report shows as Closed is done, full stop, regardless
-            # of what the raw `achievement` field says (the source system
-            # doesn't reliably keep that in sync once a ticket is closed).
-            "pencapaian": "100",
+            # Closed is done, full stop, regardless of what the raw
+            # `achievement` field says (the source system doesn't reliably
+            # keep that in sync once a ticket is closed) -- 100 is forced
+            # only for those. A non-Closed task prints here too (printing
+            # rule and readiness rule are separate; it still remains a
+            # blocker elsewhere), showing its actual source achievement
+            # instead of a fabricated 100.
+            "pencapaian": (
+                "100"
+                if task.status.strip().casefold() == _CLOSED
+                else str(task.achievement)
+            ),
         }
-        for index, task in enumerate(closed, start=1)
+        for index, task in enumerate(category_tasks, start=1)
     ]
     if not items:
         return []
-    average = 100  # every item's pencapaian is forced to 100 above; keep the summary consistent
+    average = round(sum(int(item["pencapaian"]) for item in items) / len(items))
     # Wider Task List column (2026-09-04, report_editor.html/detail_aktivitas_*.html)
     # means most rows wrap to 1-2 lines instead of 3-4, so 10 rows/page leaves
     # real vertical slack on typical pages -- 14 packs that slack back in. Not
