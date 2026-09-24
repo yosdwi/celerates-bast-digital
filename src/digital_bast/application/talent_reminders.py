@@ -80,6 +80,30 @@ def _period_for(local: datetime) -> DateRange:
     return DateRange(dates[0], dates[-1])
 
 
+_TIMESHEET_LOG_1_PAMA_SUFFIX = "Timesheet belum dapat lengkap karena Log 1 PAMA belum valid."
+
+
+def _reminder_blocks(item: BastTalentSnapshot) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    # Timesheet completion for a day is entirely derived from that day's
+    # Attendance/Log 1 PAMA validity (domain/completion.py's _timesheet).
+    # Listing it as a second, separately-actionable domain just repeats the
+    # same dates the Talent already sees under Attendance and confuses them
+    # into thinking it's independent follow-up. Drop only the issues that
+    # are purely that derived flag; a Timesheet blocker with any other,
+    # genuinely independent issue (e.g. an OFF-day remark) still shows.
+    blocks: list[tuple[str, tuple[str, ...]]] = []
+    for blocker in item.actionable:
+        issues = blocker.issues
+        if blocker.domain == "timesheet":
+            issues = tuple(
+                issue for issue in issues if not issue.endswith(_TIMESHEET_LOG_1_PAMA_SUFFIX)
+            )
+            if not issues:
+                continue
+        blocks.append((blocker.domain, issues))
+    return tuple(blocks)
+
+
 def _talent_reminder_message(item: BastTalentSnapshot, period: DateRange) -> str:
     labels = {
         "attendance": "Attendance",
@@ -87,25 +111,27 @@ def _talent_reminder_message(item: BastTalentSnapshot, period: DateRange) -> str
         "task": "Task List",
         "evidence": "Evidence",
     }
+    blocks = _reminder_blocks(item)
+    total = sum(max(len(issues), 1) for _, issues in blocks)
     lines = [
         f"*Kelengkapan BAST — {period.label()}*",
         "",
-        f"Halo {item.name}, masih ada *{item.actionable_count} hal* yang perlu kamu selesaikan:",
+        f"Halo {item.name}, masih ada *{total} hal* yang perlu kamu selesaikan:",
         "",
     ]
     options: list[str] = []
-    for blocker in item.actionable:
-        label = labels.get(blocker.domain, blocker.domain.title())
-        lines.append(f"*{label} — {max(len(blocker.issues), 1)}*")
-        lines.extend(f"• {issue}" for issue in blocker.issues[:_MAX_ISSUES_PER_DOMAIN])
-        if len(blocker.issues) > _MAX_ISSUES_PER_DOMAIN:
-            lines.append(f"• +{len(blocker.issues) - _MAX_ISSUES_PER_DOMAIN} lainnya")
+    for domain, issues in blocks:
+        label = labels.get(domain, domain.title())
+        lines.append(f"*{label} — {max(len(issues), 1)}*")
+        lines.extend(f"• {issue}" for issue in issues[:_MAX_ISSUES_PER_DOMAIN])
+        if len(issues) > _MAX_ISSUES_PER_DOMAIN:
+            lines.append(f"• +{len(issues) - _MAX_ISSUES_PER_DOMAIN} lainnya")
         lines.append("")
         options.append(label)
     lines.append("Pilih bagian yang mau dicek:")
     lines.extend(f"{index}. {label}" for index, label in enumerate(options, start=1))
     lines.extend(("", "Atau langsung tulis kebutuhannya dengan bahasa biasa."))
-    if any(blocker.domain == "task" for blocker in item.actionable):
+    if any(domain == "task" for domain, _ in blocks):
         lines.append("Status Task List mengikuti Redmine/source dan tidak diubah dari chatbot.")
     return "\n".join(lines)
 

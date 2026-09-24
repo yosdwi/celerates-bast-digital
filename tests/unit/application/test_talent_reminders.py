@@ -6,7 +6,10 @@ import pytest
 
 from digital_bast.application.bast_closing import BastClosingSettings
 from digital_bast.application.bast_snapshot import BastClosingSnapshot, BastTalentSnapshot
-from digital_bast.application.talent_reminders import TalentReminderService
+from digital_bast.application.talent_reminders import (
+    TalentReminderService,
+    _talent_reminder_message,  # pyright: ignore[reportPrivateUsage]
+)
 from digital_bast.application.talentops import Blocker
 from digital_bast.application.talentops_followups import FollowUpSendCommand, FollowUpSendView
 from digital_bast.domain.completion import CheckState, DateRange
@@ -185,3 +188,55 @@ async def test_manual_send_outside_scheduled_date_is_unique_ad_hoc_batch() -> No
     assert second.sent == 1
     assert followups.commands[0].idempotency_key != followups.commands[1].idempotency_key
     assert followups.commands[0].idempotency_key.startswith("bast-manual:default:")
+
+
+def test_reminder_message_drops_timesheet_issues_derived_from_attendance() -> None:
+    item = BastTalentSnapshot(
+        employee_id="employee-1",
+        nrp="JIMT24002",
+        name="Talent Test",
+        actionable=(
+            Blocker("attendance", CheckState.INCOMPLETE, ("1 Sep missing Clock Out",)),
+            Blocker(
+                "timesheet",
+                CheckState.INCOMPLETE,
+                ("1 Sep — Timesheet belum dapat lengkap karena Log 1 PAMA belum valid.",),
+            ),
+            Blocker("task", CheckState.INCOMPLETE, ('Task "X" belum Closed.',)),
+        ),
+        waiting_pmo=False,
+        source_review=(),
+    )
+
+    message = _talent_reminder_message(item, _PERIOD)
+
+    assert "Timesheet" not in message
+    assert "*2 hal*" in message
+    assert "Attendance" in message
+    assert "Task List" in message
+
+
+def test_reminder_message_keeps_timesheet_issue_independent_of_attendance() -> None:
+    item = BastTalentSnapshot(
+        employee_id="employee-1",
+        nrp="JIMT24002",
+        name="Talent Test",
+        actionable=(
+            Blocker(
+                "timesheet",
+                CheckState.INCOMPLETE,
+                (
+                    "1 Sep — Timesheet belum dapat lengkap karena Log 1 PAMA belum valid.",
+                    "2 Sep — Keterangan OFF pada Timesheet belum terisi.",
+                ),
+            ),
+        ),
+        waiting_pmo=False,
+        source_review=(),
+    )
+
+    message = _talent_reminder_message(item, _PERIOD)
+
+    assert "*Timesheet — 1*" in message
+    assert "Keterangan OFF pada Timesheet belum terisi." in message
+    assert "Log 1 PAMA belum valid" not in message
