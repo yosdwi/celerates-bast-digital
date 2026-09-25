@@ -30,7 +30,12 @@ const AUTH_DIR = getenv("BOT_AUTH_DIR", path.join(DATA_DIR, "auth-whatsapp-web-j
 const SETUP_HOST = getenv("BOT_SETUP_HOST", "127.0.0.1");
 const SETUP_PORT = getenv("BOT_SETUP_PORT", "8090");
 const WORKER_BASE_URL = getenv("BOT_WORKER_BASE_URL", "http://127.0.0.1:8091");
-const WAIT_NOTICE_DELAY_MS = envNumber("BOT_WAIT_NOTICE_DELAY_MS", 2500);
+// 2026-09-25: raised from 2500 -- simple menu-driven flows (Payroll
+// Attendance numbered picks) routinely take longer than 2.5s round-tripping
+// through bot-worker/Postgres, so this ack fired on nearly every reply and
+// read as noise. 10s keeps the ack for genuinely slow paths (BAST PDF
+// export, LLM interpretation: 10-40s) without nagging on fast ones.
+const WAIT_NOTICE_DELAY_MS = envNumber("BOT_WAIT_NOTICE_DELAY_MS", 10_000);
 const RECEIPT_MAX = envNumber("BOT_OUTBOUND_RECEIPT_MAX", 2048);
 const OWNER_TTL_MS = envNumber("BOT_SESSION_OWNER_TTL_MS", 90_000);
 const OWNER_HEARTBEAT_MS = envNumber("BOT_SESSION_OWNER_HEARTBEAT_MS", 15_000);
