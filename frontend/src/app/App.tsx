@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { getPayrollOverview } from "../api/payroll";
+import type { PayrollOverviewResponse } from "../api/payroll";
 import { getCommandCenter, getSession, getTalentDetail } from "../api/talentops";
 import type { CommandCenterResponse, TalentDetailResponse, TalentOpsSession } from "../api/types";
 import ActionCenterPage from "../pages/ActionCenterPage";
+import AttendanceGapsPage from "../pages/AttendanceGapsPage";
 import BastReadinessPage from "../pages/BastReadinessPage";
 import CommandCenterPage from "../pages/CommandCenterPage";
 import DeliveryPage from "../pages/DeliveryPage";
 import EvidencePage from "../pages/EvidencePage";
+import PayrollPage from "../pages/PayrollPage";
 import SettingsPage from "../pages/SettingsPage";
 import SystemSyncPage from "../pages/SystemSyncPage";
 import Talent360Page from "../pages/Talent360Page";
@@ -17,8 +21,10 @@ import type { PeriodSelection } from "./period";
 
 type Route =
   | { page: "command-center" }
+  | { page: "payroll" }
   | { page: "talents" }
   | { page: "actions" }
+  | { page: "attendance-gaps" }
   | { page: "bast" }
   | { page: "delivery" }
   | { page: "evidence" }
@@ -36,8 +42,10 @@ function parseRoute(pathname: string): Route {
       return { page: "talents" };
     }
   }
+  if (clean === "/admin/talentops/payroll") return { page: "payroll" };
   if (clean === "/admin/talentops/talents") return { page: "talents" };
   if (clean === "/admin/talentops/actions") return { page: "actions" };
+  if (clean === "/admin/talentops/attendance-gaps") return { page: "attendance-gaps" };
   if (clean === "/admin/talentops/bast-readiness") return { page: "bast" };
   if (clean === "/admin/talentops/delivery") return { page: "delivery" };
   if (clean === "/admin/talentops/evidence") return { page: "evidence" };
@@ -76,9 +84,12 @@ function LoadingScreen() {
 export default function App() {
   const [session, setSession] = useState<TalentOpsSession | null>(null);
   const [data, setData] = useState<CommandCenterResponse | null>(null);
+  const [payrollData, setPayrollData] = useState<PayrollOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [payrollLoading, setPayrollLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payrollError, setPayrollError] = useState<string | null>(null);
   const [periodPending, setPeriodPending] = useState<PeriodSelection | null>(null);
   const [periodError, setPeriodError] = useState<string | null>(null);
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
@@ -86,21 +97,64 @@ export default function App() {
   const [talentLoading, setTalentLoading] = useState(false);
   const [talentError, setTalentError] = useState<string | null>(null);
   const periodRequestId = useRef(0);
+  const payrollRequestId = useRef(0);
+
+  const loadPayroll = useCallback(async (
+    selection?: PeriodSelection,
+    updateUrl = true,
+  ) => {
+    const requestId = payrollRequestId.current + 1;
+    payrollRequestId.current = requestId;
+    setPayrollLoading(true);
+    setPayrollError(null);
+    try {
+      const nextPayroll = selection
+        ? await getPayrollOverview(selection.year, selection.month)
+        : await getPayrollOverview();
+      if (requestId !== payrollRequestId.current) return;
+      setPayrollData(nextPayroll);
+      if (updateUrl) {
+        replacePeriodUrl({ year: nextPayroll.cycle.year, month: nextPayroll.cycle.month });
+      }
+    } catch (reason) {
+      if (requestId !== payrollRequestId.current) return;
+      setPayrollError(reason instanceof Error ? reason.message : "Unable to load Payroll.");
+    } finally {
+      if (requestId === payrollRequestId.current) setPayrollLoading(false);
+    }
+  }, []);
 
   const bootstrap = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPayrollError(null);
     try {
+      const initialRoute = parseRoute(window.location.pathname);
       const requested = parsePeriodSearch(window.location.search);
-      const commandCenterPromise = requested
-        ? getCommandCenter(requested.year, requested.month)
-        : getCommandCenter();
-      const [nextSession, nextData] = await Promise.all([getSession(), commandCenterPromise]);
+      const nextSession = await getSession();
       setSession(nextSession);
+
+      if (initialRoute.page === "payroll") {
+        const nextPayroll = requested
+          ? await getPayrollOverview(requested.year, requested.month)
+          : await getPayrollOverview();
+        setPayrollData(nextPayroll);
+        replacePeriodUrl({ year: nextPayroll.cycle.year, month: nextPayroll.cycle.month });
+        return;
+      }
+
+      const nextData = requested
+        ? await getCommandCenter(requested.year, requested.month)
+        : await getCommandCenter();
       setData(nextData);
       replacePeriodUrl(nextData.period);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load TalentOps.");
+      const message = reason instanceof Error ? reason.message : "Unable to load TalentOps.";
+      if (parseRoute(window.location.pathname).page === "payroll") {
+        setPayrollError(message);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -135,9 +189,25 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setRoute(parseRoute(window.location.pathname));
-      if (!data) return;
+      const nextRoute = parseRoute(window.location.pathname);
+      setRoute(nextRoute);
       const requested = parsePeriodSearch(window.location.search);
+
+      if (nextRoute.page === "payroll") {
+        void loadPayroll(requested ?? undefined, false);
+        return;
+      }
+
+      if (!data) {
+        void loadPeriod(
+          requested ?? {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth() + 1,
+          },
+          false,
+        );
+        return;
+      }
       if (!requested) {
         replacePeriodUrl(data.period);
         return;
@@ -148,7 +218,7 @@ export default function App() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [data, loadPeriod]);
+  }, [data, loadPayroll, loadPeriod]);
 
   const detailKey = useMemo(
     () => route.page === "talent" && data
@@ -188,11 +258,35 @@ export default function App() {
   }, [data, detailKey, route]);
 
   function navigate(path: string) {
-    if (!data) return;
-    const target = withPeriodQuery(path, window.location.search, data.period);
+    const nextRoute = parseRoute(path);
+    const selected = nextRoute.page === "payroll"
+      ? payrollData?.cycle
+      : data?.period ?? payrollData?.cycle;
+    const target = selected
+      ? withPeriodQuery(path, window.location.search, selected)
+      : path;
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== target) window.history.pushState({}, "", target);
-    setRoute(parseRoute(path));
+    setRoute(nextRoute);
+
+    if (nextRoute.page === "payroll") {
+      if (!payrollData) {
+        const requested = parsePeriodSearch(window.location.search);
+        void loadPayroll(requested ?? undefined, true);
+      }
+      return;
+    }
+
+    if (!data) {
+      const requested = parsePeriodSearch(window.location.search);
+      void loadPeriod(
+        requested ?? {
+          year: new Date().getFullYear(),
+          month: new Date().getMonth() + 1,
+        },
+        true,
+      );
+    }
   }
 
   function openTalent(nrp: string) {
@@ -222,7 +316,48 @@ export default function App() {
   }
 
   if (loading) return <LoadingScreen />;
-  if (!session || !data) {
+  if (!session) {
+    return (
+      <main className="fatal-state">
+        <div>
+          <h1>TalentOps unavailable</h1>
+          <p>{error ?? payrollError ?? "TalentOps could not load the current session."}</p>
+          <button className="primary-button" type="button" onClick={() => void bootstrap()}>
+            Retry
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (route.page === "payroll") {
+    if (payrollLoading) return <LoadingScreen />;
+    if (!payrollData) {
+      return (
+        <main className="fatal-state">
+          <div>
+            <h1>Payroll unavailable</h1>
+            <p>{payrollError ?? "Payroll attendance data could not be loaded."}</p>
+            <button className="primary-button" type="button" onClick={() => void loadPayroll()}>
+              Retry
+            </button>
+          </div>
+        </main>
+      );
+    }
+    return (
+      <PayrollPage
+        session={session}
+        data={payrollData}
+        onNavigate={navigate}
+        onPeriodChange={(selection) => void loadPayroll(selection)}
+      />
+    );
+  }
+
+  if (!data && periodPending) return <LoadingScreen />;
+
+  if (!data) {
     return (
       <main className="fatal-state">
         <div>
@@ -255,6 +390,8 @@ export default function App() {
         onOpenTalent={openTalent}
       />
     );
+  } else if (route.page === "attendance-gaps") {
+    page = <AttendanceGapsPage session={session} data={data} onNavigate={navigate} />;
   } else if (route.page === "bast") {
     page = (
       <BastReadinessPage

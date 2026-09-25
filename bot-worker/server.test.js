@@ -19,7 +19,30 @@ test("cliArgsFor maps a text reply without a jid/channel", () => {
   ]);
 });
 
-test("cliArgsFor maps a DM text reply with jid and channel", () => {
+test("cliArgsFor maps a DM text reply with jid, channel and message timestamp", () => {
+  assert.deepEqual(
+    cliArgsFor({
+      kind: "text",
+      text: "halo",
+      jid: "628123@s.whatsapp.net",
+      channel: "dm",
+      message_at: "2026-09-08T01:30:00.000Z",
+    }),
+    [
+      "bot-reply",
+      "--text",
+      "halo",
+      "--jid",
+      "628123@s.whatsapp.net",
+      "--channel",
+      "dm",
+      "--message-at",
+      "2026-09-08T01:30:00.000Z",
+    ],
+  );
+});
+
+test("cliArgsFor keeps legacy DM payload valid when timestamp is absent", () => {
   assert.deepEqual(
     cliArgsFor({ kind: "text", text: "halo", jid: "628123@s.whatsapp.net", channel: "dm" }),
     ["bot-reply", "--text", "halo", "--jid", "628123@s.whatsapp.net", "--channel", "dm"],
@@ -58,7 +81,33 @@ test("executionFor routes group replies through the PMO group entry wrapper", ()
   ]);
 });
 
-test("executionFor routes DM text through the mobile-aware Python entry wrapper", () => {
+test("executionFor routes timestamped DM through the payroll-aware Python entry wrapper", () => {
+  const execution = executionFor([
+    "bot-reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--channel",
+    "dm",
+    "--message-at",
+    "2026-09-08T01:30:00.000Z",
+  ]);
+  assert.equal(execution.command, "python");
+  assert.deepEqual(execution.args, [
+    "-m",
+    "digital_bast.bot.dm_message_entry",
+    "reply",
+    "--text",
+    "17:00",
+    "--jid",
+    "628123@s.whatsapp.net",
+    "--message-at",
+    "2026-09-08T01:30:00.000Z",
+  ]);
+});
+
+test("executionFor keeps legacy DM entry when timestamp is absent", () => {
   const execution = executionFor([
     "bot-reply",
     "--text",
@@ -68,7 +117,6 @@ test("executionFor routes DM text through the mobile-aware Python entry wrapper"
     "--channel",
     "dm",
   ]);
-  assert.equal(execution.command, "python");
   assert.deepEqual(execution.args, [
     "-m",
     "digital_bast.bot.dm_entry",

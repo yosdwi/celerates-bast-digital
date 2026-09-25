@@ -180,6 +180,7 @@ class TimesheetDay:
 
 @dataclass(frozen=True, slots=True)
 class TalentTask:
+    record_key: str
     work_date: date
     title: str
     status: str
@@ -331,6 +332,7 @@ def _timesheet_days(
 def _talent_tasks(facts: EmployeeFacts) -> tuple[TalentTask, ...]:
     return tuple(
         TalentTask(
+            record_key=task.record_key,
             work_date=task.work_date,
             title=task.title,
             status=task.status.strip() or "Unknown",

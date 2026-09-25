@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.web.attendance_router import attendance_router
 from digital_bast.web.auth_router import auth_router
+from digital_bast.web.bast_closing_router import bast_closing_router
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.errors import (
     AuthenticationUnavailableError,
@@ -17,6 +18,9 @@ from digital_bast.web.errors import (
     WebBackendUnavailableError,
 )
 from digital_bast.web.page_router import page_router
+from digital_bast.web.payroll_export_router import payroll_export_router
+from digital_bast.web.payroll_followup_router import payroll_followup_router
+from digital_bast.web.payroll_router import payroll_router
 from digital_bast.web.report_router import report_router
 from digital_bast.web.sync_router import router as sync_router
 from digital_bast.web.talent_mobile_links_router import talent_mobile_links_router
@@ -25,9 +29,11 @@ from digital_bast.web.talent_mobile_router import talent_mobile_router
 from digital_bast.web.talentops_page_router import talentops_page_router
 from digital_bast.web.talentops_router import talentops_router
 from digital_bast.web.task_evidence_router import task_evidence_router
+from digital_bast.web.whatsapp_directory_router import whatsapp_directory_router
+from digital_bast.web.whatsapp_ops_router import whatsapp_ops_router
 
 
-def create_app(dependencies: WebDependencies) -> FastAPI:
+def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - explicit router assembly
     project_root = Path(__file__).resolve().parents[3]
     templates = Jinja2Templates(directory=project_root / "templates")
     templates.env.autoescape = True
@@ -43,8 +49,6 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1_000)
     app.mount("/static", StaticFiles(directory=project_root / "static"), name="static")
     app.mount("/admin/static", StaticFiles(directory=project_root / "static"), name="admin-static")
-    # check_dir=False keeps ordinary Python import/test collection working before
-    # a local frontend build exists. Production images always copy frontend/dist.
     app.mount(
         "/admin/talentops/assets",
         StaticFiles(directory=talentops_dist / "assets", check_dir=False),
@@ -55,13 +59,17 @@ def create_app(dependencies: WebDependencies) -> FastAPI:
     app.include_router(report_router(dependencies, templates))
     app.include_router(attendance_router(dependencies, templates))
     app.include_router(talentops_router(dependencies))
+    app.include_router(bast_closing_router(dependencies))
+    app.include_router(whatsapp_directory_router(dependencies))
+    app.include_router(whatsapp_ops_router(dependencies))
+    app.include_router(payroll_router(dependencies))
+    app.include_router(payroll_export_router(dependencies))
+    app.include_router(payroll_followup_router(dependencies))
     app.include_router(talent_mobile_links_router(dependencies))
     app.include_router(task_evidence_router(dependencies))
     app.include_router(talent_mobile_router())
     app.include_router(talent_mobile_page_router(talentops_dist))
     app.include_router(talentops_page_router(dependencies, talentops_dist))
-    # Machine-to-machine ingest from the PAMA bridge: bearer-token auth of
-    # its own, no session cookie, and excluded from the schema.
     app.include_router(sync_router)
 
     async def _security_headers(

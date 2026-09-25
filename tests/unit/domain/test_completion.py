@@ -14,7 +14,14 @@ from digital_bast.domain.completion import (
     resolve_off_days,
 )
 from digital_bast.domain.identity import daily_key, holiday_key
-from digital_bast.domain.models import EmployeeId, EmployeeRole, Holiday, RecordOrigin, Schedule
+from digital_bast.domain.models import (
+    EmployeeId,
+    EmployeeRole,
+    Holiday,
+    RecordOrigin,
+    Schedule,
+    Timesheet,
+)
 
 PERIOD = DateRange(date(2026, 8, 10), date(2026, 8, 12))
 WORK_DAY = date(2026, 8, 10)
@@ -84,10 +91,12 @@ def test_missing_clocks_with_evidence_is_valid_exception() -> None:
     assert result.log_1_pama.state is CheckState.COMPLETE
 
 
-def test_work_day_without_attendance_row_is_incomplete() -> None:
+def test_work_day_without_attendance_row_is_not_an_issue() -> None:
+    # The sync pipeline always catches up, so a missing row is never flagged.
     result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
 
-    assert result.log_1_pama.issues == ("10 Agustus — Data attendance belum tersedia.",)
+    assert result.log_1_pama.state is CheckState.COMPLETE
+    assert result.log_1_pama.issues == ()
 
 
 def test_off_day_without_attendance_row_is_valid() -> None:
@@ -132,13 +141,14 @@ def test_day_with_no_attendance_row_at_all_is_not_an_upload_candidate() -> None:
     assert result.log_1_pama_evidence_days == ()
 
 
-def test_day_with_no_attendance_row_at_all_is_flagged_read_only() -> None:
-    # Surfaced separately from log_1_pama_evidence_days (which only lists
-    # upload-fixable gaps) so the DM summary can show it without offering it
-    # as something a photo can resolve -- see cli.py::_format_attendance_list.
+def test_day_with_no_attendance_row_at_all_is_reported_as_missing_data() -> None:
+    # Not an "issue" (doesn't affect state/issues) -- just surfaced so the
+    # talent can self-serve a Sakit/Izin/Cuti request for the day.
     result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
 
     assert result.log_1_pama_missing_data_days == (WORK_DAY,)
+    assert result.log_1_pama.state is CheckState.COMPLETE
+    assert result.log_1_pama.issues == ()
 
 
 def test_off_day_is_never_an_upload_candidate() -> None:
@@ -159,12 +169,25 @@ def test_unmapped_attendance_requests_review() -> None:
 
 
 def test_timesheet_cannot_be_complete_when_log_1_pama_is_incomplete() -> None:
-    result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
+    attendance = (
+        AttendanceFact(WORK_DAY, has_clock_in=True, has_clock_out=False, has_evidence=False),
+        *complete_attendance()[1:],
+    )
+
+    result = evaluate_employee(facts(attendance=attendance), PERIOD)
 
     assert result.timesheet.state is CheckState.INCOMPLETE
     assert result.timesheet.issues == (
         "10 Agustus — Timesheet belum dapat lengkap karena Log 1 PAMA belum valid.",
     )
+
+
+def test_timesheet_is_complete_when_only_issue_is_a_missing_attendance_row() -> None:
+    # A missing row is no longer treated as invalid, so it must not gate
+    # the Timesheet check either.
+    result = evaluate_employee(facts(attendance=complete_attendance()[1:]), PERIOD)
+
+    assert result.timesheet.state is CheckState.COMPLETE
 
 
 def test_off_day_timesheet_requires_remarks() -> None:
@@ -313,6 +336,41 @@ def test_iot_schedule_drives_off_days() -> None:
     off_days = resolve_off_days(EmployeeRole.IOT_OPERATIONS, PERIOD, {}, schedules)
 
     assert off_days == frozenset(PERIOD.days())
+
+
+def _timesheet(work_date: date, *, is_holiday: bool, remarks: str) -> Timesheet:
+    return Timesheet(
+        daily_key("timesheet", work_date, EmployeeId("7")),
+        EmployeeId("7"),
+        work_date,
+        "2026-08",
+        "" if is_holiday else "P05-Development",
+        "" if is_holiday else "Some Project",
+        is_holiday,
+        remarks,
+        None,
+        (),
+        RecordOrigin.PIPELINE,
+    )
+
+
+def test_missing_iot_schedule_falls_back_to_synced_timesheet_when_it_says_working_day() -> None:
+    # The schedule sync can fail to backfill a date entirely while the
+    # timesheet/attendance sync for that same date succeeds -- the missing
+    # schedule row must not hide a real work day (and its gaps) as OFF.
+    timesheets = {WORK_DAY: _timesheet(WORK_DAY, is_holiday=False, remarks="Working Day")}
+
+    off_days = resolve_off_days(EmployeeRole.IOT_OPERATIONS, PERIOD, {}, {}, timesheets)
+
+    assert WORK_DAY not in off_days
+
+
+def test_missing_iot_schedule_falls_back_to_synced_timesheet_when_it_says_off() -> None:
+    timesheets = {WORK_DAY: _timesheet(WORK_DAY, is_holiday=True, remarks="Libur")}
+
+    off_days = resolve_off_days(EmployeeRole.IOT_OPERATIONS, PERIOD, {}, {}, timesheets)
+
+    assert WORK_DAY in off_days
 
 
 def test_developer_off_days_follow_holidays_and_weekend() -> None:

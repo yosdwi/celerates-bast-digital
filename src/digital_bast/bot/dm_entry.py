@@ -1,11 +1,13 @@
 """Top-level Talent WhatsApp DM entrypoint.
 
 WhatsApp is a button-first entry/notification surface; Talent Mobile is the
-primary work surface for Attendance and Task & Evidence. Exact controlled
-action IDs remain deterministic. Free-form Talent messages go through the
-LLM-backed whole-sentence interpreter with a short-lived intent/period context;
-we deliberately do not fall back to substring keyword routing when that
-interpretation is ambiguous.
+primary work surface for the legacy Attendance and Task & Evidence entrypoints.
+Payroll closing reminders are different: a valid stable reminder context opens
+the current attendance gap directly in WhatsApp without a Mobile/menu hop.
+Exact controlled action IDs remain deterministic. Free-form Talent messages go
+through the LLM-backed whole-sentence interpreter with a short-lived
+intent/period context; we deliberately do not fall back to substring keyword
+routing when that interpretation is ambiguous.
 
 The PMO guideline's canonical first message (``Halo, saya <NRP>``) is handled
 before the legacy onboarding fallback. PMO/rebind flows and direct media
@@ -23,10 +25,20 @@ from typing import Final
 import anyio
 
 from digital_bast.application.talent_mobile_access import configured_talent_mobile_url
+from digital_bast.bot.attendance_reminder_routing import (
+    AttendanceReminderCommand,
+    AttendanceReminderRouteStatus,
+    parse_attendance_reminder_command,
+    render_attendance_gap_prompt,
+)
+from digital_bast.bot.attendance_reminder_runtime import (
+    create_attendance_reminder_context_service,
+    create_attendance_reminder_routing_service,
+)
 from digital_bast.bot.attendance_resolution import AttendanceResolution, ResolutionStatus
 from digital_bast.bot.dm_workflow import reply as workflow_reply
-from digital_bast.bot.guideline_onboarding import try_guideline_onboarding
 from digital_bast.bot.interactive import interactive
+from digital_bast.bot.payroll_attendance_repeat import render_payroll_repeat_prompt
 from digital_bast.bot.talent_context import (
     TalentConversationContext,
     TalentIntent,
@@ -44,6 +56,7 @@ from digital_bast.operations import (
     create_activation_service,
     create_attendance_resolution_dm_state_service,
     create_attendance_resolution_service,
+    create_evidence_service,
     create_llm_interpreter,
     create_talent_conversation_context_service,
     create_task_evidence_submission_service,
@@ -62,6 +75,22 @@ _REQUEST_COMMANDS: Final = frozenset(
 )
 _CLOSEOUT_GRACE_DAYS: Final = 7
 _REPLY_DELAY_SECONDS: Final = (2.0, 5.0)
+_NOT_BOUND_REPLY: Final = (
+    "Nomor WhatsApp ini belum terhubung ke data Talent. Hubungi admin untuk didaftarkan."
+)
+_PAYROLL_EXPLICIT_ACTIONS: Final = frozenset(
+    {
+        "payroll_attendance_start",
+        "payroll_attendance_later",
+        "lengkapi",
+        "lengkapi sekarang",
+        "lanjut",
+        "nanti",
+        "nanti dulu",
+        "selesai",
+        "selesai dulu",
+    }
+)
 
 
 def _period_now() -> DateRange:
@@ -240,20 +269,119 @@ async def _period_for_exact_action(jid: str) -> DateRange:
     return context.period if context is not None else _period_now()
 
 
-async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
+async def _payroll_reminder_reply(
+    text: str,
+    jid: str,
+    employee_id: str,
+) -> str | None:
+    normalized = text.strip().casefold()
+    explicit = normalized in _PAYROLL_EXPLICIT_ACTIONS
+    is_digit_shortcut = normalized in {"1", "2"}
+    if not explicit and not is_digit_shortcut:
+        return None
+
+    allow_digit_shortcuts = False
+    if is_digit_shortcut:
+        # Legacy attendance/task candidate lists already use bare digits. Their
+        # short-lived active selection context wins over Payroll reminder digits.
+        if await create_evidence_service().active_kind(jid) is not None:
+            return None
+        allow_digit_shortcuts = True
+
+    command = parse_attendance_reminder_command(
+        text,
+        allow_digit_shortcuts=allow_digit_shortcuts,
+    )
+    if command is None:
+        return None
+
+    context_store = create_attendance_reminder_context_service()
+    context = await context_store.load(jid)
+    if context is None:
+        if is_digit_shortcut:
+            return None
+        return (
+            "Reminder attendance ini sudah tidak aktif. "
+            "Tunggu reminder berikutnya atau cek attendance terbaru."
+        )
+
+    if context.employee_id != employee_id:
+        await context_store.clear(jid)
+        return (
+            "Reminder attendance ini sudah tidak cocok dengan identity WhatsApp aktif. "
+            "Hubungi admin."
+        )
+
+    if command is AttendanceReminderCommand.LATER:
+        return (
+            "Oke, tidak ada perubahan attendance tambahan dari langkah ini. "
+            "Balas `lengkapi` atau `lanjut` selama reminder ini masih aktif kalau mau meneruskan."
+        )
+
+    routed = await create_attendance_reminder_routing_service().first_actionable(
+        context,
+        employee_id=employee_id,
+        now=datetime.now(JAKARTA),
+    )
+    if (
+        routed.status is AttendanceReminderRouteStatus.OPEN
+        and routed.selection is not None
+    ):
+        attendance_key = routed.selection.day.attendance_key
+        if attendance_key is None:
+            return (
+                "Attendance ini belum punya identity yang aman untuk diproses. "
+                "Tunggu reminder berikutnya atau hubungi admin."
+            )
+        draft = await create_attendance_resolution_dm_state_service().begin(
+            jid,
+            employee_id,
+            attendance_key,
+        )
+        if draft is None:
+            return (
+                "Data attendance barusan berubah. "
+                "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
+            )
+        if routed.selection.same_gap_suggestion is not None:
+            return render_payroll_repeat_prompt(routed.selection)
+        return render_attendance_gap_prompt(routed.selection)
+
+    await context_store.clear(jid)
+    if routed.status is AttendanceReminderRouteStatus.NO_ACTION:
+        return (
+            "Attendance dari reminder ini sudah tidak perlu action. "
+            "Tidak ada yang perlu kamu isi sekarang."
+        )
+    return (
+        "Reminder attendance ini sudah tidak valid. "
+        "Tunggu reminder berikutnya atau cek attendance terbaru."
+    )
+
+
+async def reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 - guarded workflow routing
     if await create_attendance_resolution_dm_state_service().pending(jid) is not None:
         return await workflow_reply(text, jid)
+
+    employee_id = await create_activation_service().resolve(jid)
+    if employee_id is not None:
+        payroll_reply = await _payroll_reminder_reply(text, jid, employee_id)
+        if payroll_reply is not None:
+            await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
+            return payroll_reply
 
     if text.strip().isdigit():
         return await workflow_reply(text, jid)
 
-    employee_id = await create_activation_service().resolve(jid)
     if employee_id is None:
-        guided = await try_guideline_onboarding(text, jid)
-        if guided is not None:
-            await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 - timing jitter only
-            return guided
-        return await workflow_reply(text, jid)
+        # Self-service "reply your NRP" onboarding is retired: every Talent's
+        # WhatsApp identity is bound by an admin now (see the group-directory
+        # mapping this replaced), so an unresolved identity here is always a
+        # binding gap or a resolution mismatch (e.g. WhatsApp's own @lid vs
+        # @c.us routing), never a genuinely new/unregistered sender -- direct
+        # them to admin instead of asking for an NRP that would never lead
+        # anywhere.
+        return _NOT_BOUND_REPLY
 
     normalized = text.strip().casefold()
     if normalized in _MENU_COMMANDS:

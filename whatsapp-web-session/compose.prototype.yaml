@@ -1,0 +1,120 @@
+# Throwaway isolation harness for the whatsapp-web.js prototype. Still a
+# SEPARATE compose project (own directory, own volumes, own WhatsApp
+# session/account) -- NOT merged into the root compose.yaml, does not share
+# bot-bridge-data or touch the real wa-session container.
+#
+# UPDATE 2026-09-03: this service IS now connected to the real
+# `digital-bast-network` and talks to the REAL production `bot-worker`
+# (real `sync_ingest_token`, not a throwaway dev value) -- a deliberate,
+# user-approved step to validate the full contract against real CLI
+# execution, since the real wa-session was confirmed idle at the time. This
+# means messages sent to this prototype's paired number now trigger real
+# `digital-bast` CLI commands against real production data (NocoDB/
+# Postgres). Revert BOT_WORKER_BASE_URL to stub-worker (and regenerate a
+# throwaway dev-secrets/bridge_token) before treating this as "isolated"
+# again.
+#
+# Run from this directory:
+#   openssl rand -hex 32 > dev-secrets/bridge_token   # once
+#   docker compose -f compose.prototype.yaml up --build
+# Then open http://127.0.0.1:18090 and pair a TEST WhatsApp number only.
+#
+# Isolation properties mirror bast-renderer's pattern (see root compose.yaml
+# and docs/wa-session-whatsapp-web-js-migration-plan.md, "Resource
+# footprint"): read_only root, cap_drop ALL, no-new-privileges, non-root
+# user, tmpfs /tmp, explicit resource ceiling. Chromium runs 24/7 here (not
+# burst like bast-renderer), so watch actual steady-state memory before
+# reusing these limits for anything beyond this prototype.
+
+services:
+  whatsapp-web-session:
+    build:
+      context: ..
+      dockerfile: whatsapp-web-session/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    shm_size: "512m"
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BOT_SETUP_HOST: 0.0.0.0
+      BOT_SETUP_PORT: "8090"
+      BOT_DATA_DIR: /data
+      BOT_AUTH_DIR: /data/auth-whatsapp-web-js
+      # Pointed at the REAL production bot-worker (not stub-worker) -- see
+      # docs/wa-session-whatsapp-web-js-migration-plan.md and this
+      # container's manual `docker network connect digital-bast-network`
+      # (declared as an external network below so it survives recreates).
+      # dev-secrets/bridge_token holds a copy of the real sync_ingest_token
+      # value, not a throwaway dev value, for the same reason.
+      BOT_WORKER_BASE_URL: http://bot-worker:8091
+      BOT_BRIDGE_TOKEN_FILE: /run/secrets/bridge_token
+      # Digits-only international format (e.g. 6281234567890), no leading
+      # "+". Optional -- leave unset to pair by QR only. Only takes effect
+      # while unregistered; a no-op once already paired. Same contract as
+      # whatsmeow-session's BOT_PAIRING_NUMBER.
+      BOT_PAIRING_NUMBER: ${BOT_PAIRING_NUMBER:-}
+    secrets:
+      - bridge_token
+    ports:
+      # Loopback-only, distinct port from the real wa-session's 8090 so both
+      # can run side by side on the same host without colliding.
+      - "127.0.0.1:18090:8090"
+    volumes:
+      - wwjs-prototype-auth:/data
+    networks:
+      - prototype
+      - digital-bast-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1.5G
+        reservations:
+          memory: 256M
+
+  stub-worker:
+    build:
+      context: ..
+      dockerfile: whatsapp-web-session/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    command: ["node", "stub-worker.js"]
+    environment:
+      BOT_WORKER_HOST: 0.0.0.0
+      BOT_WORKER_PORT: "8091"
+      BOT_BRIDGE_TOKEN_FILE: /run/secrets/bridge_token
+    secrets:
+      - bridge_token
+    networks:
+      - prototype
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+secrets:
+  bridge_token:
+    file: ./dev-secrets/bridge_token
+
+networks:
+  prototype:
+  digital-bast-network:
+    external: true
+    name: digital-bast-network
+
+volumes:
+  wwjs-prototype-auth:

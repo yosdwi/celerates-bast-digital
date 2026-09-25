@@ -3,7 +3,10 @@ import type { FormEvent } from "react";
 import { askCommandCenter } from "../api/talentops";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
 import { CloseIcon, ExternalIcon, SparkleIcon } from "../components/Icons";
+import BastClosingSettings from "../components/BastClosingSettings";
+import PayrollClosingPolicySettings from "../components/PayrollClosingPolicySettings";
 import TalentMobileLinkPolicySettings from "../components/TalentMobileLinkPolicySettings";
+import WhatsAppDirectorySettings from "../components/WhatsAppDirectorySettings";
 import WorkflowSettings from "../components/WorkflowSettings";
 import WorkspaceFrame from "../components/WorkspaceFrame";
 
@@ -44,8 +47,11 @@ export default function SettingsPage({ session, data, onNavigate }: Props) {
       <div className="content settings-page">
         <div className="page-heading"><div><h1>Settings</h1><p>Workflow authorization, routing, and operating boundaries</p></div></div>
 
+        <PayrollClosingPolicySettings session={session} />
+        <BastClosingSettings session={session} period={data.period} />
         <WorkflowSettings session={session} />
         <TalentMobileLinkPolicySettings session={session} />
+        <WhatsAppDirectorySettings session={session} />
 
         <div className="settings-grid">
           <section className="panel settings-card"><div className="panel-title-row"><div><h2>Workspace</h2><span>Current session behavior</span></div></div><dl><div><dt>Timezone</dt><dd>{session.timezone}</dd></div><div><dt>Identity</dt><dd>{session.user.name}</dd></div><div><dt>Role</dt><dd>{session.user.role}</dd></div><div><dt>Environment</dt><dd>TalentOps Production</dd></div></dl><p>Login credentials remain in NocoDB. Workflow permissions live in the Digital BAST backend and are not inferred from a WhatsApp number.</p></section>
@@ -54,7 +60,7 @@ export default function SettingsPage({ session, data, onNavigate }: Props) {
 
           <section className="panel settings-card"><div className="panel-title-row"><div><h2>Data Workspace</h2><span>Manual record correction boundary</span></div></div><p>NocoDB V2 remains the Data Workspace for record browse/edit and manual correction against the same PostgreSQL rows. TalentOps intentionally does not duplicate those CRUD screens.</p><div className="settings-status">Raw attendance timestamps remain client-owned and immutable in the approval flow</div></section>
 
-          <section className="panel settings-card"><div className="panel-title-row"><div><h2>BAST controls</h2><span>Preview, readiness gate, and audited final generation</span></div></div><p>BAST Readiness now owns the production generation gate. Preview is available for investigation; Final requires readiness unless an authorized operator explicitly force-generates with an audit reason.</p><button className="secondary-button" type="button" onClick={() => onNavigate("/admin/talentops/bast-readiness")}>Open BAST Readiness</button></section>
+          <section className="panel settings-card"><div className="panel-title-row"><div><h2>BAST controls</h2><span>Preview, readiness gate, and audited final generation</span></div></div><p>BAST Readiness owns the production generation gate. Task status remains source-owned; BAST Closing only reads Redmine/source status and never closes tasks.</p><button className="secondary-button" type="button" onClick={() => onNavigate("/admin/talentops/bast-readiness")}>Open BAST Readiness</button></section>
 
           <section className="panel settings-card"><div className="panel-title-row"><div><h2>Legacy report tools</h2><span>Existing admin utilities</span></div></div><p>Legacy report tooling remains available during transition. The production BAST workflow should use the readiness-gated TalentOps path.</p><a className="secondary-button settings-link" href="/admin/"><ExternalIcon />Open current report tools</a></section>
 

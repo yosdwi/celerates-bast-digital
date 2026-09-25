@@ -11,9 +11,24 @@ from psycopg.types.json import Jsonb
 
 from digital_bast.application.ports import SyncCursor
 from digital_bast.domain.errors import CursorRegressionError
-from digital_bast.domain.models import EntityKind, Holiday, Month, RecordKey, RecordOrigin
+from digital_bast.domain.identity import task_key
+from digital_bast.domain.models import (
+    EmployeeId,
+    EntityKind,
+    Holiday,
+    Month,
+    RecordKey,
+    RecordOrigin,
+    Task,
+    TaskCategory,
+    TaskSource,
+)
 from digital_bast.infrastructure.postgres import PostgresStore
-from digital_bast.infrastructure.repositories import PostgresCursorStore, PostgresDomainRepository
+from digital_bast.infrastructure.repositories import (
+    PostgresCursorStore,
+    PostgresDomainRepository,
+    PostgresTaskStatusHistoryReader,
+)
 from digital_bast.web.contracts import EmployeeOption, GenerationPlanInput, SectionInput
 from digital_bast.web.postgres_backend import PostgresWebBackend
 
@@ -67,6 +82,58 @@ async def test_cursor_replay_cannot_move_watermark_backwards(database_dsn: str) 
         await store.save(SyncCursor(source, "cursor-1", current - timedelta(minutes=1)))
 
     assert await store.load(source) == SyncCursor(source, "cursor-2", current)
+
+
+@pytest.mark.asyncio
+async def test_task_upsert_logs_status_transitions(database_dsn: str) -> None:
+    repository = PostgresDomainRepository(database_dsn)
+    history = PostgresTaskStatusHistoryReader(database_dsn)
+    suffix = uuid4().hex[:10]
+    employee_id = EmployeeId(f"EMP-{suffix}")
+    with psycopg.connect(database_dsn) as connection:
+        connection.execute(
+            "INSERT INTO employees (employee_id, nrp, full_name, role) VALUES (%s, %s, %s, %s)",
+            (str(employee_id), f"NRP{suffix}", f"Task History Test {suffix}", "Developer"),
+        )
+
+    key = task_key(date(2026, 8, 3), employee_id, "Fix bug", TaskSource.REDMINE, suffix)
+
+    def task(status: str) -> Task:
+        return Task(
+            key=key,
+            employee_id=employee_id,
+            work_date=date(2026, 8, 3),
+            title="Fix bug",
+            requestor="PMO",
+            status=status,
+            category=TaskCategory.CODE_QUALITY,
+            source=TaskSource.REDMINE,
+            source_id=suffix,
+            assignee=None,
+            start_at=None,
+            response_at=None,
+            close_at=None,
+            end_date=None,
+            achievement=0,
+            origin=RecordOrigin.PIPELINE,
+        )
+
+    await repository.upsert(task("New"))
+    await repository.upsert(task("In Progress"))
+    await repository.upsert(task("In Progress"))  # same status again: no duplicate event
+
+    events = await history.for_task(key)
+    assert [(event.old_status, event.new_status) for event in events] == [
+        (None, "New"),
+        ("New", "In Progress"),
+    ]
+
+    with psycopg.connect(database_dsn) as connection:
+        connection.execute("UPDATE tasks SET origin = 'manual' WHERE record_key = %s", (str(key),))
+
+    await repository.upsert(task("Closed"))  # manual lock blocks the pipeline write
+
+    assert await history.for_task(key) == events
 
 
 def test_manual_lock_conflict_and_owner_release(database_dsn: str) -> None:

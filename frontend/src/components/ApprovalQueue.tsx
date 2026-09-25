@@ -145,7 +145,7 @@ export default function ApprovalQueue({ session }: Props) {
   if (!hasAnyCapability && !error) return null;
 
   return (
-    <section className="panel approval-queue-panel">
+    <section id="approval-queue" className="panel approval-queue-panel">
       <div className="panel-title-row">
         <div>
           <h2>Approval queue</h2>

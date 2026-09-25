@@ -2,8 +2,19 @@ import csv
 import io
 from collections.abc import Mapping
 from datetime import date
+from typing import Final
 
+from digital_bast.infrastructure.pama_attendance import SHIFT_LEGEND
 from digital_bast.web.contracts import AttendanceRow
+
+# Reverse of SHIFT_LEGEND (shift_code -> (shift_name, schedule_in, schedule_out)),
+# keyed by name instead: schedules.shift_name already stores the resolved name,
+# not the raw code, so this is what a row missing schedule_in/out (an
+# evidence-upload stub the sync never populated) falls back through. Built
+# from SHIFT_LEGEND rather than hand-duplicated so the two can't drift.
+_SHIFT_NAME_TIMES: Final[dict[str, tuple[str, str]]] = {
+    name: (schedule_in, schedule_out) for name, schedule_in, schedule_out in SHIFT_LEGEND.values()
+}
 
 CSV_HEADERS = (
     "Employee ID",
@@ -83,21 +94,41 @@ def legacy_attendance_csv(rows: tuple[Mapping[str, object], ...]) -> str:
         work_date_display = (
             date.fromisoformat(str(raw_work_date)).strftime("%d/%m/%Y") if raw_work_date else ""
         )
+        shift = str(row.get("shift") or "")
+        schedule_in = str(row.get("schedule_in") or "")
+        schedule_out = str(row.get("schedule_out") or "")
+        if not shift:
+            # The sync never sent a row for this day (e.g. an evidence-upload
+            # stub) -- fall back to the roster's own schedule assignment,
+            # which exists independently of any attendance punch.
+            schedule_shift_name = row.get("schedule_shift_name")
+            if schedule_shift_name:
+                shift = str(schedule_shift_name)
+        if not schedule_in and not schedule_out:
+            # schedule_in/out are frequently blank even on a day the sync DID
+            # send a real shift (confirmed against live exports: "SHIFT 2"
+            # rows with no schedule window) -- independent of whether shift
+            # came from the row itself or the roster fallback above, resolve
+            # the window from the shift name through the same SHIFT_LEGEND
+            # pama_attendance.py uses.
+            fallback_in, fallback_out = _SHIFT_NAME_TIMES.get(shift, ("", ""))
+            schedule_in = fallback_in
+            schedule_out = fallback_out
         writer.writerow(
             neutralize_csv_formula(str(value))
             for value in (
                 row.get("employee_id", ""),
                 row.get("full_name", ""),
                 work_date_display,
-                row.get("shift", ""),
+                shift,
                 "",
                 "",
-                row.get("schedule_in", ""),
-                row.get("schedule_out", ""),
-                row.get("attendance_code", ""),
-                row.get("check_in", ""),
-                row.get("check_out", ""),
-                row.get("notes", ""),
+                schedule_in,
+                schedule_out,
+                row.get("attendance_code") or "",
+                row.get("check_in") or "",
+                row.get("check_out") or "",
+                row.get("notes") or "",
                 "",
                 "",
                 "",

@@ -32,9 +32,6 @@ class LocalEmployeeSource:
 
     async def load(self) -> tuple[Employee, ...]:
         raw = json.loads(self._path.read_text(encoding="utf-8"))
-        # employee_data.json historically wrote "IoT Operation" while the
-        # EmployeeRole enum and NocoDB both say "IoT Operations". Accept both
-        # so a roster file from either era loads.
         role_by_name = {
             "Developer": EmployeeRole.DEVELOPER,
             "IoT Operation": EmployeeRole.IOT_OPERATIONS,
@@ -61,7 +58,7 @@ class _AttendanceFactRow:
         "work_date",
     )
 
-    def __init__(  # noqa: PLR0913, PLR0917 -- one field per selected column
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         employee_id: str,
         work_date: date,
@@ -80,16 +77,6 @@ class _AttendanceFactRow:
 
 @final
 class PostgresAttendanceFactReader:
-    """Derives AttendanceFact from the immutable client attendance table.
-
-    Legacy evidence remains grandfathered: rows created before the approval
-    workflow have ``requires_resolution = false`` and keep satisfying today's
-    readiness contract. New WhatsApp attendance evidence explicitly writes
-    ``requires_resolution = true`` and only counts after a PMO-approved
-    ``attendance_resolution_requests`` row references that exact evidence.
-    Raw Clock In/Out values are never rewritten by this projection.
-    """
-
     def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
         self._dsn = dsn
         self._connect_timeout_seconds = connect_timeout_seconds
@@ -101,26 +88,17 @@ class PostgresAttendanceFactReader:
         try:
             with (
                 psycopg.connect(
-                    self._dsn, connect_timeout=self._connect_timeout_seconds
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
                 ) as connection,
                 connection.cursor(row_factory=class_row(_AttendanceFactRow)) as cursor,
             ):
                 _ = cursor.execute(
                     """
-                    SELECT a.employee_id,
-                           a.work_date,
+                    SELECT a.employee_id, a.work_date,
                            COALESCE(to_char(a.check_in, 'HH24:MI'), '') AS check_in,
                            COALESCE(to_char(a.check_out, 'HH24:MI'), '') AS check_out,
-                           a.evidence_note,
-                           COUNT(ae.id) FILTER (
-                               WHERE ae.requires_resolution = FALSE
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM attendance_resolution_requests r
-                                      WHERE r.evidence_id = ae.id
-                                        AND r.status = 'approved'
-                                  )
-                           ) AS evidence_photo_count
+                           a.evidence_note, COUNT(ae.id) AS evidence_photo_count
                     FROM attendance a
                     LEFT JOIN attendance_evidence ae ON ae.attendance_id = a.id
                     WHERE a.work_date BETWEEN %s AND %s
@@ -130,13 +108,17 @@ class PostgresAttendanceFactReader:
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
-            raise InfrastructureError(service="postgres", operation="attendance_facts") from error
+            raise InfrastructureError(
+                service="postgres",
+                operation="attendance_facts",
+            ) from error
         return {
             (row.employee_id, row.work_date): AttendanceFact(
                 work_date=row.work_date,
                 has_clock_in=bool(row.check_in),
                 has_clock_out=bool(row.check_out),
-                has_evidence=bool(row.evidence_note.strip()) or row.evidence_photo_count > 0,
+                has_evidence=bool(row.evidence_note.strip())
+                or row.evidence_photo_count > 0,
             )
             for row in rows
         }
@@ -152,26 +134,30 @@ class _TaskEvidenceCountRow:
 
 @final
 class PostgresTaskEvidenceReader:
-    """Per-task counts for evidence explicitly submitted by the Talent.
+    """Task evidence counts plus category-level BAST evidence requirements."""
 
-    Talent Mobile may stage files before the final "Ajukan ke PMO" action.
-    Those draft rows stay out of completion/readiness and therefore out of the
-    Generator BAST until ``submitted_at`` is set. Legacy evidence is
-    grandfathered by the migration that backfills submitted_at=uploaded_at.
-    """
-
-    def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        connect_timeout_seconds: int = 5,
+        scope_key: str = "default",
+    ) -> None:
         self._dsn = dsn
         self._connect_timeout_seconds = connect_timeout_seconds
+        self._scope_key = scope_key
 
     async def counts(self, period: DateRange) -> dict[str, int]:
         return await run_sync(self._counts, period)
+
+    async def requirements(self) -> dict[str, bool]:
+        return await run_sync(self._requirements)
 
     def _counts(self, period: DateRange) -> dict[str, int]:
         try:
             with (
                 psycopg.connect(
-                    self._dsn, connect_timeout=self._connect_timeout_seconds
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
                 ) as connection,
                 connection.cursor(row_factory=class_row(_TaskEvidenceCountRow)) as cursor,
             ):
@@ -181,7 +167,6 @@ class PostgresTaskEvidenceReader:
                     FROM task_evidence e
                     JOIN tasks t ON t.id = e.task_id
                     WHERE e.work_date BETWEEN %s AND %s
-                      AND e.submitted_at IS NOT NULL
                     GROUP BY t.record_key
                     """,
                     (period.start, period.end),
@@ -189,6 +174,32 @@ class PostgresTaskEvidenceReader:
                 rows = cursor.fetchall()
         except psycopg.Error as error:
             raise InfrastructureError(
-                service="postgres", operation="task_evidence_counts"
+                service="postgres",
+                operation="task_evidence_counts",
             ) from error
         return {row.task_key: row.total for row in rows}
+
+    def _requirements(self) -> dict[str, bool]:
+        try:
+            with (
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
+                connection.cursor() as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT task_category, evidence_required
+                    FROM bast_evidence_rules
+                    WHERE scope_key = %s
+                    """,
+                    (self._scope_key,),
+                )
+                rows = cursor.fetchall()
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres",
+                operation="bast_evidence_requirements",
+            ) from error
+        return {str(category): bool(required) for category, required in rows}

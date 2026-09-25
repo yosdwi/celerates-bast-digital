@@ -26,6 +26,12 @@ class _FakeRebindState:
         assert wa_jid == _JID
 
 
+class _FakeReminderContextStore:
+    async def load(self, wa_jid: str) -> None:
+        assert wa_jid == _JID
+        return None
+
+
 @pytest.fixture(autouse=True)
 def _isolate_pmo_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -42,6 +48,11 @@ def _isolate_pmo_routing(monkeypatch: pytest.MonkeyPatch) -> None:
         dm_workflow,
         "create_identity_rebind_service",
         _FakeRebindState,
+    )
+    monkeypatch.setattr(
+        dm_workflow,
+        "create_attendance_reminder_context_service",
+        _FakeReminderContextStore,
     )
 
 

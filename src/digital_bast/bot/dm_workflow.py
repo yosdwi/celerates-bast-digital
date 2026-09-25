@@ -21,6 +21,10 @@ from anyio.to_thread import run_sync
 
 from digital_bast import cli
 from digital_bast.application.workflow_control import InviteOutcome
+from digital_bast.bot.attendance_reminder_runtime import (
+    create_attendance_reminder_context_service,
+    create_attendance_reminder_routing_service,
+)
 from digital_bast.bot.attendance_resolution import (
     ResolutionStatus,
     ResolutionType,
@@ -28,6 +32,21 @@ from digital_bast.bot.attendance_resolution import (
 )
 from digital_bast.bot.attendance_resolution_dm import looks_like_resolution_input, proposals
 from digital_bast.bot.interactive import interactive
+from digital_bast.bot.payroll_attendance_draft import (
+    PayrollDraftCommand,
+    parse_payroll_draft_command,
+    render_payroll_draft_prompt,
+    select_payroll_proposal,
+)
+from digital_bast.bot.payroll_attendance_evidence import attach_payroll_attendance_evidence
+from digital_bast.bot.payroll_attendance_repeat import (
+    handle_payroll_repeat_command,
+    parse_payroll_repeat_command,
+)
+from digital_bast.bot.payroll_attendance_submit import (
+    edit_payroll_attendance_draft,
+    submit_payroll_attendance_draft,
+)
 from digital_bast.bot.pmo_workflow import reply as pmo_reply
 from digital_bast.bot.rebind import RebindRequestOutcome
 from digital_bast.bot.talent_home import home as talent_home
@@ -60,8 +79,8 @@ if TYPE_CHECKING:
 type DmCommand = Literal["reply", "evidence"]
 
 _ATTENDANCE_WORDS: Final = ("attendance", "absen", "absensi")
-# Shared with cli._dm_onboarding's greeting handling for not-yet-bound
-# senders -- one canonical set, not two copies drifting apart.
+# Shared with cli._NRP_HELP's not-yet-bound greeting handling -- one
+# canonical set, not two copies drifting apart.
 _MENU_WORDS: Final = cli.GREETING_WORDS
 _YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
 _REBIND_SUBMIT_WORDS: Final = frozenset(
@@ -314,6 +333,49 @@ async def _submit_resolution(  # noqa: PLR0911 - explicit workflow outcomes
     return _resolution_prompt(draft)
 
 
+async def _is_payroll_resolution_draft(
+    jid: str,
+    draft: AttendanceResolutionDraft,
+) -> bool:
+    context = await create_attendance_reminder_context_service().load(jid)
+    return (
+        context is not None
+        and context.employee_id == draft.employee_id
+        and draft.attendance_key in context.attendance_keys
+    )
+
+
+async def _save_payroll_resolution_draft(
+    text: str,
+    jid: str,
+    draft: AttendanceResolutionDraft,
+) -> str:
+    proposal = select_payroll_proposal(draft, text)
+    if proposal is None:
+        return render_payroll_draft_prompt(draft)
+
+    state = create_attendance_resolution_dm_state_service()
+    saved = await state.save_proposal(
+        jid,
+        draft.employee_id,
+        draft.attendance_key,
+        proposal.resolution_type,
+        proposed_check_in=proposal.proposed_check_in,
+        proposed_check_out=proposal.proposed_check_out,
+        absence_type=proposal.absence_type,
+    )
+    if saved is None:
+        await state.clear(jid)
+        return (
+            "Data attendance barusan berubah, jadi draft ini tidak disimpan. "
+            "Balas `lengkapi` lagi untuk memuat kondisi terbaru."
+        )
+    return render_payroll_draft_prompt(
+        saved,
+        prefix="Oke, informasi attendance sudah tersimpan.",
+    )
+
+
 def _mask_jid(jid: str) -> str:
     number = jid.split("@", 1)[0]
     if len(number) <= 6:
@@ -364,16 +426,19 @@ async def _handle_rebind_stage(text: str, jid: str) -> str | None:
                 await rebind.clear_stage(jid)
                 return "Nomor ini ternyata sama dengan binding aktif; tidak perlu ganti nomor."
             await rebind.clear_stage(jid)
-            return "Binding lama sudah tidak ditemukan. Kirim NRP lagi untuk onboarding normal."
+            return "Binding lama sudah tidak ditemukan. Hubungi admin untuk didaftarkan ulang."
         return await _rebind_prompt(jid, staged)
 
+    # activation.claim()/pending_claim() belonged to the now-retired
+    # self-service NRP onboarding flow (cli._dm_onboarding) -- nothing calls
+    # claim() anymore, so pending_employee_id is always None here today.
+    # Left in place as a harmless guard in case that pairing is ever revived.
     pending_employee_id = await activation.pending_claim(jid)
     if pending_employee_id is None or lowered not in _YES_WORDS:
         return None
     old_jid = await create_rebind_onboarding_service().existing_jid(pending_employee_id)
     if old_jid is None or old_jid == jid:
         return None
-    # Intercept before cli._dm_onboarding calls bind(): no automatic takeover.
     await activation.clear_claim(jid)
     await rebind.stage(jid, pending_employee_id)
     return await _rebind_prompt(jid, pending_employee_id)
@@ -443,6 +508,57 @@ async def reply(text: str, jid: str) -> str:
         await state.clear(jid)
         return await run_sync(_legacy_dm_reply, text, jid)
 
+    if await _is_payroll_resolution_draft(jid, draft):
+        repeat_command = parse_payroll_repeat_command(text)
+        if not draft.has_proposal and repeat_command is not None:
+            context_store = create_attendance_reminder_context_service()
+            context = await context_store.load(jid)
+            if context is None:
+                await state.clear(jid)
+                return (
+                    "Sesi attendance ini sudah tidak aktif. "
+                    "Tunggu reminder berikutnya atau balas `lengkapi` dari reminder yang aktif."
+                )
+            return await handle_payroll_repeat_command(
+                command=repeat_command,
+                jid=jid,
+                draft=draft,
+                context=context,
+                now=datetime.now(JAKARTA),
+                state=state,
+                routing=create_attendance_reminder_routing_service(),
+            )
+
+        draft_command = parse_payroll_draft_command(text)
+        if draft.has_proposal and draft.has_evidence and draft_command is not None:
+            if draft_command is PayrollDraftCommand.EDIT:
+                return await edit_payroll_attendance_draft(
+                    jid=jid,
+                    draft=draft,
+                    state=state,
+                )
+            context_store = create_attendance_reminder_context_service()
+            context = await context_store.load(jid)
+            if context is None:
+                await state.clear(jid)
+                return (
+                    "Sesi review attendance ini sudah tidak aktif. "
+                    "Tunggu reminder berikutnya atau balas `lengkapi` dari reminder yang aktif."
+                )
+            return await submit_payroll_attendance_draft(
+                jid=jid,
+                draft=draft,
+                context=context,
+                now=datetime.now(JAKARTA),
+                resolutions=create_attendance_resolution_service(),
+                state=state,
+                context_store=context_store,
+                routing=create_attendance_reminder_routing_service(),
+            )
+        if looks_like_resolution_input(text):
+            return await _save_payroll_resolution_draft(text, jid, draft)
+        return render_payroll_draft_prompt(draft)
+
     if looks_like_resolution_input(text):
         return await _submit_resolution(text, jid, draft)
     return _resolution_prompt(draft)
@@ -457,6 +573,22 @@ async def evidence(jid: str, file_path: Path, caption: str) -> str:
     state = create_attendance_resolution_dm_state_service()
     existing = await state.pending(jid)
     if existing is not None:
+        if await _is_payroll_resolution_draft(jid, existing):
+            bound_employee_id = await create_activation_service().resolve(jid)
+            if bound_employee_id != existing.employee_id:
+                await state.clear(jid)
+                return (
+                    "Draft attendance ini tidak cocok dengan identity WhatsApp aktif. "
+                    "Balas `lengkapi` lagi setelah identity diperbaiki."
+                )
+            return await attach_payroll_attendance_evidence(
+                jid=jid,
+                draft=existing,
+                file_path=file_path,
+                caption=caption,
+                evidence=create_attendance_evidence_service(),
+                state=state,
+            )
         return _resolution_prompt(existing)
 
     activation = create_activation_service()

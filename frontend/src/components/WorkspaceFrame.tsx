@@ -6,6 +6,7 @@ import { monthInputValue, parseMonthInput } from "../app/period";
 import {
   AlertIcon,
   CheckDocIcon,
+  ClockIcon,
   ExternalIcon,
   GridIcon,
   MenuIcon,
@@ -19,22 +20,35 @@ import {
 
 interface Props {
   session: TalentOpsSession;
-  active: "command-center" | "talents" | "actions" | "bast" | "delivery" | "evidence" | "system" | "settings";
+  active:
+    | "command-center"
+    | "payroll"
+    | "talents"
+    | "actions"
+    | "attendance-gaps"
+    | "bast"
+    | "delivery"
+    | "evidence"
+    | "system"
+    | "settings";
   attentionCount: number;
   search: string;
   onSearch: (value: string) => void;
   onNavigate: (path: string) => void;
   onAskAi: () => void;
+  showAi?: boolean;
   children: ReactNode;
 }
 
 const NAV_ITEMS = [
   { key: "command-center", label: "Command Center", icon: GridIcon, path: "/admin/talentops/" },
+  { key: "payroll", label: "Payroll", icon: ClockIcon, path: "/admin/talentops/payroll" },
   { key: "talents", label: "Talents", icon: PersonIcon, path: "/admin/talentops/talents" },
   { key: "delivery", label: "Delivery", icon: TrendIcon, path: "/admin/talentops/delivery" },
   { key: "evidence", label: "Task Evidence", icon: CheckDocIcon, path: "/admin/talentops/evidence" },
   { key: "bast", label: "BAST readiness", icon: CheckDocIcon, path: "/admin/talentops/bast-readiness" },
   { key: "actions", label: "Actions", icon: AlertIcon, path: "/admin/talentops/actions" },
+  { key: "attendance-gaps", label: "Attendance gaps", icon: ClockIcon, path: "/admin/talentops/attendance-gaps" },
 ] as const;
 
 function initials(name: string): string {
@@ -54,6 +68,7 @@ export default function WorkspaceFrame({
   onSearch,
   onNavigate,
   onAskAi,
+  showAi = true,
   children,
 }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -182,17 +197,21 @@ export default function WorkspaceFrame({
               aria-label="Search talents"
             />
           </div>
-          <button className="ask-ai-button desktop-only" type="button" onClick={onAskAi}>
-            <SparkleIcon />Ask AI
-          </button>
-          <button
-            className="icon-button ai-mobile mobile-only"
-            type="button"
-            aria-label="Ask AI"
-            onClick={onAskAi}
-          >
-            <SparkleIcon />
-          </button>
+          {showAi ? (
+            <>
+              <button className="ask-ai-button desktop-only" type="button" onClick={onAskAi}>
+                <SparkleIcon />Ask AI
+              </button>
+              <button
+                className="icon-button ai-mobile mobile-only"
+                type="button"
+                aria-label="Ask AI"
+                onClick={onAskAi}
+              >
+                <SparkleIcon />
+              </button>
+            </>
+          ) : null}
           <div className="topbar-right">
             <div className="avatar" title={session.user.name}>{initials(session.user.name)}</div>
           </div>

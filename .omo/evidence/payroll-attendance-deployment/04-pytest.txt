@@ -1,0 +1,49 @@
+..............F...............ssssssssssss.sssssssssssss................ [ 13%]
+........................................................................ [ 27%]
+........................................................................ [ 41%]
+........................................................................ [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 83%]
+........................................................................ [ 97%]
+...............                                                          [100%]
+=================================== FAILURES ===================================
+__________________ test_bot_reply_refuses_container_mutation ___________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x7f79bb58b830>
+
+    def test_bot_reply_refuses_container_mutation(capsys: CaptureFixture[str]) -> None:
+        exit_code = cli.main(["bot-reply", "--text", "@BAST Bot restart worker"])
+    
+>       assert exit_code == 0
+E       assert 2 == 0
+
+tests/e2e/flows/test_cli.py:274: AssertionError
+----------------------------- Captured stderr call -----------------------------
+missing configuration for this command: application settings are invalid; check .env and the secret files
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_attendance_resolution.py:102: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:136: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:156: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:174: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:196: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:231: TEST_DATABASE_DSN is not configured
+SKIPPED [2] tests/integration/test_attendance_resolution.py:257: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_attendance_resolution.py:292: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_evidence.py:70: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_evidence.py:87: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_evidence.py:107: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:43: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:56: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:70: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:86: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:100: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_identity.py:109: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_payroll_cross_surface.py:151: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_payroll_cross_surface.py:215: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_postgres.py:55: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_postgres.py:74: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_postgres.py:87: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_postgres.py:139: TEST_DATABASE_DSN is not configured
+SKIPPED [1] tests/integration/test_postgres.py:149: TEST_DATABASE_DSN is not configured
+FAILED tests/e2e/flows/test_cli.py::test_bot_reply_refuses_container_mutation
+1 failed, 493 passed, 25 skipped in 13.62s
