@@ -11,6 +11,7 @@ from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.web.attendance_router import attendance_router
 from digital_bast.web.auth_router import auth_router
 from digital_bast.web.bast_closing_router import bast_closing_router
+from digital_bast.web.celerates_router import celerates_router
 from digital_bast.web.dependencies import WebDependencies
 from digital_bast.web.errors import (
     AuthenticationUnavailableError,
@@ -71,6 +72,7 @@ def create_app(dependencies: WebDependencies) -> FastAPI:  # noqa: PLR0915 - exp
     app.include_router(talent_mobile_page_router(talentops_dist))
     app.include_router(talentops_page_router(dependencies, talentops_dist))
     app.include_router(sync_router)
+    app.include_router(celerates_router(dependencies))
 
     async def _security_headers(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]

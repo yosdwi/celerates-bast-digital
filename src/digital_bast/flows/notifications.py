@@ -33,6 +33,7 @@ async def pmo_notifications_flow(scope_key: str = "default") -> dict[str, object
     payroll_digest = await create_payroll_group_digest_service(scope_key).run()
     bast: TalentReminderRunSummary = await create_bast_talent_reminder_service(scope_key).run()
     bast_digest = await create_bast_group_digest_service(scope_key).run()
+    celerates = await _celerates_campaign_tick()
 
     return {
         "pmo": asdict(pmo),
@@ -40,4 +41,30 @@ async def pmo_notifications_flow(scope_key: str = "default") -> dict[str, object
         "payroll_digest": asdict(payroll_digest),
         "bast": asdict(bast),
         "bast_digest": asdict(bast_digest),
+        "celerates_campaigns": celerates,
+    }
+
+
+async def _celerates_campaign_tick() -> dict[str, object]:
+    """One bounded dispatch tick for approved Celerates campaigns.
+
+    See docs/celerates-integration-v1.md.
+
+    Unconfigured integration is a no-op, never an error for the other campaigns.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from digital_bast.web.celerates_router import configured_services  # noqa: PLC0415
+
+    services = configured_services()
+    if services is None:
+        return {"configured": False}
+    report = await services.campaigns.dispatch(now=lambda: datetime.now(UTC))
+    return {
+        "configured": True,
+        "killed": report.killed,
+        "campaigns": [
+            {"id": str(tick.campaign_id), "sent": tick.sent, "state": tick.state.value}
+            for tick in report.campaigns
+        ],
     }
