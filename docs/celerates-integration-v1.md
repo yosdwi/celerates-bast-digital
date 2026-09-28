@@ -2,7 +2,7 @@
 
 Status: v1, implemented 2026-09-28 on `chore/session-20260918-fixes`.
 
-Product decision: Celerates is the single user-facing operational product. ConForm stays an independent bounded service that owns readiness, corrections, evidence, the canonical BAST, the canonical attendance CSV, WhatsApp identity and delivery. Consumer-side requirements, identity, RBAC, journeys and the retirement plan are in `celerates-digital-intelligence/docs/19-conform-operational-readiness.md` and ADR-019.
+Product decision: Celerates is the single user-facing operational product. ConForm stays an independent bounded service that owns readiness, corrections, evidence, the canonical BAST, the canonical attendance CSV, WhatsApp identity and delivery. Consumer-side requirements, identity, RBAC, journeys and the retirement plan are in `celerates-digital-intelligence/docs/21-conform-bounded-service-execution.md` (execution record; planning record doc 19) and ADR-019.
 
 This document is the **authoritative wire contract**. A breaking change requires `/api/celerates/v2`.
 
