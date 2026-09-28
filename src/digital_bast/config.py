@@ -142,6 +142,23 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="SYNC_INGEST_TOKEN_FILE",
     )
+    # Celerates integration adapter (/api/celerates/v1). A dedicated secret: the
+    # Celerates service is a different principal from the PAMA ingest bridge and
+    # the WhatsApp transport, so it never shares sync_ingest_token.
+    celerates_service_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="CELERATES_SERVICE_TOKEN",
+    )
+    celerates_service_token_file: FilePath | None = Field(
+        default=None,
+        validation_alias="CELERATES_SERVICE_TOKEN_FILE",
+    )
+    # Optional allow-list prefix: campaign links supplied by Celerates must start
+    # with it, so ConForm can never be asked to send a Talent an arbitrary URL.
+    celerates_public_url: AnyHttpUrl | None = Field(
+        default=None,
+        validation_alias="CELERATES_PUBLIC_URL",
+    )
     # Lets the web app proxy a narrow, read-only WhatsApp pairing status
     # (connection + QR) from wa-session into TalentOps -- shares
     # sync_ingest_token as the internal call's bearer token, same secret
@@ -319,6 +336,11 @@ class Settings(BaseSettings):
             self.sync_ingest_token,
             self.sync_ingest_token_file,
             "sync_ingest_token",
+        )
+        self.celerates_service_token = _read_secret(
+            self.celerates_service_token,
+            self.celerates_service_token_file,
+            "celerates_service_token",
         )
         self.groq_api_key = _read_secret(
             self.groq_api_key,
