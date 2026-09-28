@@ -490,7 +490,7 @@ def _campaign_json(
     for item in recipients:
         counts[item.state.value] = counts.get(item.state.value, 0) + 1
     preview = CeleratesCampaignPreview.message(
-        campaign.cycle_label, services.public_url or "https://celerates.example/go/…"
+        campaign.cycle_label, f"{services.public_url or 'https://celerates.example'}/go/…"
     )
     return {
         "id": str(campaign_id),
@@ -555,7 +555,7 @@ class CeleratesCampaignPreview:
 
         sample_day = datetime.now(JAKARTA).date()
         return compose_talent_message(
-            name="Nama Talent",
+            name="[Nama]",
             cycle_label=cycle_label,
             dates=(sample_day,),
             link=link,
