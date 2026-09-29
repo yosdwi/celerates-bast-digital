@@ -16,7 +16,7 @@ import json
 import re
 import secrets
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from functools import cache
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, cast
 from uuid import UUID, uuid4
@@ -27,7 +27,11 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Reque
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from digital_bast.application.attendance_closing import AttendanceClosingStatus
+from digital_bast.application.attendance_closing import (
+    AttendanceClosingReason,
+    AttendanceClosingStatus,
+    AttendanceScheduleState,
+)
 from digital_bast.application.attendance_closing_policy import payroll_cycle, payroll_cycle_for
 from digital_bast.application.bast_generation_jobs import (
     BastGenerationJobService,
@@ -41,6 +45,11 @@ from digital_bast.application.celerates_campaigns import (
     CampaignLink,
     CampaignPolicy,
     CeleratesCampaignService,
+    calendar_month_label,
+)
+from digital_bast.application.celerates_direct_messages import (
+    CeleratesDirectMessageService,
+    DirectMessageError,
 )
 from digital_bast.application.payroll_export import PayrollExportService
 from digital_bast.application.payroll_read import PayrollReadService
@@ -49,12 +58,16 @@ from digital_bast.application.talentops import TalentOpsService
 from digital_bast.bot.attendance_evidence import AttendanceEvidenceService
 from digital_bast.bot.attendance_resolution import AttendanceResolutionService, SubmitOutcome
 from digital_bast.bot.evidence import UploadOutcome
+from digital_bast.bot.requirement_aware_evidence import (
+    RequirementAwareTaskEvidenceSubmissionService,
+)
 from digital_bast.config import SettingsConfigurationError, get_settings
 from digital_bast.domain.completion import DateRange
 from digital_bast.domain.identity import daily_key
 from digital_bast.domain.time import JAKARTA, month_dates
 from digital_bast.infrastructure.celerates_integration_store import (
     PostgresCampaignStore,
+    PostgresDirectMessageStore,
     PostgresIdempotencyStore,
     PostgresIntegrationControl,
     PostgresIntegrationReads,
@@ -86,8 +99,13 @@ if TYPE_CHECKING:
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
     from digital_bast.application.bast_generation_jobs import BastGenerationJob
-    from digital_bast.application.payroll_read import PayrollDayView, PayrollOverview
+    from digital_bast.application.payroll_read import (
+        PayrollDayView,
+        PayrollOverview,
+        PayrollTalentView,
+    )
     from digital_bast.application.payroll_review import PayrollReviewItem
+    from digital_bast.bot.task_evidence_submission import TaskEvidenceCandidate
     from digital_bast.web.dependencies import WebDependencies
 
 API_PREFIX: Final = "/api/celerates/v1"
@@ -103,6 +121,9 @@ CAPABILITIES: Final = (
     "campaigns",
     "pmo_summary",
     "source_freshness",
+    "talent_attendance_log",
+    "task_evidence",
+    "direct_messages",
 )
 _KEY = re.compile(r"^[A-Za-z0-9:_.\-]{8,160}$")
 _SOURCE_LABELS: Final = {
@@ -111,6 +132,14 @@ _SOURCE_LABELS: Final = {
     "iot_sheet": "IoT task source",
 }
 _ALL_ACTIONS: Final = ("worked", "sakit", "izin", "cuti", "libur")
+_DIRECT_STATUS: Final = {
+    "talent_not_found": 404,
+    "link_not_allowed": 422,
+    "invalid_link_expiry": 422,
+    "transport_unavailable": 503,
+    "transport_auth_failed": 503,
+    "delivery_failed": 502,
+}
 
 
 class AdapterError(Exception):
@@ -160,30 +189,69 @@ class CeleratesServices:
     reads: PostgresIntegrationReads
     summaries: PostgresPmoSummaryLedger
     outbound: BotBridgeWhatsAppOutboundGateway | UnavailableWhatsAppOutboundGateway
+    tasks: RequirementAwareTaskEvidenceSubmissionService
+    direct_messages: CeleratesDirectMessageService
+
+
+def _calendar(year: int, month: int) -> DateRange:
+    days = month_dates(year, month)
+    return DateRange(days[0], days[-1])
 
 
 class _PayrollAudience:
-    """Campaign audience = the live Payroll projection + WhatsApp-bound boolean."""
+    """Reminder audience = live Payroll projection + tasks without evidence + bound boolean.
 
-    def __init__(self, payroll: PayrollReadService, reads: PostgresIntegrationReads) -> None:
+    Attendance comes from the Payroll cycle; tasks from the calendar month the
+    cycle is named after (the Talent Mobile task period and rule).
+    """
+
+    def __init__(
+        self,
+        payroll: PayrollReadService,
+        reads: PostgresIntegrationReads,
+        tasks: RequirementAwareTaskEvidenceSubmissionService,
+    ) -> None:
         self._payroll = payroll
         self._reads = reads
+        self._tasks = tasks
+
+    async def _missing_tasks(self, employee_id: str, month: DateRange) -> tuple[str, ...]:
+        return tuple(
+            item.task_key
+            for item in await self._tasks.list_candidates(employee_id)
+            if month.start <= item.work_date <= month.end and item.evidence_count == 0
+        )
+
+    async def _member(
+        self, talent: PayrollTalentView, month: DateRange, bound: frozenset[str]
+    ) -> AudienceMember:
+        return AudienceMember(
+            employee_id=talent.employee_id,
+            nrp=talent.nrp,
+            name=talent.name,
+            actionable_dates=tuple(
+                day.work_date for day in talent.days if day.talent_action_required
+            ),
+            whatsapp_bound=talent.employee_id in bound,
+            missing_task_keys=await self._missing_tasks(talent.employee_id, month),
+        )
 
     async def audience(self, cycle: PayrollCycle) -> Mapping[str, AudienceMember]:
         overview = await self._payroll.overview(cycle, now=datetime.now(UTC))
         bound = await self._reads.bound_employee_ids()
+        month = _calendar(cycle.label_year, cycle.label_month)
         return {
-            talent.employee_id: AudienceMember(
-                employee_id=talent.employee_id,
-                nrp=talent.nrp,
-                name=talent.name,
-                actionable_dates=tuple(
-                    day.work_date for day in talent.days if day.talent_action_required
-                ),
-                whatsapp_bound=talent.employee_id in bound,
-            )
+            talent.employee_id: await self._member(talent, month, bound)
             for talent in overview.talents
         }
+
+    async def open_items(self, employee_id: str, cycle: PayrollCycle) -> AudienceMember | None:
+        overview = await self._payroll.overview(cycle, now=datetime.now(UTC))
+        talent = next((item for item in overview.talents if item.employee_id == employee_id), None)
+        if talent is None:
+            return None
+        bound = await self._reads.bound_employee_ids()
+        return await self._member(talent, _calendar(cycle.label_year, cycle.label_month), bound)
 
 
 @cache
@@ -230,14 +298,26 @@ def _configured() -> CeleratesServices | None:
     public_url = (
         str(settings.celerates_public_url).rstrip("/") if settings.celerates_public_url else None
     )
+    tasks = RequirementAwareTaskEvidenceSubmissionService(dsn)
+    audience = _PayrollAudience(payroll, reads, tasks)
+    jids = PostgresWhatsAppIdentityResolver(dsn)
     campaigns = CeleratesCampaignService(
         store,
-        _PayrollAudience(payroll, reads),
-        PostgresWhatsAppIdentityResolver(dsn),
+        audience,
+        jids,
         outbound,
         cycle_for=payroll_cycle,
         new_id=uuid4,
         sleep=anyio.sleep,
+        allowed_link_prefix=public_url,
+    )
+    direct_messages = CeleratesDirectMessageService(
+        PostgresDirectMessageStore(dsn),
+        audience,
+        jids,
+        outbound,
+        new_id=uuid4,
+        clock=lambda: datetime.now(UTC),
         allowed_link_prefix=public_url,
     )
     directory = PostgresTalentWhatsAppDirectory(dsn)
@@ -267,6 +347,8 @@ def _configured() -> CeleratesServices | None:
         reads=reads,
         summaries=PostgresPmoSummaryLedger(dsn),
         outbound=outbound,
+        tasks=tasks,
+        direct_messages=direct_messages,
     )
 
 
@@ -313,9 +395,16 @@ def _cycle(year: int | None, month: int | None) -> PayrollCycle:
     return payroll_cycle(year, month)
 
 
-def _calendar(year: int, month: int) -> DateRange:
-    days = month_dates(year, month)
-    return DateRange(days[0], days[-1])
+def _month(year: int | None, month: int | None) -> DateRange:
+    """The BAST calendar month (Talent Mobile task period); default: the current month."""
+    if (year is None) != (month is None):
+        raise AdapterError(422, "invalid_period", "year and month must be provided together")
+    if year is None or month is None:
+        today = datetime.now(JAKARTA).date()
+        return _calendar(today.year, today.month)
+    if not (2020 <= year <= 2100 and 1 <= month <= 12):  # noqa: PLR2004
+        raise AdapterError(422, "invalid_period", "Invalid year or month")
+    return _calendar(year, month)
 
 
 def _previous(cycle: PayrollCycle) -> PayrollCycle:
@@ -346,9 +435,8 @@ def _gap(day: PayrollDayView) -> Literal["missing_clock_in", "missing_clock_out"
     return "missing_clock_in" if day.raw_check_in is None else "missing_clock_out"
 
 
-def _requirement(day: PayrollDayView) -> dict[str, object]:
-    gap = _gap(day)
-    correction = (
+def _correction_json(day: PayrollDayView) -> dict[str, object] | None:
+    return (
         None
         if day.resolution_id is None
         else {
@@ -361,6 +449,11 @@ def _requirement(day: PayrollDayView) -> dict[str, object]:
             "rejection_reason": day.rejection_reason,
         }
     )
+
+
+def _requirement(day: PayrollDayView) -> dict[str, object]:
+    gap = _gap(day)
+    correction = _correction_json(day)
     return {
         "requirement_id": f"attendance:{day.work_date.isoformat()}",
         "kind": "attendance_gap",
@@ -374,6 +467,57 @@ def _requirement(day: PayrollDayView) -> dict[str, object]:
         "allowed_actions": list(_ALL_ACTIONS) if gap == "missing_both" else ["worked"],
         "has_evidence": day.has_evidence,
         "correction": correction,
+    }
+
+
+AttendanceDayState = Literal[
+    "complete", "needs_action", "waiting_review", "excused", "unverified", "not_required"
+]
+
+
+def attendance_day_state(day: PayrollDayView) -> AttendanceDayState:
+    """Contract `state` for one projected day. A mapping only: the projection decides.
+
+    - OFF schedule (reason SCHEDULED_OFF) -> not_required.
+    - talent_action_required (GAP_UNCOVERED, CORRECTION_REJECTED, and SOURCE_UNAVAILABLE
+      on a working day, exactly the /talents/requirements needs_action set) -> needs_action.
+    - WAITING_SUBMITTED (GAP_COVERED_BY_SUBMITTED_REQUEST) -> waiting_review.
+    - COMPLETE via an approved absence correction (sakit/izin/cuti/libur) -> excused.
+    - Any other COMPLETE (RAW_COMPLETE, approved clock correction) -> complete.
+    - Anything else the projection leaves unresolved without Talent action -> unverified.
+    """
+    if day.schedule_state is AttendanceScheduleState.OFF:
+        return "not_required"
+    if day.talent_action_required:
+        return "needs_action"
+    if day.status is AttendanceClosingStatus.WAITING_SUBMITTED:
+        return "waiting_review"
+    if day.status is AttendanceClosingStatus.COMPLETE:
+        if (
+            day.reason is AttendanceClosingReason.GAP_COVERED_BY_APPROVED_CORRECTION
+            and day.resolution_type == "absence"
+        ):
+            return "excused"
+        return "complete"
+    return "unverified"
+
+
+def _day_gap(day: PayrollDayView, state: AttendanceDayState) -> str | None:
+    if state == "not_required" or (day.raw_check_in is not None and day.raw_check_out is not None):
+        return None
+    return _gap(day)
+
+
+def _task_json(item: TaskEvidenceCandidate) -> dict[str, object]:
+    return {
+        "task_key": item.task_key,
+        "title": item.title,
+        "work_date": item.work_date.isoformat(),
+        "task_source": item.task_source,
+        "status": "Closed",
+        "evidence_count": item.evidence_count,
+        "staged_count": item.staged_count,
+        "complete": item.evidence_count > 0,
     }
 
 
@@ -460,7 +604,21 @@ class _CampaignBody(_PeriodBody):
 class _LinkBody(BaseModel):
     employee_id: str = Field(min_length=1, max_length=120)
     url: str = Field(min_length=8, max_length=500)
-    expires_at: datetime
+    expires_at: datetime | None = None
+
+
+class _DirectLinkBody(BaseModel):
+    url: str = Field(min_length=8, max_length=500)
+    expires_at: datetime | None = None
+
+
+class _DirectMessageBody(_PeriodBody):
+    employee_id: str = Field(min_length=1, max_length=120)
+    link: _DirectLinkBody
+
+
+class _TaskSubmitBody(_PeriodBody):
+    employee_id: str = Field(min_length=1, max_length=120)
 
 
 class _ApproveBody(BaseModel):
@@ -490,7 +648,9 @@ def _campaign_json(
     for item in recipients:
         counts[item.state.value] = counts.get(item.state.value, 0) + 1
     preview = CeleratesCampaignPreview.message(
-        campaign.cycle_label, f"{services.public_url or 'https://celerates.example'}/go/…"
+        campaign.cycle_label,
+        f"{services.public_url or 'https://celerates.example'}/go/…",
+        calendar_month_label(campaign.cycle_year, campaign.cycle_month),
     )
     return {
         "id": str(campaign_id),
@@ -526,6 +686,7 @@ def _campaign_json(
                 "name": item.name,
                 "eligibility": item.eligibility,
                 "actionable_days": item.actionable_days,
+                "missing_tasks": item.missing_tasks,
                 "state": item.state.value,
                 "attempt_count": item.attempt_count,
                 "last_error": item.last_error,
@@ -548,7 +709,7 @@ def _campaign_json(
 
 class CeleratesCampaignPreview:
     @staticmethod
-    def message(cycle_label: str, link: str) -> str:
+    def message(cycle_label: str, link: str, task_month_label: str) -> str:
         from digital_bast.application.celerates_campaigns import (  # noqa: PLC0415
             compose_talent_message,
         )
@@ -559,7 +720,9 @@ class CeleratesCampaignPreview:
             cycle_label=cycle_label,
             dates=(sample_day,),
             link=link,
-            expires_at=datetime.now(UTC) + timedelta(hours=72),
+            expires_at=None,
+            missing_tasks=1,
+            task_month_label=task_month_label,
         )
 
 
@@ -592,6 +755,15 @@ def celerates_router(  # noqa: C901, PLR0915
                 return await handler(*args, **kwargs)
             except AdapterError as error:
                 return _error(error)
+            except DirectMessageError as error:
+                return _error(
+                    AdapterError(
+                        _DIRECT_STATUS.get(error.code, 409),
+                        error.code,
+                        error.message,
+                        retryable=error.retryable,
+                    )
+                )
             except CampaignError as error:
                 status = 404 if error.code == "campaign_not_found" else 409
                 if error.code in {
@@ -737,6 +909,177 @@ def celerates_router(  # noqa: C901, PLR0915
                 "requirements": [_requirement(day) for day in open_days],
             },
             headers={"Cache-Control": "no-store"},
+        )
+
+    @endpoint
+    async def attendance_log(
+        request: Request, employee_id: str, year: int | None = None, month: int | None = None
+    ) -> Response:
+        svc = _authorize(request, services())
+        cycle = _cycle(year, month)
+        overview = await _overview(svc, cycle)
+        talent = next((item for item in overview.talents if item.employee_id == employee_id), None)
+        if talent is None:
+            raise AdapterError(404, "talent_not_found", "Talent not found or not active")
+        facts = await svc.reads.attendance_facts(employee_id, cycle.period)
+        days: list[dict[str, object]] = []
+        for day in talent.days:
+            state = attendance_day_state(day)
+            fact = facts.get(day.work_date)
+            days.append(
+                {
+                    "work_date": day.work_date.isoformat(),
+                    "check_in": day.raw_check_in,
+                    "check_out": day.raw_check_out,
+                    "origin": None if fact is None else fact.origin,
+                    "state": state,
+                    "gap": _day_gap(day, state),
+                    "reason": day.reason.value,
+                    "evidence_count": 0 if fact is None else fact.evidence_count,
+                    "correction": _correction_json(day),
+                }
+            )
+        return JSONResponse(
+            {
+                "employee_id": employee_id,
+                "cycle": _cycle_json(cycle),
+                "source": "conform:pama",
+                "evaluated_through": _iso(overview.evaluated_through),
+                "days": days,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _require_employee(svc: CeleratesServices, employee_id: str) -> None:
+        if not any(str(item.id) == employee_id for item in await svc.employees.load()):
+            raise AdapterError(404, "talent_not_found", "Talent not found or not active")
+
+    async def _period_tasks(
+        svc: CeleratesServices, employee_id: str, period: DateRange
+    ) -> tuple[TaskEvidenceCandidate, ...]:
+        # Talent Mobile rule: required-category Closed tasks in the calendar month.
+        return tuple(
+            item
+            for item in await svc.tasks.list_candidates(employee_id)
+            if period.start <= item.work_date <= period.end
+        )
+
+    @endpoint
+    async def talent_tasks(
+        request: Request, employee_id: str, year: int | None = None, month: int | None = None
+    ) -> Response:
+        svc = _authorize(request, services())
+        period = _month(year, month)
+        await _require_employee(svc, employee_id)
+        items = sorted(
+            await _period_tasks(svc, employee_id, period),
+            key=lambda item: (item.work_date, item.task_key),
+            reverse=True,
+        )
+        items.sort(key=lambda item: item.evidence_count > 0)  # stable: missing first
+        complete = sum(item.evidence_count > 0 for item in items)
+        return JSONResponse(
+            {
+                "employee_id": employee_id,
+                "period": {
+                    "year": period.start.year,
+                    "month": period.start.month,
+                    "start": period.start.isoformat(),
+                    "end": period.end.isoformat(),
+                    "label": calendar_month_label(period.start.year, period.start.month),
+                },
+                "summary": {
+                    "total": len(items),
+                    "complete": complete,
+                    "missing": len(items) - complete,
+                    "staged": sum(
+                        item.evidence_count == 0 and item.staged_count > 0 for item in items
+                    ),
+                },
+                "items": [_task_json(item) for item in items],
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @endpoint
+    async def stage_task_evidence(  # noqa: PLR0913, PLR0917
+        request: Request,
+        task_key: str,
+        employee_id: Annotated[str, Form(max_length=120)],
+        year: Annotated[int, Form()],
+        month: Annotated[int, Form()],
+        file: Annotated[UploadFile, File()],
+        caption: Annotated[str, Form(max_length=500)] = "",
+    ) -> Response:
+        svc = _authorize(request, services())
+        actor = _actor(request)
+        key = _key(request)
+        period = _month(year, month)
+        try:
+            content = await read_upload(file)
+        except HTTPException as error:
+            if error.status_code == 413:  # noqa: PLR2004
+                raise AdapterError(413, "file_too_large", "Evidence is limited to 5 MB") from error
+            raise
+        request_hash = _request_hash(
+            {
+                "employee_id": employee_id,
+                "year": year,
+                "month": month,
+                "task_key": task_key,
+                "caption": caption,
+                "file": hashlib.sha256(content).hexdigest(),
+            }
+        )
+
+        async def run() -> tuple[int, object]:
+            candidates = await _period_tasks(svc, employee_id, period)
+            if not any(item.task_key == task_key for item in candidates):
+                raise AdapterError(404, "task_not_found", "Task is not open in this period")
+            result = await svc.tasks.stage(employee_id, task_key, content, caption.strip())
+            if result.outcome is UploadOutcome.STORED:
+                return 201, {"status": "staged"}
+            if result.outcome is UploadOutcome.DUPLICATE:
+                return 201, {"status": "already_present"}
+            if result.outcome is UploadOutcome.TOO_LARGE:
+                raise AdapterError(413, "file_too_large", "Evidence is limited to 5 MB")
+            if result.outcome is UploadOutcome.UNSUPPORTED_TYPE:
+                raise AdapterError(415, "unsupported_type", "Use a JPG, PNG or WebP image")
+            raise AdapterError(409, "task_changed", "The task changed; evidence was not stored")
+
+        return await _replay_or_run(
+            svc,
+            key=key,
+            route=f"task-evidence:{task_key}",
+            request_hash=request_hash,
+            actor=actor,
+            run=run,
+        )
+
+    @endpoint
+    async def submit_tasks(request: Request) -> Response:
+        svc = _authorize(request, services())
+        actor = _actor(request)
+        key = _key(request)
+        body = _model(_TaskSubmitBody, await _json(request))
+        period = _calendar(body.year, body.month)
+
+        async def run() -> tuple[int, object]:
+            candidates = await _period_tasks(svc, body.employee_id, period)
+            if not any(item.staged_count > 0 for item in candidates):
+                raise AdapterError(409, "nothing_staged", "No staged evidence to submit")
+            submitted = await svc.tasks.submit(body.employee_id, period, actor)
+            if submitted <= 0:
+                raise AdapterError(409, "task_changed", "Tasks changed; refresh and try again")
+            return 200, {"status": "submitted", "count": submitted}
+
+        return await _replay_or_run(
+            svc,
+            key=key,
+            route="task-submit",
+            request_hash=_request_hash(body.model_dump()),
+            actor=actor,
+            run=run,
         )
 
     @endpoint
@@ -1219,7 +1562,11 @@ def celerates_router(  # noqa: C901, PLR0915
             await svc.campaigns.approve(
                 campaign_id,
                 tuple(
-                    CampaignLink(item.employee_id, item.url, item.expires_at.astimezone(UTC))
+                    CampaignLink(
+                        item.employee_id,
+                        item.url,
+                        None if item.expires_at is None else item.expires_at.astimezone(UTC),
+                    )
                     for item in body.links
                 ),
                 actor=actor,
@@ -1288,6 +1635,41 @@ def celerates_router(  # noqa: C901, PLR0915
                     for tick in report.campaigns
                 ],
             }
+        )
+
+    # -- direct message ----------------------------------------------------------
+    @endpoint
+    async def direct_message(request: Request) -> Response:
+        svc = _authorize(request, services())
+        actor = _actor(request)
+        key = _key(request)
+        body = _model(_DirectMessageBody, await _json(request))
+
+        async def run() -> tuple[int, object]:
+            result = await svc.direct_messages.send(
+                body.employee_id,
+                payroll_cycle(body.year, body.month),
+                link_url=body.link.url,
+                link_expires_at=None
+                if body.link.expires_at is None
+                else body.link.expires_at.astimezone(UTC),
+                actor=actor,
+            )
+            if result.status == "unknown":
+                return 202, {"status": "unknown", "message_id": str(result.message_id)}
+            return 201, {
+                "status": "sent",
+                "message_id": str(result.message_id),
+                "sent_at": _iso(result.sent_at),
+            }
+
+        return await _replay_or_run(
+            svc,
+            key=key,
+            route="talent-message",
+            request_hash=_request_hash(body.model_dump()),
+            actor=actor,
+            run=run,
         )
 
     @endpoint
@@ -1376,6 +1758,11 @@ def celerates_router(  # noqa: C901, PLR0915
         ("/readiness", readiness, "GET"),
         ("/talents/lookup", lookup, "GET"),
         ("/talents/requirements", requirements, "GET"),
+        ("/talents/attendance", attendance_log, "GET"),
+        ("/talents/tasks", talent_tasks, "GET"),
+        ("/talents/tasks/submit", submit_tasks, "POST"),
+        ("/talents/tasks/{task_key}/evidence", stage_task_evidence, "POST"),
+        ("/talents/messages", direct_message, "POST"),
         ("/talents/attendance-corrections", submit_correction, "POST"),
         ("/attendance-corrections", corrections, "GET"),
         ("/attendance-corrections/{request_id}", correction, "GET"),

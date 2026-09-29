@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol, final
 
+from digital_bast.domain.completion import MONTH_NAMES
 from digital_bast.domain.time import JAKARTA
 
 if TYPE_CHECKING:
@@ -151,6 +152,7 @@ class Recipient:
     last_error: str | None = None
     provider_message_id: str | None = None
     sent_at: datetime | None = None
+    missing_tasks: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,13 +162,20 @@ class AudienceMember:
     name: str
     actionable_dates: tuple[date, ...]
     whatsapp_bound: bool
+    # Closed tasks in the cycle's calendar month (year, month) without evidence.
+    missing_task_keys: tuple[str, ...] = ()
+
+    @property
+    def has_blocker(self) -> bool:
+        return bool(self.actionable_dates or self.missing_task_keys)
 
 
 @dataclass(frozen=True, slots=True)
 class CampaignLink:
     employee_id: str
     url: str
-    expires_at: datetime
+    # None: the link never expires by time (Celerates enforces single use).
+    expires_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,9 +236,15 @@ class OutboundGateway(Protocol):
     async def send(self, jid: str, text: str, request_id: str) -> WhatsAppSendReceipt: ...
 
 
-def blocker_fingerprint(dates: tuple[date, ...]) -> str:
+def blocker_fingerprint(dates: tuple[date, ...], task_keys: tuple[str, ...] = ()) -> str:
     joined = ",".join(sorted(item.isoformat() for item in dates))
+    if task_keys:
+        joined += "|tasks:" + ",".join(sorted(task_keys))
     return hashlib.sha256(joined.encode()).hexdigest()[:32]
+
+
+def calendar_month_label(year: int, month: int) -> str:
+    return f"{MONTH_NAMES[month - 1]} {year}"
 
 
 def _short_date(value: date) -> str:
@@ -241,30 +256,54 @@ def _expiry_label(value: datetime) -> str:
     return f"{local.day} {_MONTHS[local.month - 1]} {local:%H:%M} WIB"
 
 
-def compose_talent_message(
+def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
     *,
     name: str,
     cycle_label: str,
     dates: tuple[date, ...],
     link: str,
-    expires_at: datetime,
+    expires_at: datetime | None,
+    missing_tasks: int = 0,
+    task_month_label: str | None = None,
 ) -> str:
     """Personal DM. Carries only an opaque Celerates link -- no ids or phone numbers."""
     first = name.split(maxsplit=1)[0] if name.strip() else "Talent"
     ordered = sorted(dates)
-    listed = ", ".join(_short_date(item) for item in ordered[:_MAX_LISTED_DATES])
-    more = (
-        f" dan {len(ordered) - _MAX_LISTED_DATES} lainnya"
-        if len(ordered) > _MAX_LISTED_DATES
-        else ""
-    )
+    month = task_month_label or "ini"
+    tasks = f"{missing_tasks} task bulan {month} yang belum ada evidence-nya"
+    if ordered:
+        listed = ", ".join(_short_date(item) for item in ordered[:_MAX_LISTED_DATES])
+        more = (
+            f" dan {len(ordered) - _MAX_LISTED_DATES} lainnya"
+            if len(ordered) > _MAX_LISTED_DATES
+            else ""
+        )
+        opening = (
+            f"Halo {first}, ada {len(ordered)} hari attendance periode {cycle_label} "
+            f"yang perlu dilengkapi ({listed}{more})"
+        )
+        opening += f", dan {tasks}.\n" if missing_tasks > 0 else ".\n"
+    elif missing_tasks > 0:
+        opening = f"Halo {first}, ada {tasks}.\n"
+    else:
+        done = f" dan task bulan {task_month_label}" if task_month_label else ""
+        return (
+            f"Halo {first}, attendance periode {cycle_label}{done} sudah lengkap. "
+            "Terima kasih!\n"
+            f"Cek di Celerates: {link}\n"
+            f"{_link_note(expires_at)}"
+        )
     return (
-        f"Halo {first}, ada {len(ordered)} hari attendance periode {cycle_label} "
-        f"yang perlu dilengkapi ({listed}{more}).\n"
+        f"{opening}"
         f"Lengkapi di Celerates: {link}\n"
-        f"Tautan pribadi, berlaku sampai {_expiry_label(expires_at)}. "
-        "Abaikan pesan ini bila sudah dilengkapi."
+        f"{_link_note(expires_at)} Abaikan pesan ini bila sudah dilengkapi."
     )
+
+
+def _link_note(expires_at: datetime | None) -> str:
+    if expires_at is None:
+        return "Tautan pribadi, jangan dibagikan."
+    return f"Tautan pribadi, berlaku sampai {_expiry_label(expires_at)}."
 
 
 @final
@@ -320,10 +359,13 @@ class CeleratesCampaignService:
                 name=member.name,
                 eligibility="eligible" if member.whatsapp_bound else "not_bound",
                 actionable_days=len(member.actionable_dates),
-                blocker_fingerprint=blocker_fingerprint(member.actionable_dates),
+                blocker_fingerprint=blocker_fingerprint(
+                    member.actionable_dates, member.missing_task_keys
+                ),
+                missing_tasks=len(member.missing_task_keys),
             )
             for member in sorted(members.values(), key=lambda item: (item.name, item.employee_id))
-            if member.actionable_dates
+            if member.has_blocker
         )
         await self._store.create(campaign, recipients)
         return campaign.id
@@ -353,7 +395,7 @@ class CeleratesCampaignService:
         for link in links:
             if self._allowed_prefix and not link.url.startswith(self._allowed_prefix):
                 _refuse("link_not_allowed", "Link is outside the Celerates public URL")
-            if not now < link.expires_at <= now + MAX_LINK_TTL:
+            if link.expires_at is not None and not now < link.expires_at <= now + MAX_LINK_TTL:
                 _refuse("invalid_link_expiry", "Link expiry must be within 7 days")
         for recipient in recipients:
             link = by_employee.get(recipient.employee_id)
@@ -502,11 +544,11 @@ class CeleratesCampaignService:
                 break
             member = members.get(recipient.employee_id)
             skip: RecipientState | None = None
-            if member is None or not member.actionable_dates:
+            if member is None or not member.has_blocker:
                 skip = RecipientState.SKIPPED_RESOLVED
-            elif recipient.link_url is None or recipient.link_expires_at is None:
+            elif recipient.link_url is None:
                 skip = RecipientState.SKIPPED_NO_ACCOUNT
-            elif recipient.link_expires_at <= moment:
+            elif recipient.link_expires_at is not None and recipient.link_expires_at <= moment:
                 skip = RecipientState.SKIPPED_LINK_EXPIRED
             elif await self._store.recent_send_exists(
                 recipient.employee_id, moment - RECENT_SEND_WINDOW, campaign.id
@@ -530,7 +572,9 @@ class CeleratesCampaignService:
                 cycle_label=campaign.cycle_label,
                 dates=member.actionable_dates,
                 link=recipient.link_url or "",
-                expires_at=recipient.link_expires_at or moment,
+                expires_at=recipient.link_expires_at,
+                missing_tasks=len(member.missing_task_keys),
+                task_month_label=calendar_month_label(campaign.cycle_year, campaign.cycle_month),
             )
             receipt = await self._gateway.send(jid, text, f"celerates-campaign:{recipient.id}")
             attempts = recipient.attempt_count + 1
@@ -563,8 +607,11 @@ class CeleratesCampaignService:
                     last_error=error,
                     provider_message_id=receipt.provider_message_id,
                     sent_at=moment if state is RecipientState.SENT else recipient.sent_at,
-                    blocker_fingerprint=blocker_fingerprint(member.actionable_dates),
+                    blocker_fingerprint=blocker_fingerprint(
+                        member.actionable_dates, member.missing_task_keys
+                    ),
                     actionable_days=len(member.actionable_dates),
+                    missing_tasks=len(member.missing_task_keys),
                 ),
                 actor=actor,
                 event=f"recipient_{state.value}",
