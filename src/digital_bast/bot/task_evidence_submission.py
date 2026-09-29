@@ -268,7 +268,9 @@ class TaskEvidenceSubmissionService:
                         caption, content_type, byte_size, sha256, image,
                         now(), %s
                     FROM moved
-                    ON CONFLICT (task_id, sha256) DO NOTHING
+                    -- No conflict target: migration 0011 dropped the (task_id, sha256)
+                    -- unique index on purpose, and a target without it is an error.
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         employee_id,
