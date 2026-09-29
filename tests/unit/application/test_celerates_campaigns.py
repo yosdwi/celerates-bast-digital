@@ -18,6 +18,7 @@ from digital_bast.application.celerates_campaigns import (
     CeleratesCampaignService,
     Recipient,
     RecipientState,
+    blocker_fingerprint,
     compose_talent_message,
 )
 from digital_bast.application.talentops_followups import WhatsAppSendReceipt
@@ -343,3 +344,62 @@ def test_talent_message_carries_only_the_opaque_link() -> None:
     assert f"{PREFIX}/go/abc" in text
     assert "MTG" not in text
     assert "@c.us" not in text
+
+
+def task_member(
+    employee_id: str, name: str, *, dates: tuple[date, ...] = (), tasks: tuple[str, ...] = ("t1",)
+) -> AudienceMember:
+    return AudienceMember(
+        employee_id,
+        f"NRP{employee_id[-1]}",
+        name,
+        dates,
+        whatsapp_bound=True,
+        missing_task_keys=tasks,
+    )
+
+
+async def test_audience_includes_tasks_without_evidence_and_fingerprints_both() -> None:
+    svc, store, _, _, _ = service(
+        {
+            "E-1": task_member("E-1", "Ayu"),
+            "E-2": task_member("E-2", "Bima", dates=(DAY,), tasks=()),
+            "E-3": task_member("E-3", "Citra", tasks=()),
+        }
+    )
+    _ = await svc.create(payroll_cycle(2026, 9), CampaignPolicy(), actor="pmo", now=NOW)
+    rows = {r.employee_id: r for r in store.recipients.values()}
+    assert set(rows) == {"E-1", "E-2"}, "attendance days OR tasks without evidence"
+    assert (rows["E-1"].actionable_days, rows["E-1"].missing_tasks) == (0, 1)
+    assert blocker_fingerprint((DAY,)) != blocker_fingerprint((DAY,), ("t1",))
+    assert blocker_fingerprint((DAY,)) == rows["E-2"].blocker_fingerprint
+
+
+async def test_blocker_recheck_at_dispatch_covers_tasks() -> None:
+    _, store, audience, gateway, _, svc = await started(
+        {
+            "E-1": task_member("E-1", "Ayu", dates=(DAY,)),
+            "E-2": task_member("E-2", "Bima", dates=(DAY,)),
+        }
+    )
+    audience.members["E-1"] = task_member("E-1", "Ayu", tasks=())  # everything resolved
+    audience.members["E-2"] = task_member("E-2", "Bima", tasks=("t1", "t2"))  # tasks still open
+    _ = await svc.dispatch(now=lambda: NOW)
+    assert states(store) == {"E-1": RecipientState.SKIPPED_RESOLVED, "E-2": RecipientState.SENT}
+    [(_, text, _)] = gateway.sent
+    assert text.startswith("Halo Bima, ada 2 task bulan September 2026 yang belum ada evidence")
+
+
+async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
+    svc, store, _, gateway, _ = service({"E-1": task_member("E-1", "Ayu", dates=(DAY,))})
+    campaign_id = await svc.create(payroll_cycle(2026, 9), CampaignPolicy(), actor="pmo", now=NOW)
+    await svc.approve(
+        campaign_id, (CampaignLink("E-1", f"{PREFIX}/go/1", None),), actor="lead", now=NOW
+    )
+    later = NOW + timedelta(days=30)
+    _ = await svc.dispatch(now=lambda: later)
+    assert states(store)["E-1"] is RecipientState.SENT
+    text = gateway.sent[0][1]
+    assert "hari attendance periode Payroll September 2026" in text
+    assert "1 task bulan September 2026" in text, "the message mentions both counts"
+    assert "berlaku sampai" not in text

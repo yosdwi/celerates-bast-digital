@@ -36,6 +36,7 @@ from digital_bast.bot.attendance_reminder_runtime import (
     create_attendance_reminder_routing_service,
 )
 from digital_bast.bot.attendance_resolution import AttendanceResolution, ResolutionStatus
+from digital_bast.bot.celerates_login import login_reply as celerates_login_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.interactive import interactive
 from digital_bast.bot.payroll_attendance_repeat import render_payroll_repeat_prompt
@@ -360,6 +361,10 @@ async def _payroll_reminder_reply(
 
 
 async def reply(text: str, jid: str) -> str:  # noqa: C901, PLR0911 - guarded workflow routing
+    # Celerates re-entry words first: nothing else may swallow them (no-op unless configured).
+    login = await celerates_login_reply(text, jid)
+    if login is not None:
+        return login
     if await create_attendance_resolution_dm_state_service().pending(jid) is not None:
         return await workflow_reply(text, jid)
 

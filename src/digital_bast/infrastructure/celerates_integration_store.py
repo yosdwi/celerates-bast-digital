@@ -1,8 +1,9 @@
 """PostgreSQL persistence for the Celerates integration adapter (v1).
 
-Campaigns, recipients and their audit trail; command idempotency; the kill
-switch; the PMO summary ledger; and two narrow reads the adapter needs
-(bound WhatsApp identities as a boolean, and a correction's current status).
+Campaigns, recipients and their audit trail; direct messages; command
+idempotency; the kill switch; the PMO summary ledger; and narrow reads the
+adapter needs (bound WhatsApp identities as a boolean, a correction's current
+status, and the per-day attendance row origin and evidence count).
 """
 
 from __future__ import annotations
@@ -31,6 +32,11 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
+    from digital_bast.application.celerates_direct_messages import (
+        DirectMessage,
+        DirectMessageStatus,
+    )
+    from digital_bast.domain.completion import DateRange
 
 type Row = dict[str, Any]
 
@@ -91,6 +97,7 @@ class PostgresCampaignStore:
             last_error=cast("str | None", row["last_error"]),
             provider_message_id=cast("str | None", row["provider_message_id"]),
             sent_at=cast("datetime | None", row["sent_at"]),
+            missing_tasks=cast("int", row["missing_tasks"]),
         )
 
     # -- writes ----------------------------------------------------------------
@@ -132,8 +139,8 @@ class PostgresCampaignStore:
                         """
                         INSERT INTO celerates_campaign_recipients (
                             id, campaign_id, employee_id, nrp, name, eligibility,
-                            actionable_days, blocker_fingerprint
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            actionable_days, blocker_fingerprint, missing_tasks
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             item.id,
@@ -144,6 +151,7 @@ class PostgresCampaignStore:
                             item.eligibility,
                             item.actionable_days,
                             item.blocker_fingerprint,
+                            item.missing_tasks,
                         ),
                     )
                 _ = cursor.execute(
@@ -217,7 +225,8 @@ class PostgresCampaignStore:
                     UPDATE celerates_campaign_recipients
                     SET state = %s, link_url = %s, link_expires_at = %s, attempt_count = %s,
                         last_error = %s, provider_message_id = %s, sent_at = %s,
-                        actionable_days = %s, blocker_fingerprint = %s, updated_at = now()
+                        actionable_days = %s, blocker_fingerprint = %s, missing_tasks = %s,
+                        updated_at = now()
                     WHERE id = %s
                     """,
                     (
@@ -230,6 +239,7 @@ class PostgresCampaignStore:
                         recipient.sent_at,
                         recipient.actionable_days,
                         recipient.blocker_fingerprint,
+                        recipient.missing_tasks,
                         recipient.id,
                     ),
                 )
@@ -342,6 +352,7 @@ class PostgresCampaignStore:
         return await run_sync(self._recent_send_exists, employee_id, since, exclude_campaign)
 
     def _recent_send_exists(self, employee_id: str, since: datetime, exclude: UUID) -> bool:
+        # A PMO direct message counts as a recent send, like another campaign's.
         try:
             with (
                 _connect(self._dsn) as connection,
@@ -352,9 +363,12 @@ class PostgresCampaignStore:
                     SELECT 1 FROM celerates_campaign_recipients
                     WHERE employee_id = %s AND state = 'sent' AND sent_at >= %s
                       AND campaign_id <> %s
+                    UNION ALL
+                    SELECT 1 FROM celerates_direct_messages
+                    WHERE employee_id = %s AND status = 'sent' AND sent_at >= %s
                     LIMIT 1
                     """,
-                    (employee_id, since, exclude),
+                    (employee_id, since, exclude, employee_id, since),
                 )
                 return cursor.fetchone() is not None
         except psycopg.Error as error:
@@ -513,6 +527,112 @@ class PostgresIntegrationControl:
             ) from error
 
 
+@final
+class PostgresDirectMessageStore:
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    async def kill_switch(self) -> bool:
+        return (await PostgresIntegrationControl(self._dsn).get())[0]
+
+    async def begin(self, message: DirectMessage, *, since: datetime) -> bool:
+        return await run_sync(self._begin, message, since)
+
+    def _begin(self, message: DirectMessage, since: datetime) -> bool:
+        # One transaction under a per-employee advisory lock, so two concurrent
+        # requests cannot both pass the dedupe check.
+        try:
+            with (
+                _connect(self._dsn) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"celerates-direct:{message.employee_id}",),
+                )
+                _ = cursor.execute(
+                    """
+                    SELECT 1 FROM celerates_direct_messages
+                    WHERE employee_id = %s AND status IN ('sending', 'sent', 'unknown')
+                      AND created_at >= %s
+                    LIMIT 1
+                    """,
+                    (message.employee_id, since),
+                )
+                if cursor.fetchone() is not None:
+                    return False
+                _ = cursor.execute(
+                    """
+                    INSERT INTO celerates_direct_messages (
+                        id, employee_id, cycle_id, cycle_year, cycle_month, actor, link_url,
+                        link_expires_at, attendance_days, missing_tasks, status, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'sending', %s)
+                    """,
+                    (
+                        message.id,
+                        message.employee_id,
+                        message.cycle_id,
+                        message.cycle_year,
+                        message.cycle_month,
+                        message.actor,
+                        message.link_url,
+                        message.link_expires_at,
+                        message.attendance_days,
+                        message.missing_tasks,
+                        message.created_at,
+                    ),
+                )
+                return True
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="celerates_direct_begin"
+            ) from error
+
+    async def finish(
+        self,
+        message_id: UUID,
+        status: DirectMessageStatus,
+        *,
+        provider_message_id: str | None,
+        error: str | None,
+        sent_at: datetime | None,
+    ) -> None:
+        await run_sync(self._finish, message_id, status, provider_message_id, error, sent_at)
+
+    def _finish(
+        self,
+        message_id: UUID,
+        status: DirectMessageStatus,
+        provider_message_id: str | None,
+        error: str | None,
+        sent_at: datetime | None,
+    ) -> None:
+        try:
+            with (
+                _connect(self._dsn) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    UPDATE celerates_direct_messages
+                    SET status = %s, provider_message_id = %s, last_error = %s, sent_at = %s,
+                        updated_at = now()
+                    WHERE id = %s
+                    """,
+                    (status.value, provider_message_id, error, sent_at, message_id),
+                )
+        except psycopg.Error as err:
+            raise InfrastructureError(
+                service="postgres", operation="celerates_direct_finish"
+            ) from err
+
+
+@dataclass(frozen=True, slots=True)
+class AttendanceRowFacts:
+    origin: str
+    evidence_count: int
+
+
 @dataclass(frozen=True, slots=True)
 class StoredResponse:
     request_hash: str
@@ -611,6 +731,43 @@ class PostgresIntegrationReads:
                 return frozenset(cast("str", row["employee_id"]) for row in cursor.fetchall())
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="celerates_bound") from error
+
+    async def attendance_facts(
+        self, employee_id: str, period: DateRange
+    ) -> dict[date, AttendanceRowFacts]:
+        return await run_sync(self._attendance_facts, employee_id, period)
+
+    def _attendance_facts(
+        self, employee_id: str, period: DateRange
+    ) -> dict[date, AttendanceRowFacts]:
+        # Same row choice as the Payroll attendance reader: the last row per day.
+        try:
+            with (
+                _connect(self._dsn) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT a.work_date, a.origin,
+                           (SELECT count(*)::int FROM attendance_evidence ae
+                            WHERE ae.attendance_id = a.id) AS evidence_count
+                    FROM attendance a
+                    WHERE a.employee_id = %s AND a.work_date BETWEEN %s AND %s
+                    ORDER BY a.work_date, a.id
+                    """,
+                    (employee_id, period.start, period.end),
+                )
+                rows = cursor.fetchall()
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="celerates_attendance_facts"
+            ) from error
+        return {
+            cast("date", row["work_date"]): AttendanceRowFacts(
+                cast("str", row["origin"]), cast("int", row["evidence_count"])
+            )
+            for row in rows
+        }
 
     async def correction(self, request_id: UUID) -> CorrectionRecord | None:
         return await run_sync(self._correction, request_id)

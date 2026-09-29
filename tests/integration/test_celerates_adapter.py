@@ -347,3 +347,211 @@ def test_campaign_without_transport_auto_pauses(client: TestClient, talent: str)
         json={"kill_switch": False},
         headers=headers(key="control:kill:0"),
     )
+
+
+CATEGORY = "Detail Aktivitas Waktu Rilis Fitur"
+
+
+def test_attendance_log_tasks_and_direct_message(  # noqa: PLR0915 - one closed loop
+    client: TestClient, talent: str
+) -> None:
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    import anyio  # noqa: PLC0415
+
+    from digital_bast.infrastructure.celerates_integration_store import (  # noqa: PLC0415
+        PostgresCampaignStore,
+    )
+
+    dsn = os.environ["APP_DATABASE_DSN"]
+    gap = date(2026, 8, 5)
+    suffix = uuid4().hex[:8]
+    task_keys = (f"redmine:cel-{suffix}:1", f"redmine:cel-{suffix}:2")
+    with psycopg.connect(dsn) as connection:
+        _ = connection.execute(
+            "UPDATE attendance SET check_in = NULL WHERE employee_id = %s AND work_date = %s",
+            (talent, gap),
+        )
+        _ = connection.execute(
+            """
+            INSERT INTO bast_evidence_rules
+                (scope_key, task_category, evidence_required, updated_by)
+            VALUES ('default', %s, true, 'test')
+            ON CONFLICT (scope_key, task_category) DO UPDATE SET evidence_required = true
+            """,
+            (CATEGORY,),
+        )
+        for index, key in enumerate(task_keys, start=1):
+            _ = connection.execute(
+                """
+                INSERT INTO tasks (record_key, employee_id, work_date, title, status, category,
+                                   task_source, source_id)
+                VALUES (%s, %s, %s, %s, 'Closed', %s, 'redmine', %s)
+                """,
+                (key, talent, date(2026, 8, 10 + index), f"Synthetic task {index}", CATEGORY, key),
+            )
+    period = {"year": 2026, "month": 8}
+
+    log = client.get(
+        "/api/celerates/v1/talents/attendance",
+        params={**period, "employee_id": talent},
+        headers=headers(),
+    )
+    assert log.status_code == 200, log.text
+    body = log.json()
+    assert body["source"] == "conform:pama"
+    assert body["cycle"]["id"] == CYCLE.cycle_id
+    days = {item["work_date"]: item for item in body["days"]}
+    assert len(days) == (CYCLE.period.end - CYCLE.period.start).days + 1
+    assert list(days) == sorted(days)
+    open_day = days[gap.isoformat()]
+    assert (open_day["state"], open_day["gap"], open_day["reason"]) == (
+        "needs_action",
+        "missing_clock_in",
+        "GAP_UNCOVERED",
+    )
+    assert open_day["origin"] == "manual", "the edit trigger marks a direct write as manual"
+    plain = days["2026-08-06"]
+    assert (plain["state"], plain["gap"], plain["origin"], plain["check_in"]) == (
+        "complete",
+        None,
+        "pipeline",
+        "08:00",
+    )
+    corrected = days[GAP_DAY.isoformat()]
+    assert corrected["state"] == "complete"
+    assert corrected["correction"]["status"] == "approved"
+    assert corrected["evidence_count"] == 1
+    weekend = days["2026-08-01"]  # a Saturday without a source row
+    assert (weekend["state"], weekend["origin"], weekend["gap"]) == ("not_required", None, None)
+
+    tasks = client.get(
+        "/api/celerates/v1/talents/tasks",
+        params={**period, "employee_id": talent},
+        headers=headers(),
+    ).json()
+    assert tasks["period"]["label"] == "Agustus 2026"
+    assert tasks["summary"] == {"total": 2, "complete": 0, "missing": 2, "staged": 0}
+    assert [item["task_key"] for item in tasks["items"]] == [task_keys[1], task_keys[0]]
+
+    snapshot = client.post(
+        "/api/celerates/v1/campaigns", json=period, headers=headers(key=f"campaign:{uuid4().hex}")
+    ).json()
+    mine = next(item for item in snapshot["recipients"] if item["employee_id"] == talent)
+    assert mine["missing_tasks"] == 2, "the audience includes tasks without evidence"
+
+    talent_actor = f"celerates-talent:{uuid4()}"
+    key = f"task-evidence:{uuid4().hex}"
+    form = {"employee_id": talent, "year": "2026", "month": "8", "caption": "bukti"}
+    staged = client.post(
+        f"/api/celerates/v1/talents/tasks/{task_keys[0]}/evidence",
+        data=form,
+        files={"file": ("bukti.png", png(), "image/png")},
+        headers=headers(key=key, actor=talent_actor),
+    )
+    assert (staged.status_code, staged.json()) == (201, {"status": "staged"}), staged.text
+    replay = client.post(
+        f"/api/celerates/v1/talents/tasks/{task_keys[0]}/evidence",
+        data=form,
+        files={"file": ("bukti.png", png(), "image/png")},
+        headers=headers(key=key, actor=talent_actor),
+    )
+    assert replay.headers.get("Idempotent-Replay") == "true"
+    other = io.BytesIO()
+    Image.new("RGB", (4, 4), (200, 10, 10)).save(other, format="PNG")
+    conflict = client.post(
+        f"/api/celerates/v1/talents/tasks/{task_keys[0]}/evidence",
+        data=form,
+        files={"file": ("bukti.png", other.getvalue(), "image/png")},
+        headers=headers(key=key, actor=talent_actor),
+    )
+    assert conflict.json()["error"]["code"] == "idempotency_conflict", "the hash covers the bytes"
+    unknown = client.post(
+        "/api/celerates/v1/talents/tasks/redmine:nope/evidence",
+        data=form,
+        files={"file": ("bukti.png", png(), "image/png")},
+        headers=headers(key=f"task-evidence:{uuid4().hex}", actor=talent_actor),
+    )
+    assert (unknown.status_code, unknown.json()["error"]["code"]) == (404, "task_not_found")
+
+    submitted = client.post(
+        "/api/celerates/v1/talents/tasks/submit",
+        json={"employee_id": talent, **period},
+        headers=headers(key=f"task-submit:{uuid4().hex}", actor=talent_actor),
+    )
+    assert (submitted.status_code, submitted.json()) == (
+        200,
+        {"status": "submitted", "count": 1},
+    ), submitted.text
+    with psycopg.connect(dsn) as connection:
+        row = connection.execute(
+            "SELECT e.submitted_by_jid FROM task_evidence e JOIN tasks t ON t.id = e.task_id "
+            "WHERE t.record_key = %s",
+            (task_keys[0],),
+        ).fetchone()
+    assert row == (talent_actor,), "the audit actor is X-Celerates-Actor"
+    again = client.post(
+        "/api/celerates/v1/talents/tasks/submit",
+        json={"employee_id": talent, **period},
+        headers=headers(key=f"task-submit:{uuid4().hex}", actor=talent_actor),
+    )
+    assert again.json()["error"]["code"] == "nothing_staged"
+    after = client.get(
+        "/api/celerates/v1/talents/tasks",
+        params={**period, "employee_id": talent},
+        headers=headers(),
+    ).json()
+    assert after["summary"] == {"total": 2, "complete": 1, "missing": 1, "staged": 0}
+    assert [item["complete"] for item in after["items"]] == [False, True], "missing first"
+
+    message = {
+        "employee_id": talent,
+        **period,
+        "link": {"url": "https://celerates.example/go/dm", "expires_at": None},
+    }
+    no_transport = client.post(
+        "/api/celerates/v1/talents/messages",
+        json=message,
+        headers=headers(key=f"message:{uuid4().hex}"),
+    )
+    assert no_transport.status_code == 503
+    assert no_transport.json()["error"] == {
+        "code": "transport_unavailable",
+        "message": "WhatsApp transport is unavailable",
+        "retryable": True,
+    }
+    _ = client.put(
+        "/api/celerates/v1/control", json={"kill_switch": True}, headers=headers(key="kill:dm:1")
+    )
+    killed = client.post(
+        "/api/celerates/v1/talents/messages",
+        json=message,
+        headers=headers(key=f"message:{uuid4().hex}"),
+    )
+    assert killed.json()["error"]["code"] == "kill_switch"
+    _ = client.put(
+        "/api/celerates/v1/control", json={"kill_switch": False}, headers=headers(key="kill:dm:0")
+    )
+    with psycopg.connect(dsn) as connection:
+        rows = connection.execute(
+            "SELECT status, actor, link_expires_at, missing_tasks FROM celerates_direct_messages "
+            "WHERE employee_id = %s",
+            (talent,),
+        ).fetchall()
+        assert rows == [("failed", "celerates:PMO Synthetic <pmo@example.test>", None, 1)]
+        # As if the bridge had delivered it: the campaigns' 20 h dedupe and the
+        # 10-minute direct dedupe both see it.
+        _ = connection.execute(
+            "UPDATE celerates_direct_messages SET status = 'sent', sent_at = now() "
+            "WHERE employee_id = %s",
+            (talent,),
+        )
+    recent = client.post(
+        "/api/celerates/v1/talents/messages",
+        json=message,
+        headers=headers(key=f"message:{uuid4().hex}"),
+    )
+    assert recent.json()["error"]["code"] == "recently_sent"
+    store = PostgresCampaignStore(dsn, payroll_cycle)
+    since = datetime.now(UTC) - timedelta(hours=20)
+    assert anyio.run(store.recent_send_exists, talent, since, uuid4()) is True
