@@ -28,6 +28,7 @@ from digital_bast.bot.attendance_reminder_runtime import (
 )
 from digital_bast.bot.attendance_resolution import ResolutionType
 from digital_bast.bot.bast_reminder_reply import reply_from_bast_context
+from digital_bast.bot.celerates_login import login_reply as celerates_login_reply
 from digital_bast.bot.dm_entry import reply as legacy_entry_reply
 from digital_bast.bot.dm_workflow import reply as workflow_reply
 from digital_bast.bot.payroll_attendance_draft import (
@@ -341,6 +342,10 @@ async def _bootstrap_payroll_draft(  # noqa: C901, PLR0911, PLR0912
 
 
 async def reply(text: str, jid: str, message_at: datetime) -> str:
+    # Celerates re-entry words first: the natural-attendance parser would take `masuk`.
+    login = await celerates_login_reply(text, jid)
+    if login is not None:
+        return login
     state, draft, context = await _active_payroll_draft(jid)
     if draft is not None and context is not None and draft.work_date is not None:
         return await _reply_with_active_draft(text, jid, message_at, state, draft, context)
