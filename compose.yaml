@@ -95,6 +95,12 @@ x-app: &app
     CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
     CLOUDFLARE_API_TOKEN_FILE: /run/secrets/cloudflare_api_token
     CLOUDFLARE_WORKERS_AI_MODEL: ${CLOUDFLARE_WORKERS_AI_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
+    # Celerates pilot adapter (/api/celerates/v1) -- separate bearer secret
+    # from SYNC_INGEST_TOKEN/the bridge token. Payroll/BAST closing Talent
+    # reminders stay disabled while Celerates campaigns are the dispatch
+    # surface (see docs/celerates-integration-v1.md).
+    CELERATES_SERVICE_TOKEN_FILE: /run/secrets/celerates_service_token
+    CELERATES_PUBLIC_URL: ${CELERATES_PUBLIC_URL:-}
   secrets: &app-secrets
     - session_secret
     - app_database_dsn
@@ -110,6 +116,7 @@ x-app: &app
     - google_sheets_relay_credentials
     - groq_api_key
     - cloudflare_api_token
+    - celerates_service_token
   networks:
     - backend
     - egress
@@ -609,6 +616,8 @@ secrets:
     file: ${SECRETS_DIR:-./secrets}/sync_ingest_token
   google_sheets_relay_credentials:
     file: ${SECRETS_DIR:-./secrets}/google_sheets_relay_credentials.json
+  celerates_service_token:
+    file: ${SECRETS_DIR:-./secrets}/celerates_service_token
 
 networks:
   edge:
