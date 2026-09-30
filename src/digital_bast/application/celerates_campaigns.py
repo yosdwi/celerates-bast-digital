@@ -303,22 +303,25 @@ def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
             f"Cek di Celerates: {link}\n\n"
             "Conform Celerates"
         )
+    # The reported month is the attendance dates' own month when there are any (matches the
+    # header), not the payroll cycle's label month, which can name a later calendar month.
+    report_year, report_month = (
+        (ordered[0].year, ordered[0].month) if ordered else (deadline_year, deadline_month)
+    )
     header = (
-        f"*Timesheet {MONTH_NAMES[ordered[0].month - 1]} {ordered[0].year}*"
+        f"*Timesheet {MONTH_NAMES[report_month - 1]} {report_year}*"
         if ordered
         else f"*Timesheet {task_month_label or cycle_label}*"
     )
     lines = [f"Halo {first},", "", header, "Celerates – PAMA", "", "*Perlu dilengkapi:*"]  # noqa: RUF001
     if ordered:
-        lines.append(
-            f"- *Attendance:* {_date_list(ordered, ordered[0].month, ordered[0].year)}"
-        )
+        lines.append(f"- *Attendance:* {_date_list(ordered, report_month, report_year)}")
     if missing_tasks > 0:
         lines.append(f"- *Tasklist:* {missing_tasks} task belum closed")
         lines.append("- *Evidence:* mohon upload evidence pada tasklist")
     lines += [
         "",
-        f"⏰ *Batas melengkapi: {_deadline_label(deadline_year, deadline_month)}*",
+        f"⏰ *Batas melengkapi: {_deadline_label(report_year, report_month)}*",
         "",
         "Silakan lengkapi sebelum batas waktu melalui:",
         link,

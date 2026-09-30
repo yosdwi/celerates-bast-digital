@@ -434,3 +434,20 @@ async def test_cooldown_jitter_extends_the_next_dispatch_by_a_random_amount() ->
     assert lowest == 7200  # cooldown_seconds, no jitter added
     assert highest == 10800  # cooldown_seconds + cooldown_jitter_seconds, full jitter
     assert lowest != highest
+
+
+def test_deadline_follows_the_attendance_dates_month_not_the_payroll_cycle_label() -> None:
+    """The cycle spans two calendar months (e.g. 21 Sep - 20 Oct, labelled "Oktober"). A gap
+    on 30 Sep must read "Timesheet September" with "Batas ... 2 Okt", not "2 Nov"."""
+    text = compose_talent_message(
+        name="Yoses",
+        cycle_label="Payroll Oktober 2026",
+        dates=(date(2026, 9, 30),),
+        link=f"{PREFIX}/go/abc",
+        deadline_year=2026,
+        deadline_month=10,  # the cycle's own label month, deliberately different
+        missing_tasks=1,
+    )
+    assert "*Timesheet September 2026*" in text
+    assert "Batas melengkapi: 2 Okt 2026, 12:00 WIB" in text
+    assert "2 Nov 2026" not in text
