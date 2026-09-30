@@ -167,7 +167,8 @@ class CeleratesDirectMessageService:
             cycle_label=cycle.label,
             dates=member.actionable_dates,
             link=link_url,
-            expires_at=link_expires_at,
+            deadline_year=cycle.label_year,
+            deadline_month=cycle.label_month,
             missing_tasks=len(member.missing_task_keys),
             task_month_label=calendar_month_label(cycle.label_year, cycle.label_month),
         )

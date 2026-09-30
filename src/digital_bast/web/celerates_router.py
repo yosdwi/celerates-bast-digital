@@ -652,6 +652,8 @@ def _campaign_json(
         campaign.cycle_label,
         f"{services.public_url or 'https://celerates.example'}/go/…",
         calendar_month_label(campaign.cycle_year, campaign.cycle_month),
+        campaign.cycle_year,
+        campaign.cycle_month,
     )
     return {
         "id": str(campaign_id),
@@ -711,7 +713,9 @@ def _campaign_json(
 
 class CeleratesCampaignPreview:
     @staticmethod
-    def message(cycle_label: str, link: str, task_month_label: str) -> str:
+    def message(
+        cycle_label: str, link: str, task_month_label: str, year: int, month: int
+    ) -> str:
         from digital_bast.application.celerates_campaigns import (  # noqa: PLC0415
             compose_talent_message,
         )
@@ -722,7 +726,8 @@ class CeleratesCampaignPreview:
             cycle_label=cycle_label,
             dates=(sample_day,),
             link=link,
-            expires_at=None,
+            deadline_year=year,
+            deadline_month=month,
             missing_tasks=1,
             task_month_label=task_month_label,
         )

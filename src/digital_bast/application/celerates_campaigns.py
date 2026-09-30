@@ -274,9 +274,11 @@ def _date_list(ordered: list[date], header_month: int, header_year: int) -> str:
     return f"{', '.join(parts)} {_MONTHS[header_month - 1]} {header_year}{more}"
 
 
-def _deadline_label(value: datetime) -> str:
-    local = value.astimezone(JAKARTA)
-    return f"{local.day} {_MONTHS[local.month - 1]} {local.year}, {local:%H:%M} WIB"
+def _deadline_label(year: int, month: int) -> str:
+    """Business rule, not the link's own (possibly absent) technical expiry: the 2nd of the
+    month after the reported month, noon WIB."""
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)  # noqa: PLR2004
+    return f"2 {_MONTHS[next_month - 1]} {next_year}, 12:00 WIB"
 
 
 def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
@@ -285,7 +287,8 @@ def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
     cycle_label: str,
     dates: tuple[date, ...],
     link: str,
-    expires_at: datetime | None,
+    deadline_year: int,
+    deadline_month: int,
     missing_tasks: int = 0,
     task_month_label: str | None = None,
 ) -> str:
@@ -313,11 +316,15 @@ def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
     if missing_tasks > 0:
         lines.append(f"- *Tasklist:* {missing_tasks} task belum closed")
         lines.append("- *Evidence:* mohon upload evidence pada tasklist")
-    lines.append("")
-    if expires_at is not None:
-        lines.append(f"⏰ *Batas melengkapi: {_deadline_label(expires_at)}*")
-        lines.append("")
-    lines += ["Silakan lengkapi sebelum batas waktu melalui:", link, "", "Conform Celerates"]
+    lines += [
+        "",
+        f"⏰ *Batas melengkapi: {_deadline_label(deadline_year, deadline_month)}*",
+        "",
+        "Silakan lengkapi sebelum batas waktu melalui:",
+        link,
+        "",
+        "Conform Celerates",
+    ]
     return "\n".join(lines)
 
 
@@ -589,7 +596,8 @@ class CeleratesCampaignService:
                 cycle_label=campaign.cycle_label,
                 dates=member.actionable_dates,
                 link=recipient.link_url or "",
-                expires_at=recipient.link_expires_at,
+                deadline_year=campaign.cycle_year,
+                deadline_month=campaign.cycle_month,
                 missing_tasks=len(member.missing_task_keys),
                 task_month_label=calendar_month_label(campaign.cycle_year, campaign.cycle_month),
             )

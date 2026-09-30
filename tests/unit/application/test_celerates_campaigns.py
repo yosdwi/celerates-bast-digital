@@ -339,11 +339,13 @@ def test_talent_message_carries_only_the_opaque_link() -> None:
         cycle_label="Payroll September 2026",
         dates=(date(2026, 9, 1), date(2026, 9, 2)),
         link=f"{PREFIX}/go/abc",
-        expires_at=NOW + timedelta(hours=72),
+        deadline_year=2026,
+        deadline_month=9,
     )
     assert text.startswith("Halo Rina,")
     assert "*Timesheet September 2026*" in text
     assert "- *Attendance:* 1, 2 Sep 2026" in text
+    assert "Batas melengkapi: 2 Okt 2026, 12:00 WIB" in text
     assert f"{PREFIX}/go/abc" in text
     assert "MTG" not in text
     assert "@c.us" not in text
@@ -408,7 +410,7 @@ async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
     assert "*Timesheet September 2026*" in text
     assert "- *Attendance:*" in text
     assert "- *Tasklist:* 1 task belum closed" in text, "the message mentions both counts"
-    assert "Batas melengkapi" not in text, "no expiry was set, so no deadline is shown"
+    assert "Batas melengkapi: 2 Okt 2026, 12:00 WIB" in text, "fixed rule, not the link's expiry"
 
 
 async def test_cooldown_jitter_extends_the_next_dispatch_by_a_random_amount() -> None:
