@@ -1800,7 +1800,10 @@ def celerates_router(  # noqa: C901, PLR0915
         ("/talents/attendance", attendance_log, "GET"),
         ("/talents/tasks", talent_tasks, "GET"),
         ("/talents/tasks/submit", submit_tasks, "POST"),
-        ("/talents/tasks/{task_key}/evidence", stage_task_evidence, "POST"),
+        # task_key embeds the ConForm employee_id verbatim (e.g. "MTG-TF/2024020213"), which
+        # contains a literal "/" -- a plain {task_key} segment never matches it (404, silently
+        # shown to the Talent as "ConForm menolak permintaan"), so this one needs :path.
+        ("/talents/tasks/{task_key:path}/evidence", stage_task_evidence, "POST"),
         ("/talents/messages", direct_message, "POST"),
         ("/talents/attendance-corrections", submit_correction, "POST"),
         ("/attendance-corrections", corrections, "GET"),
