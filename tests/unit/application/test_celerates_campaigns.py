@@ -24,7 +24,7 @@ from digital_bast.application.celerates_campaigns import (
 from digital_bast.application.talentops_followups import WhatsAppSendReceipt
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from digital_bast.application.attendance_closing_policy import PayrollCycle
 
@@ -130,6 +130,7 @@ def member(
 
 def service(
     members: dict[str, AudienceMember],
+    rand: Callable[[], float] | None = None,
 ) -> tuple[CeleratesCampaignService, FakeStore, FakeAudience, FakeGateway, list[float]]:
     store = FakeStore()
     audience = FakeAudience(members)
@@ -147,6 +148,7 @@ def service(
         cycle_for=payroll_cycle,
         new_id=uuid4,
         sleep=sleep,
+        rand=rand,
         allowed_link_prefix=PREFIX,
     )
     return svc, store, audience, gateway, sleeps
@@ -403,3 +405,26 @@ async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
     assert "hari attendance periode Payroll September 2026" in text
     assert "1 task bulan September 2026" in text, "the message mentions both counts"
     assert "berlaku sampai" not in text
+
+
+async def test_cooldown_jitter_extends_the_next_dispatch_by_a_random_amount() -> None:
+    """batch_size=1 sends one recipient per tick; a fixed cooldown every tick would still be a
+    predictable, blast-shaped pattern, so the next tick must land at a random offset."""
+    policy = CampaignPolicy(batch_size=1, cooldown_seconds=7200, cooldown_jitter_seconds=3600)
+    members = {"E-1": task_member("E-1", "Ayu", dates=(DAY,)), "E-2": task_member("E-2", "Bima")}
+
+    async def next_dispatch_offset(rand: Callable[[], float]) -> float:
+        svc, store, _, _, _ = service(members, rand=rand)
+        campaign_id = await svc.create(payroll_cycle(2026, 9), policy, actor="pmo", now=NOW)
+        await svc.approve(campaign_id, links("E-1", "E-2"), actor="lead", now=NOW)
+        _ = await svc.dispatch(now=lambda: NOW)
+        campaign = store.campaigns[campaign_id]
+        assert campaign.state is CampaignState.RUNNING, "one recipient is still open"
+        assert campaign.next_dispatch_at is not None
+        return (campaign.next_dispatch_at - NOW).total_seconds()
+
+    lowest = await next_dispatch_offset(lambda: 0.0)
+    highest = await next_dispatch_offset(lambda: 1.0)
+    assert lowest == 7200  # cooldown_seconds, no jitter added
+    assert highest == 10800  # cooldown_seconds + cooldown_jitter_seconds, full jitter
+    assert lowest != highest

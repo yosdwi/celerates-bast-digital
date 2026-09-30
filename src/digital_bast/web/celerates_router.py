@@ -597,6 +597,7 @@ class _CampaignBody(_PeriodBody):
     window_end_hour: int = 18
     batch_size: int = 10
     cooldown_seconds: int = 600
+    cooldown_jitter_seconds: int = 0
     min_interval_seconds: int = 3
     max_attempts: int = 3
 
@@ -662,6 +663,7 @@ def _campaign_json(
             "window_end_hour": campaign.policy.window_end_hour,
             "batch_size": campaign.policy.batch_size,
             "cooldown_seconds": campaign.policy.cooldown_seconds,
+            "cooldown_jitter_seconds": campaign.policy.cooldown_jitter_seconds,
             "min_interval_seconds": campaign.policy.min_interval_seconds,
             "max_attempts": campaign.policy.max_attempts,
         },
@@ -1503,6 +1505,7 @@ def celerates_router(  # noqa: C901, PLR0915
                     window_end_hour=body.window_end_hour,
                     batch_size=body.batch_size,
                     cooldown_seconds=body.cooldown_seconds,
+                    cooldown_jitter_seconds=body.cooldown_jitter_seconds,
                     min_interval_seconds=body.min_interval_seconds,
                     max_attempts=body.max_attempts,
                 ),

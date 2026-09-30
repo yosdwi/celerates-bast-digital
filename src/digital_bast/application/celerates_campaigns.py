@@ -10,6 +10,7 @@ are ports, so no readiness or delivery rule is duplicated here.
 from __future__ import annotations
 
 import hashlib
+import random
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
@@ -91,6 +92,7 @@ class CampaignPolicy:
     window_end_hour: int = 18
     batch_size: int = 10
     cooldown_seconds: int = 600
+    cooldown_jitter_seconds: int = 0
     min_interval_seconds: int = 3
     max_attempts: int = 3
 
@@ -101,10 +103,18 @@ class CampaignPolicy:
             _refuse("invalid_policy", "batch_size must be between 1 and 50")
         if not 60 <= self.cooldown_seconds <= 86400:  # noqa: PLR2004
             _refuse("invalid_policy", "cooldown_seconds must be between 60 and 86400")
+        if not 0 <= self.cooldown_jitter_seconds <= 86400:  # noqa: PLR2004
+            _refuse("invalid_policy", "cooldown_jitter_seconds must be between 0 and 86400")
+        if self.cooldown_seconds + self.cooldown_jitter_seconds > 86400:  # noqa: PLR2004
+            _refuse("invalid_policy", "cooldown_seconds + jitter must be at most 86400")
         if not 0 <= self.min_interval_seconds <= 60:  # noqa: PLR2004
             _refuse("invalid_policy", "min_interval_seconds must be between 0 and 60")
         if not 1 <= self.max_attempts <= 5:  # noqa: PLR2004
             _refuse("invalid_policy", "max_attempts must be between 1 and 5")
+
+    def next_cooldown_seconds(self, rand: Callable[[], float]) -> float:
+        """A fixed offset every tick is as detectable as sending everyone at once."""
+        return self.cooldown_seconds + rand() * self.cooldown_jitter_seconds
 
     def in_window(self, now: datetime) -> bool:
         return self.window_start_hour <= now.astimezone(JAKARTA).hour < self.window_end_hour
@@ -318,6 +328,7 @@ class CeleratesCampaignService:
         cycle_for: Callable[[int, int], PayrollCycle],
         new_id: Callable[[], UUID],
         sleep: Callable[[float], Awaitable[None]],
+        rand: Callable[[], float] | None = None,
         allowed_link_prefix: str | None = None,
     ) -> None:
         self._store = store
@@ -327,6 +338,7 @@ class CeleratesCampaignService:
         self._cycle_for = cycle_for
         self._new_id = new_id
         self._sleep = sleep
+        self._rand = rand if rand is not None else random.random
         self._allowed_prefix = allowed_link_prefix
 
     async def create(
@@ -626,7 +638,7 @@ class CeleratesCampaignService:
             campaign,
             actor=actor,
             at=finished_at,
-            next_at=finished_at + timedelta(seconds=policy.cooldown_seconds),
+            next_at=finished_at + timedelta(seconds=policy.next_cooldown_seconds(self._rand)),
             pause_reason=pause_reason,
             tick=replace(tick, sent=sent, skipped=skipped, failed=failed, outcomes=tuple(outcomes)),
         )

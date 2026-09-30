@@ -67,6 +67,7 @@ class PostgresCampaignStore:
                 window_end_hour=cast("int", row["window_end_hour"]),
                 batch_size=cast("int", row["batch_size"]),
                 cooldown_seconds=cast("int", row["cooldown_seconds"]),
+                cooldown_jitter_seconds=cast("int", row["cooldown_jitter_seconds"]),
                 min_interval_seconds=cast("int", row["min_interval_seconds"]),
                 max_attempts=cast("int", row["max_attempts"]),
             ),
@@ -115,9 +116,9 @@ class PostgresCampaignStore:
                     """
                     INSERT INTO celerates_campaigns (
                         id, cycle_id, cycle_year, cycle_month, state, window_start_hour,
-                        window_end_hour, batch_size, cooldown_seconds, min_interval_seconds,
-                        max_attempts, created_by, created_at
-                    ) VALUES (%s, %s, %s, %s, 'draft', %s, %s, %s, %s, %s, %s, %s, %s)
+                        window_end_hour, batch_size, cooldown_seconds, cooldown_jitter_seconds,
+                        min_interval_seconds, max_attempts, created_by, created_at
+                    ) VALUES (%s, %s, %s, %s, 'draft', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         campaign.id,
@@ -128,6 +129,7 @@ class PostgresCampaignStore:
                         policy.window_end_hour,
                         policy.batch_size,
                         policy.cooldown_seconds,
+                        policy.cooldown_jitter_seconds,
                         policy.min_interval_seconds,
                         policy.max_attempts,
                         campaign.created_by,
