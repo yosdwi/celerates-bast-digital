@@ -201,8 +201,11 @@ def _calendar(year: int, month: int) -> DateRange:
 class _PayrollAudience:
     """Reminder audience = live Payroll projection + tasks without evidence + bound boolean.
 
-    Attendance comes from the Payroll cycle; tasks from the calendar month the
-    cycle is named after (the Talent Mobile task period and rule).
+    Both attendance and tasks are scoped to the Timesheet cycle -- the calendar month named
+    "Timesheet <month> <year>" on the Talent's own Celerates pages -- not the underlying Payroll
+    cycle (21st-20th) that the attendance projection is read from. A Payroll cycle straddles two
+    calendar months, so a gap actually dated in the neighbouring month must never appear under
+    this month's header (doc 22 R4.1).
     """
 
     def __init__(
@@ -222,16 +225,34 @@ class _PayrollAudience:
             if month.start <= item.work_date <= month.end and item.evidence_count == 0
         )
 
+    async def _timesheet_actionable_dates(self, month: DateRange) -> dict[str, tuple[date, ...]]:
+        """Attendance gaps for the Timesheet cycle, stitched from every Payroll cycle it
+        overlaps and clipped to the calendar month -- mirrors the Talent pages' own compose."""
+        cycles = {payroll_cycle_for(month.start), payroll_cycle_for(month.end)}
+        by_employee: dict[str, set[date]] = {}
+        for cycle in cycles:
+            overview = await self._payroll.overview(cycle, now=datetime.now(UTC))
+            for talent in overview.talents:
+                days = by_employee.setdefault(talent.employee_id, set())
+                days.update(
+                    day.work_date
+                    for day in talent.days
+                    if day.talent_action_required and month.start <= day.work_date <= month.end
+                )
+        return {employee_id: tuple(sorted(days)) for employee_id, days in by_employee.items()}
+
     async def _member(
-        self, talent: PayrollTalentView, month: DateRange, bound: frozenset[str]
+        self,
+        talent: PayrollTalentView,
+        month: DateRange,
+        bound: frozenset[str],
+        actionable_by_employee: Mapping[str, tuple[date, ...]],
     ) -> AudienceMember:
         return AudienceMember(
             employee_id=talent.employee_id,
             nrp=talent.nrp,
             name=talent.name,
-            actionable_dates=tuple(
-                day.work_date for day in talent.days if day.talent_action_required
-            ),
+            actionable_dates=actionable_by_employee.get(talent.employee_id, ()),
             whatsapp_bound=talent.employee_id in bound,
             missing_task_keys=await self._missing_tasks(talent.employee_id, month),
         )
@@ -240,8 +261,9 @@ class _PayrollAudience:
         overview = await self._payroll.overview(cycle, now=datetime.now(UTC))
         bound = await self._reads.bound_employee_ids()
         month = _calendar(cycle.label_year, cycle.label_month)
+        actionable = await self._timesheet_actionable_dates(month)
         return {
-            talent.employee_id: await self._member(talent, month, bound)
+            talent.employee_id: await self._member(talent, month, bound, actionable)
             for talent in overview.talents
         }
 
@@ -251,7 +273,9 @@ class _PayrollAudience:
         if talent is None:
             return None
         bound = await self._reads.bound_employee_ids()
-        return await self._member(talent, _calendar(cycle.label_year, cycle.label_month), bound)
+        month = _calendar(cycle.label_year, cycle.label_month)
+        actionable = await self._timesheet_actionable_dates(month)
+        return await self._member(talent, month, bound, actionable)
 
 
 @cache
