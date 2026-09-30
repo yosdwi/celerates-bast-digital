@@ -54,6 +54,8 @@ class RequiredTaskEvidencePolicy:
         return await run_sync(self._required, employee_id, task_key)
 
     def _keys_for_employee(self, employee_id: str) -> frozenset[str]:
+        # Visibility only (the Talent's own Tasklist shows every status). Staging evidence is
+        # still gated by _required(), which keeps its own Closed check.
         try:
             with self._connect() as connection, connection.cursor() as cursor:
                 _ = cursor.execute(
@@ -65,9 +67,8 @@ class RequiredTaskEvidencePolicy:
                      AND r.task_category = t.category
                      AND r.evidence_required = true
                     WHERE t.employee_id = %s
-                      AND lower(t.status) = %s
                     """,
-                    (self._scope_key, employee_id, CLOSED_STATUS),
+                    (self._scope_key, employee_id),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
