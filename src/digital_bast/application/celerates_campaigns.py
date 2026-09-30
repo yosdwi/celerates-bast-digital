@@ -257,13 +257,26 @@ def calendar_month_label(year: int, month: int) -> str:
     return f"{MONTH_NAMES[month - 1]} {year}"
 
 
-def _short_date(value: date) -> str:
-    return f"{_DAYS[value.weekday()]} {value.day} {_MONTHS[value.month - 1]}"
+def _date_list(ordered: list[date], header_month: int, header_year: int) -> str:
+    """Bare day numbers when a date shares the header's month/year; "d Mon" otherwise."""
+    shown = ordered[:_MAX_LISTED_DATES]
+    parts = [
+        str(item.day)
+        if item.month == header_month and item.year == header_year
+        else f"{item.day} {_MONTHS[item.month - 1]}"
+        for item in shown
+    ]
+    more = (
+        f" +{len(ordered) - _MAX_LISTED_DATES} hari lainnya"
+        if len(ordered) > _MAX_LISTED_DATES
+        else ""
+    )
+    return f"{', '.join(parts)} {_MONTHS[header_month - 1]} {header_year}{more}"
 
 
-def _expiry_label(value: datetime) -> str:
+def _deadline_label(value: datetime) -> str:
     local = value.astimezone(JAKARTA)
-    return f"{local.day} {_MONTHS[local.month - 1]} {local:%H:%M} WIB"
+    return f"{local.day} {_MONTHS[local.month - 1]} {local.year}, {local:%H:%M} WIB"
 
 
 def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
@@ -279,41 +292,33 @@ def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
     """Personal DM. Carries only an opaque Celerates link -- no ids or phone numbers."""
     first = name.split(maxsplit=1)[0] if name.strip() else "Talent"
     ordered = sorted(dates)
-    month = task_month_label or "ini"
-    tasks = f"{missing_tasks} task bulan {month} yang belum ada evidence-nya"
-    if ordered:
-        listed = ", ".join(_short_date(item) for item in ordered[:_MAX_LISTED_DATES])
-        more = (
-            f" dan {len(ordered) - _MAX_LISTED_DATES} lainnya"
-            if len(ordered) > _MAX_LISTED_DATES
-            else ""
-        )
-        opening = (
-            f"Halo {first}, ada {len(ordered)} hari attendance periode {cycle_label} "
-            f"yang perlu dilengkapi ({listed}{more})"
-        )
-        opening += f", dan {tasks}.\n" if missing_tasks > 0 else ".\n"
-    elif missing_tasks > 0:
-        opening = f"Halo {first}, ada {tasks}.\n"
-    else:
+    if not ordered and missing_tasks <= 0:
         done = f" dan task bulan {task_month_label}" if task_month_label else ""
         return (
-            f"Halo {first}, attendance periode {cycle_label}{done} sudah lengkap. "
-            "Terima kasih!\n"
-            f"Cek di Celerates: {link}\n"
-            f"{_link_note(expires_at)}"
+            f"Halo {first},\n\n"
+            f"Timesheet periode {cycle_label}{done} sudah lengkap. Terima kasih!\n\n"
+            f"Cek di Celerates: {link}\n\n"
+            "Conform Celerates"
         )
-    return (
-        f"{opening}"
-        f"Lengkapi di Celerates: {link}\n"
-        f"{_link_note(expires_at)} Abaikan pesan ini bila sudah dilengkapi."
+    header = (
+        f"*Timesheet {MONTH_NAMES[ordered[0].month - 1]} {ordered[0].year}*"
+        if ordered
+        else f"*Timesheet {task_month_label or cycle_label}*"
     )
-
-
-def _link_note(expires_at: datetime | None) -> str:
-    if expires_at is None:
-        return "Tautan pribadi, jangan dibagikan."
-    return f"Tautan pribadi, berlaku sampai {_expiry_label(expires_at)}."
+    lines = [f"Halo {first},", "", header, "Celerates – PAMA", "", "*Perlu dilengkapi:*"]  # noqa: RUF001
+    if ordered:
+        lines.append(
+            f"- *Attendance:* {_date_list(ordered, ordered[0].month, ordered[0].year)}"
+        )
+    if missing_tasks > 0:
+        lines.append(f"- *Tasklist:* {missing_tasks} task belum closed")
+        lines.append("- *Evidence:* mohon upload evidence pada tasklist")
+    lines.append("")
+    if expires_at is not None:
+        lines.append(f"⏰ *Batas melengkapi: {_deadline_label(expires_at)}*")
+        lines.append("")
+    lines += ["Silakan lengkapi sebelum batas waktu melalui:", link, "", "Conform Celerates"]
+    return "\n".join(lines)
 
 
 @final

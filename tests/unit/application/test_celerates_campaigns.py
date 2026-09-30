@@ -341,8 +341,9 @@ def test_talent_message_carries_only_the_opaque_link() -> None:
         link=f"{PREFIX}/go/abc",
         expires_at=NOW + timedelta(hours=72),
     )
-    assert text.startswith("Halo Rina, ada 2 hari attendance periode Payroll September 2026")
-    assert "Sel 1 Sep, Rab 2 Sep" in text
+    assert text.startswith("Halo Rina,")
+    assert "*Timesheet September 2026*" in text
+    assert "- *Attendance:* 1, 2 Sep 2026" in text
     assert f"{PREFIX}/go/abc" in text
     assert "MTG" not in text
     assert "@c.us" not in text
@@ -389,7 +390,9 @@ async def test_blocker_recheck_at_dispatch_covers_tasks() -> None:
     _ = await svc.dispatch(now=lambda: NOW)
     assert states(store) == {"E-1": RecipientState.SKIPPED_RESOLVED, "E-2": RecipientState.SENT}
     [(_, text, _)] = gateway.sent
-    assert text.startswith("Halo Bima, ada 2 task bulan September 2026 yang belum ada evidence")
+    assert text.startswith("Halo Bima,")
+    assert "*Timesheet September 2026*" in text
+    assert "- *Tasklist:* 2 task belum closed" in text
 
 
 async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
@@ -402,9 +405,10 @@ async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
     _ = await svc.dispatch(now=lambda: later)
     assert states(store)["E-1"] is RecipientState.SENT
     text = gateway.sent[0][1]
-    assert "hari attendance periode Payroll September 2026" in text
-    assert "1 task bulan September 2026" in text, "the message mentions both counts"
-    assert "berlaku sampai" not in text
+    assert "*Timesheet September 2026*" in text
+    assert "- *Attendance:*" in text
+    assert "- *Tasklist:* 1 task belum closed" in text, "the message mentions both counts"
+    assert "Batas melengkapi" not in text, "no expiry was set, so no deadline is shown"
 
 
 async def test_cooldown_jitter_extends_the_next_dispatch_by_a_random_amount() -> None:

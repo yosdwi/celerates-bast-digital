@@ -139,8 +139,10 @@ async def test_sends_one_personal_message_outside_the_campaign_window() -> None:
     [(jid, text, request_id)] = gateway.sent
     assert jid == "621@c.us"
     assert request_id == f"celerates-direct:{result.message_id}"
-    assert text.startswith("Halo Rina, ada 1 hari attendance periode Payroll September 2026")
-    assert "2 task bulan September 2026" in text
+    assert text.startswith("Halo Rina,")
+    assert "*Timesheet September 2026*" in text
+    assert "- *Attendance:* 1 Sep 2026" in text
+    assert "- *Tasklist:* 2 task belum closed" in text
     assert f"{PREFIX}/go/abc" in text
     assert "E-1" not in text
     assert "@c.us" not in text
