@@ -514,10 +514,13 @@ def _task_json(item: TaskEvidenceCandidate) -> dict[str, object]:
         "title": item.title,
         "work_date": item.work_date.isoformat(),
         "task_source": item.task_source,
-        "status": "Closed",
+        "status": item.status,
+        "closed": item.closed,
         "evidence_count": item.evidence_count,
         "staged_count": item.staged_count,
-        "complete": item.evidence_count > 0,
+        # Only a Closed task may take evidence; the front end shows the upload
+        # action solely for these, everything else is visibility only.
+        "complete": item.closed and item.evidence_count > 0,
     }
 
 
@@ -983,8 +986,11 @@ def celerates_router(  # noqa: C901, PLR0915
             key=lambda item: (item.work_date, item.task_key),
             reverse=True,
         )
-        items.sort(key=lambda item: item.evidence_count > 0)  # stable: missing first
-        complete = sum(item.evidence_count > 0 for item in items)
+        # Stable: a Closed task still missing evidence surfaces first; open tasks (not yet
+        # actionable) sort after every Closed task, whichever way their own evidence sits.
+        items.sort(key=lambda item: (not item.closed, item.closed and item.evidence_count > 0))
+        closed = [item for item in items if item.closed]
+        complete = sum(item.evidence_count > 0 for item in closed)
         return JSONResponse(
             {
                 "employee_id": employee_id,
@@ -998,9 +1004,10 @@ def celerates_router(  # noqa: C901, PLR0915
                 "summary": {
                     "total": len(items),
                     "complete": complete,
-                    "missing": len(items) - complete,
+                    "missing": len(closed) - complete,
                     "staged": sum(
-                        item.evidence_count == 0 and item.staged_count > 0 for item in items
+                        item.closed and item.evidence_count == 0 and item.staged_count > 0
+                        for item in items
                     ),
                 },
                 "items": [_task_json(item) for item in items],
