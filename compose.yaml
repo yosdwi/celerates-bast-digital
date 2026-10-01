@@ -539,6 +539,9 @@ services:
     environment:
       <<: *app-environment
       BAST_CLI: digital-bast
+      # Render BAST PDFs in the dedicated bast-renderer (same as web-blue/green): one Chromium VPS-wide, serialised, and
+      # out of this container's 1.5G cap (a developer BAST peaked at 1.48G here and took ~320s).
+      BAST_RENDERER_URL: http://bast-renderer:8001
       BOT_LLM_URL: ${BOT_LLM_URL:-}
       BOT_LLM_MODEL: ${BOT_LLM_MODEL:-llama3.2:3b}
       BOT_WORKER_HOST: 0.0.0.0
