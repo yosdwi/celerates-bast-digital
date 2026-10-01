@@ -15,7 +15,8 @@ const DEFAULT_TOKEN_FILE = "/run/secrets/sync_ingest_token";
 const ROOT = path.resolve(__dirname, "..");
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const PYTHON = process.env.BAST_PYTHON || "python";
-const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
+// 600s: a full developer BAST renders ~320s locally (Chromium, batches of 10 pages); 180s killed it mid-render.
+const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 600000);
 const PORT = Number(process.env.BOT_WORKER_PORT || 8091);
 const HOST = process.env.BOT_WORKER_HOST || "0.0.0.0";
 const MAX_BODY_BYTES = 16 * 1024;

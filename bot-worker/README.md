@@ -37,7 +37,7 @@ same line instead of a stack trace.
 | --- | --- | --- |
 | `BOT_WORKER_HOST` / `BOT_WORKER_PORT` | `0.0.0.0` / `8091` | Bind address. Only reachable internally -- no host port mapping in production. |
 | `BAST_CLI` | `digital-bast` | Command used to run the CLI. |
-| `BAST_CLI_TIMEOUT_MS` | `180000` | Hard timeout per command. |
+| `BAST_CLI_TIMEOUT_MS` | `600000` | Hard timeout per command. Keep the WhatsApp gateway's `BOT_WORKER_TIMEOUT_MS` (default `630000`) above it. |
 | `SYNC_INGEST_TOKEN_FILE` / `BOT_BRIDGE_TOKEN_FILE` | `/run/secrets/sync_ingest_token` | Shared bearer token wa-session must present as `X-Bridge-Token`. |
 
 ## API
