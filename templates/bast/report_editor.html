@@ -1337,27 +1337,113 @@
             return Math.max(0.25, Math.min(currentScale, widthScale, heightScale));
         }
 
-        // Only tasklist/evidence pages get dynamic fit-to-page. Timesheet
-        // (2026-09-04) has its own hand-tuned nested transform (0.58 inner x
-        // 0.75 outer, baked into timesheet_report_template.html for its
-        // Google-Sheets-export markup) -- scrollHeight on the outer
-        // container reads that inner box's pre-transform layout size (~1930px
-        // wide), nowhere near what's actually painted, so computeFitScale
-        // wildly over-shrinks it. Attendance already computes its own scale
-        // in Python (_attendance_scale, row-count-driven) before the page is
-        // ever rendered. Re-measuring either here fights an already-correct
-        // answer with a wrong one.
+        // Tasklist/evidence pages use computeFitScale() above (scrollHeight based).
+        // Attendance already computes its own scale in Python (_attendance_scale,
+        // row-count-driven) before the page is ever rendered, so re-measuring it
+        // here would fight an already-correct answer.
         const _AUTOFIT_CONTAINER_CLASSES = ['tasklist-container', 'evidence-container'];
+
+        // Timesheet fit-to-page (2026-10-01). Timesheet keeps its hand-tuned nested
+        // transform (0.58 inner .ritz.grid-container x 0.75 outer container, baked
+        // into timesheet_report_template.html for its Google-Sheets-export markup),
+        // so scrollHeight on the outer container reads the inner box's PRE-transform
+        // layout size and cannot be used (it wildly over-shrinks, see computeFitScale).
+        // A talent whose activity descriptions wrap onto many lines overflowed the
+        // fixed 794x1123px .page and html2canvas cropped the bottom rows off the
+        // exported PDF. Measure what is actually PAINTED instead
+        // (getBoundingClientRect includes every transform) and shrink only the OUTER
+        // scale just enough to fit. A page that already fits returns null and keeps
+        // the 0.75 default, so its output is unchanged.
+        // Painted extent of the timesheet. The <table> (fixed layout, columns sum to
+        // ~1900px) is WIDER than its .ritz.grid-container (width:172%) and spills out of
+        // it, so the container's own rect under-reports the width by ~25% -- measure
+        // the tables too. Height is the same either way.
+        function timesheetExtent(container) {
+            const origin = container.getBoundingClientRect();
+            let left = Infinity;
+            let right = -Infinity;
+            let bottom = origin.top;
+            container.querySelectorAll('.ritz.grid-container').forEach((grid) => {
+                [grid, ...grid.querySelectorAll('table')].forEach((el) => {
+                    const rect = el.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return;
+                    left = Math.min(left, rect.left);
+                    right = Math.max(right, rect.right);
+                    bottom = Math.max(bottom, rect.bottom);
+                });
+            });
+            return isFinite(left) ? { origin, left, right, bottom } : null;
+        }
+
+        function computeTimesheetFitScale(page) {
+            const container = page.querySelector('.section-container.timesheet-container');
+            if (!container) return null;
+            const extent = timesheetExtent(container);
+            if (!extent) return null;
+            const { origin, right, bottom } = extent;
+            const paintedWidth = right - origin.left;
+            const paintedHeight = bottom - origin.top;
+            if (paintedWidth <= 0 || paintedHeight <= 0) return null;
+
+            const pageRect = page.getBoundingClientRect();
+            const pageStyle = getComputedStyle(page);
+            const limitRight = pageRect.left + page.clientLeft + page.clientWidth - (parseFloat(pageStyle.paddingRight) || 0);
+            const limitBottom = pageRect.top + page.clientTop + page.clientHeight - (parseFloat(pageStyle.paddingBottom) || 0);
+
+            // Scaling about the container's top-left origin scales the painted size linearly.
+            const ratio = Math.min(
+                (limitRight - origin.left) / paintedWidth,
+                (limitBottom - origin.top) / paintedHeight,
+            );
+            if (ratio >= 1) return null;
+
+            const currentScale = new DOMMatrix(getComputedStyle(container).transform).a || 1;
+            return Math.max(0.25, currentScale * ratio * 0.98);
+        }
+
+        // Shrinking about the top-left origin parks all the freed width on the right.
+        // Centre the painted table in the page's content box instead (every timesheet
+        // page, so shrunk and unshrunk pages sit the same way).
+        function centerTimesheet(page, container, sectionIndex) {
+            const extent = timesheetExtent(container);
+            if (!extent) return;
+            const { left, right } = extent;
+            const pageRect = page.getBoundingClientRect();
+            const pageStyle = getComputedStyle(page);
+            const contentLeft = pageRect.left + page.clientLeft + (parseFloat(pageStyle.paddingLeft) || 0);
+            const contentRight = pageRect.left + page.clientLeft + page.clientWidth - (parseFloat(pageStyle.paddingRight) || 0);
+            const dx = ((contentLeft + contentRight) - (left + right)) / 2;
+            if (Math.abs(dx) < 0.5) return;
+            const pos = sectionPositions[sectionIndex] || { x: 0, y: 0 };
+            sectionPositions[sectionIndex] = { x: pos.x + dx, y: pos.y };
+            const scale = new DOMMatrix(getComputedStyle(container).transform).a || 1;
+            updateSectionScale(sectionIndex, scale);
+        }
 
         async function autoFitPage(page) {
             const sectionIndex = page.getAttribute('data-section-index');
             if (!sectionIndex) return;
             const container = page.querySelector('.section-container');
-            if (!container || !_AUTOFIT_CONTAINER_CLASSES.some(cls => container.classList.contains(cls))) return;
+            if (!container) return;
             // Web fonts (Bootstrap Icons/Inter, loaded from CDN) can still be
             // swapping in when this runs -- that changes row heights/text
             // wrapping after the fact, so measuring first avoids under-
             // scaling. Resolves immediately once fonts are already settled.
+            if (container.classList.contains('timesheet-container')) {
+                await document.fonts.ready;
+                // .section-container animates transform (0.3s); html2canvas runs right
+                // after this, so without this it would capture a half-way scale.
+                container.style.transition = 'none';
+                const timesheetScale = computeTimesheetFitScale(page);
+                if (timesheetScale !== null) {
+                    updateSectionScale(sectionIndex, Math.floor(timesheetScale * 100) / 100);
+                }
+                void container.offsetHeight; // flush the new transform before measuring/capture
+                centerTimesheet(page, container, sectionIndex);
+                void container.offsetHeight;
+                return;
+            }
+            if (!_AUTOFIT_CONTAINER_CLASSES.some(cls => container.classList.contains(cls))) return;
             await document.fonts.ready;
             const fitScale = computeFitScale(page);
             if (fitScale === null) return;
