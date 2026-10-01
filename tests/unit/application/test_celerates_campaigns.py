@@ -394,7 +394,7 @@ async def test_blocker_recheck_at_dispatch_covers_tasks() -> None:
     [(_, text, _)] = gateway.sent
     assert text.startswith("Halo Bima,")
     assert "*Timesheet September 2026*" in text
-    assert "- *Tasklist:* 2 task belum closed" in text
+    assert "- *Tasklist:* 2 task closed belum ada evidence" in text
 
 
 async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
@@ -409,7 +409,7 @@ async def test_links_without_expiry_are_accepted_and_never_expire() -> None:
     text = gateway.sent[0][1]
     assert "*Timesheet September 2026*" in text
     assert "- *Attendance:*" in text
-    assert "- *Tasklist:* 1 task belum closed" in text, "the message mentions both counts"
+    assert "- *Tasklist:* 1 task closed belum ada evidence" in text, "the message mentions both counts"
     assert "Batas melengkapi: 2 Okt 2026, 12:00 WIB" in text, "fixed rule, not the link's expiry"
 
 

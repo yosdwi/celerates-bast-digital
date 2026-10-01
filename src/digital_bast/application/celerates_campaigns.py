@@ -317,7 +317,9 @@ def compose_talent_message(  # noqa: PLR0913 - keyword-only message facts
     if ordered:
         lines.append(f"- *Attendance:* {_date_list(ordered, report_month, report_year)}")
     if missing_tasks > 0:
-        lines.append(f"- *Tasklist:* {missing_tasks} task belum closed")
+        # missing_tasks counts Closed tasks with zero evidence -- "belum closed" is wrong here,
+        # the task itself is done, only the evidence attachment is still outstanding.
+        lines.append(f"- *Tasklist:* {missing_tasks} task closed belum ada evidence")
         lines.append("- *Evidence:* mohon upload evidence pada tasklist")
     lines += [
         "",

@@ -142,7 +142,7 @@ async def test_sends_one_personal_message_outside_the_campaign_window() -> None:
     assert text.startswith("Halo Rina,")
     assert "*Timesheet September 2026*" in text
     assert "- *Attendance:* 1 Sep 2026" in text
-    assert "- *Tasklist:* 2 task belum closed" in text
+    assert "- *Tasklist:* 2 task closed belum ada evidence" in text
     assert f"{PREFIX}/go/abc" in text
     assert "E-1" not in text
     assert "@c.us" not in text

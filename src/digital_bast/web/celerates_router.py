@@ -219,10 +219,15 @@ class _PayrollAudience:
         self._tasks = tasks
 
     async def _missing_tasks(self, employee_id: str, month: DateRange) -> tuple[str, ...]:
+        # Only Closed tasks are actually "missing evidence" -- an open task hasn't reached the
+        # point evidence is expected yet, so counting it here would overstate the reminder and
+        # mislabel still-in-progress work as a completed-but-undocumented task (doc 22 R3.2).
         return tuple(
             item.task_key
             for item in await self._tasks.list_candidates(employee_id)
-            if month.start <= item.work_date <= month.end and item.evidence_count == 0
+            if month.start <= item.work_date <= month.end
+            and item.closed
+            and item.evidence_count == 0
         )
 
     async def _timesheet_actionable_dates(self, month: DateRange) -> dict[str, tuple[date, ...]]:
