@@ -13,6 +13,7 @@ import type {
   IdentityRebindRequest,
   TalentOpsSession,
 } from "../api/types";
+import { CloseIcon } from "./Icons";
 
 interface Props {
   session: TalentOpsSession;
@@ -52,6 +53,7 @@ export default function ApprovalQueue({ session }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [attendanceAllowed, setAttendanceAllowed] = useState(true);
   const [rebindAllowed, setRebindAllowed] = useState(true);
+  const [previewItem, setPreviewItem] = useState<AttendanceResolution | null>(null);
 
   const total = attendance.length + rebinds.length;
   const hasAnyCapability = attendanceAllowed || rebindAllowed;
@@ -168,13 +170,18 @@ export default function ApprovalQueue({ session }: Props) {
           <div className="approval-card-grid">
             {attendanceRows.map((item) => (
               <article className="approval-card" key={item.id}>
-                <div className="approval-card-evidence">
+                <button
+                  type="button"
+                  className="approval-card-evidence"
+                  aria-label={`Preview evidence for ${item.full_name}`}
+                  onClick={() => setPreviewItem(item)}
+                >
                   <img
                     src={attendanceResolutionEvidenceUrl(item.id)}
                     alt={`Attendance evidence for ${item.full_name}`}
                     loading="lazy"
                   />
-                </div>
+                </button>
                 <div className="approval-card-body">
                   <div className="talent-name">{item.full_name}</div>
                   <div className="cell-muted">{item.nrp} · {item.work_date}</div>
@@ -242,6 +249,29 @@ export default function ApprovalQueue({ session }: Props) {
           </div>
         </div>
       ) : null}
+
+      <div className={`evidence-preview-overlay ${previewItem ? "open" : ""}`} onClick={() => setPreviewItem(null)} />
+      <aside className={`evidence-preview ${previewItem ? "open" : ""}`} aria-hidden={!previewItem}>
+        {previewItem ? (
+          <>
+            <div className="evidence-preview-head">
+              <div>
+                <span>{previewItem.nrp} · {previewItem.work_date}</span>
+                <h2>{previewItem.full_name}</h2>
+              </div>
+              <button className="icon-button" type="button" aria-label="Close evidence preview" onClick={() => setPreviewItem(null)}>
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="evidence-preview-image">
+              <img
+                src={attendanceResolutionEvidenceUrl(previewItem.id)}
+                alt={`Attendance evidence for ${previewItem.full_name}`}
+              />
+            </div>
+          </>
+        ) : null}
+      </aside>
 
       {rejectTarget ? (
         <div className="approval-reject-box">

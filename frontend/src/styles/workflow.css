@@ -30,6 +30,13 @@
   background: var(--surface, #fff);
 }
 
+.approval-card-evidence {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
 .approval-card-evidence img {
   width: 104px;
   height: 92px;
