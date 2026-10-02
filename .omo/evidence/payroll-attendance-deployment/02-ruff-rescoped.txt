@@ -1,0 +1,1574 @@
+EXE002 The file is executable but no shebang is present
+--> bridge/pama_bridge.py:1:1
+
+EXE002 The file is executable but no shebang is present
+--> bridge/test_dump_replay.py:1:1
+
+PLR2004 Magic value used in comparison, consider replacing `31` with a constant variable
+  --> src/digital_bast/application/attendance_closing_policy.py:45:32
+   |
+44 | def _validate_closing_day(closing_day: int) -> None:
+45 |     if not 1 <= closing_day <= 31:
+   |                                ^^
+46 |         msg = "closing_day must be between 1 and 31"
+47 |         raise ValueError(msg)
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `23` with a constant variable
+  --> src/digital_bast/application/attendance_closing_policy.py:51:34
+   |
+50 | def _validate_reminder_hour(reminder_hour: int) -> None:
+51 |     if not 0 <= reminder_hour <= 23:
+   |                                  ^^
+52 |         msg = "reminder_hour must be between 0 and 23"
+53 |         raise ValueError(msg)
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `12` with a constant variable
+  --> src/digital_bast/application/attendance_closing_policy.py:67:17
+   |
+66 | def _next_month(year: int, month: int) -> tuple[int, int]:
+67 |     if month == 12:
+   |                 ^^
+68 |         return year + 1, 1
+69 |     return year, month + 1
+   |
+
+F401 [*] `digital_bast.application.payroll_digest.PayrollDigestService` imported but unused
+  --> src/digital_bast/application/payroll_query.py:13:79
+   |
+12 |     from digital_bast.application.attendance_closing_policy import PayrollCycle
+13 |     from digital_bast.application.payroll_digest import PayrollClosingDigest, PayrollDigestService
+   |                                                                               ^^^^^^^^^^^^^^^^^^^^
+14 |     from digital_bast.application.talentops_ai import TalentOpsChatClient
+   |
+help: Remove unused import: `digital_bast.application.payroll_digest.PayrollDigestService`
+   |
+12 |     from digital_bast.application.attendance_closing_policy import PayrollCycle
+   -     from digital_bast.application.payroll_digest import PayrollClosingDigest, PayrollDigestService
+13 +     from digital_bast.application.payroll_digest import PayrollClosingDigest
+14 |     from digital_bast.application.talentops_ai import TalentOpsChatClient
+   |
+
+PLR0913 Too many arguments in function definition (6 > 5)
+   --> src/digital_bast/application/payroll_query.py:136:15
+    |
+134 |         self._ai = ai
+135 |
+136 |     async def query(
+    |               ^^^^^
+137 |         self,
+138 |         question: str,
+    |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+PLR0913 Too many arguments in function definition (6 > 5)
+  --> src/digital_bast/bot/attendance_context.py:63:9
+   |
+62 |     @classmethod
+63 |     def create(
+   |         ^^^^^^
+64 |         cls,
+65 |         employee_id: str,
+   |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+PLR0913 Too many arguments in function definition (6 > 5)
+   --> src/digital_bast/bot/attendance_context.py:105:9
+    |
+103 |     )
+104 |
+105 |     def __init__(
+    |         ^^^^^^^^
+106 |         self,
+107 |         context_id: UUID,
+    |
+
+PLR0917 Too many positional arguments (6 > 5)
+   --> src/digital_bast/bot/attendance_context.py:105:9
+    |
+103 |     )
+104 |
+105 |     def __init__(
+    |         ^^^^^^^^
+106 |         self,
+107 |         context_id: UUID,
+    |
+
+E501 Line too long (102 > 100)
+   --> src/digital_bast/bot/attendance_evidence.py:191:101
+    |
+189 |             with self._connect() as connection, connection.cursor() as cursor:
+190 |                 _ = cursor.execute(
+191 |                     "SELECT work_date FROM attendance WHERE employee_id = %s AND work_date = ANY(%s)",
+    |                                                                                                     ^^
+192 |                     (employee_id, list(dates)),
+193 |                 )
+    |
+
+PLR2004 Magic value used in comparison, consider replacing `3` with a constant variable
+   --> src/digital_bast/bot/attendance_reminder_routing.py:109:22
+    |
+107 | def _cycle_from_id(cycle_id: str) -> PayrollCycle | None:
+108 |     parts = cycle_id.split(":")
+109 |     if len(parts) != 3:
+    |                      ^
+110 |         return None
+111 |     try:
+    |
+
+TC003 Move standard library import `datetime.date` into a type-checking block
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:16:22
+   |
+15 | from dataclasses import dataclass
+16 | from datetime import date, time
+   |                      ^^^^
+17 | from typing import cast, final
+   |
+help: Move into type-checking block
+
+TC003 Move standard library import `datetime.time` into a type-checking block
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:16:28
+   |
+15 | from dataclasses import dataclass
+16 | from datetime import date, time
+   |                            ^^^^
+17 | from typing import cast, final
+   |
+help: Move into type-checking block
+
+PLR0913 Too many arguments in function definition (8 > 5)
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:59:9
+   |
+57 |     )
+58 |
+59 |     def __init__(
+   |         ^^^^^^^^
+60 |         self,
+61 |         attendance_key: str,
+   |
+
+PLR0917 Too many positional arguments (8 > 5)
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:59:9
+   |
+57 |     )
+58 |
+59 |     def __init__(
+   |         ^^^^^^^^
+60 |         self,
+61 |         attendance_key: str,
+   |
+
+PLR0913 Too many arguments in function definition (6 > 5)
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:90:9
+   |
+88 |     )
+89 |
+90 |     def __init__(
+   |         ^^^^^^^^
+91 |         self,
+92 |         attendance_id: int,
+   |
+
+PLR0917 Too many positional arguments (6 > 5)
+  --> src/digital_bast/bot/attendance_resolution_dm_state.py:90:9
+   |
+88 |     )
+89 |
+90 |     def __init__(
+   |         ^^^^^^^^
+91 |         self,
+92 |         attendance_id: int,
+   |
+
+PLR0913 Too many arguments in function definition (7 > 5)
+   --> src/digital_bast/bot/attendance_resolution_dm_state.py:186:15
+    |
+184 |         return await run_sync(self._begin, wa_jid, employee_id, attendance_key)
+185 |
+186 |     async def save_proposal(
+    |               ^^^^^^^^^^^^^
+187 |         self,
+188 |         wa_jid: str,
+    |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+C901 `_payroll_reminder_reply` is too complex (14 > 10)
+   --> src/digital_bast/bot/dm_entry.py:270:11
+    |
+270 | async def _payroll_reminder_reply(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+271 |     text: str,
+272 |     jid: str,
+    |
+
+PLR0911 Too many return statements (13 > 6)
+   --> src/digital_bast/bot/dm_entry.py:270:11
+    |
+270 | async def _payroll_reminder_reply(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+271 |     text: str,
+272 |     jid: str,
+    |
+
+PLR0912 Too many branches (13 > 12)
+   --> src/digital_bast/bot/dm_entry.py:270:11
+    |
+270 | async def _payroll_reminder_reply(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^
+271 |     text: str,
+272 |     jid: str,
+    |
+
+C901 `reply` is too complex (12 > 10)
+   --> src/digital_bast/bot/dm_entry.py:360:11
+    |
+360 | async def reply(text: str, jid: str) -> str:  # noqa: PLR0911 - guarded workflow routing
+    |           ^^^^^
+361 |     if await create_attendance_resolution_dm_state_service().pending(jid) is not None:
+362 |         return await workflow_reply(text, jid)
+    |
+
+TC001 Move application import `digital_bast.bot.attendance_context.AttendanceReminderContext` into a type-checking block
+  --> src/digital_bast/bot/dm_message_entry.py:17:49
+   |
+15 | import anyio
+16 |
+17 | from digital_bast.bot.attendance_context import AttendanceReminderContext
+   |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+18 | from digital_bast.bot.attendance_reminder_routing import AttendanceReminderRouteStatus
+19 | from digital_bast.bot.attendance_reminder_runtime import (
+   |
+help: Move into type-checking block
+
+TC001 Move application import `digital_bast.bot.attendance_resolution_dm.ResolutionProposal` into a type-checking block
+  --> src/digital_bast/bot/dm_message_entry.py:23:55
+   |
+21 |     create_attendance_reminder_routing_service,
+22 | )
+23 | from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
+   |                                                       ^^^^^^^^^^^^^^^^^^
+24 | from digital_bast.bot.attendance_resolution_dm_state import (
+25 |     AttendanceResolutionDmStateService,
+   |
+help: Move into type-checking block
+
+TC001 Move application import `digital_bast.bot.attendance_resolution_dm_state.AttendanceResolutionDmStateService` into a type-checking block
+  --> src/digital_bast/bot/dm_message_entry.py:25:5
+   |
+23 | from digital_bast.bot.attendance_resolution_dm import ResolutionProposal
+24 | from digital_bast.bot.attendance_resolution_dm_state import (
+25 |     AttendanceResolutionDmStateService,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 |     AttendanceResolutionDraft,
+27 | )
+   |
+help: Move into type-checking block
+
+TC001 Move application import `digital_bast.bot.attendance_resolution_dm_state.AttendanceResolutionDraft` into a type-checking block
+  --> src/digital_bast/bot/dm_message_entry.py:26:5
+   |
+24 | from digital_bast.bot.attendance_resolution_dm_state import (
+25 |     AttendanceResolutionDmStateService,
+26 |     AttendanceResolutionDraft,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+27 | )
+28 | from digital_bast.bot.dm_entry import reply as legacy_entry_reply
+   |
+help: Move into type-checking block
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> src/digital_bast/bot/dm_message_entry.py:54:15
+   |
+52 |     value = datetime.fromisoformat(normalized)
+53 |     if value.tzinfo is None:
+54 |         raise ValueError("message timestamp must include timezone")
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 |     return value.astimezone(UTC)
+   |
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> src/digital_bast/bot/dm_message_entry.py:54:26
+   |
+52 |     value = datetime.fromisoformat(normalized)
+53 |     if value.tzinfo is None:
+54 |         raise ValueError("message timestamp must include timezone")
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 |     return value.astimezone(UTC)
+   |
+help: Assign to variable; remove string literal
+
+PLR0913 Too many arguments in function definition (6 > 5)
+   --> src/digital_bast/bot/dm_message_entry.py:108:11
+    |
+108 | async def _save_proposal(
+    |           ^^^^^^^^^^^^^^
+109 |     jid: str,
+110 |     state: AttendanceResolutionDmStateService,
+    |
+
+PLR0917 Too many positional arguments (6 > 5)
+   --> src/digital_bast/bot/dm_message_entry.py:108:11
+    |
+108 | async def _save_proposal(
+    |           ^^^^^^^^^^^^^^
+109 |     jid: str,
+110 |     state: AttendanceResolutionDmStateService,
+    |
+
+C901 `reply` is too complex (12 > 10)
+   --> src/digital_bast/bot/dm_message_entry.py:143:11
+    |
+143 | async def reply(text: str, jid: str, message_at: datetime) -> str:  # noqa: PLR0911
+    |           ^^^^^
+144 |     state, draft, context = await _active_payroll_draft(jid)
+145 |     if draft is None or context is None or draft.work_date is None:
+    |
+
+C901 `reply` is too complex (17 > 10)
+   --> src/digital_bast/bot/dm_workflow.py:476:11
+    |
+476 | async def reply(text: str, jid: str) -> str:
+    |           ^^^^^
+477 |     await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 -- timing jitter, not a secret
+478 |     operator_reply = await _route_operator(text, jid)
+    |
+
+PLR0912 Too many branches (16 > 12)
+   --> src/digital_bast/bot/dm_workflow.py:476:11
+    |
+476 | async def reply(text: str, jid: str) -> str:
+    |           ^^^^^
+477 |     await anyio.sleep(random.uniform(*_REPLY_DELAY_SECONDS))  # noqa: S311 -- timing jitter, not a secret
+478 |     operator_reply = await _route_operator(text, jid)
+    |
+
+TC003 Move standard library import `pathlib.Path` into a type-checking block
+  --> src/digital_bast/bot/payroll_attendance_evidence.py:12:21
+   |
+10 | from __future__ import annotations
+11 |
+12 | from pathlib import Path
+   |                     ^^^^
+13 | from typing import TYPE_CHECKING, Protocol
+   |
+help: Move into type-checking block
+
+PLR0913 Too many arguments in function definition (6 > 5)
+  --> src/digital_bast/bot/payroll_attendance_evidence.py:56:11
+   |
+56 | async def attach_payroll_attendance_evidence(
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 |     *,
+58 |     jid: str,
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> src/digital_bast/bot/payroll_attendance_natural.py:141:15
+    |
+139 | def _message_local_date(message_at: datetime) -> date:
+140 |     if message_at.tzinfo is None:
+141 |         raise ValueError("message_at must be timezone-aware")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |     return message_at.astimezone(JAKARTA).date()
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> src/digital_bast/bot/payroll_attendance_natural.py:141:26
+    |
+139 | def _message_local_date(message_at: datetime) -> date:
+140 |     if message_at.tzinfo is None:
+141 |         raise ValueError("message_at must be timezone-aware")
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |     return message_at.astimezone(JAKARTA).date()
+    |
+help: Assign to variable; remove string literal
+
+PERF401 Use `list.extend` to create a transformed list
+   --> src/digital_bast/bot/payroll_attendance_natural.py:168:9
+    |
+167 |     for match in _ISO_DATE_RE.finditer(text):
+168 |         candidates.append(_safe_date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+169 |
+170 |     for match in _DMY_DATE_RE.finditer(text):
+    |
+help: Replace for loop with list.extend
+
+PERF401 Use `list.extend` to create a transformed list
+   --> src/digital_bast/bot/payroll_attendance_natural.py:180:9
+    |
+179 |       for match in _DAY_ONLY_RE.finditer(text):
+180 | /         candidates.append(
+181 | |             _safe_date(active_work_date.year, active_work_date.month, int(match.group(1)))
+182 | |         )
+    | |_________^
+183 |
+184 |       if not candidates:
+    |
+help: Replace for loop with list.extend
+
+FBT003 Boolean positional value in function call
+   --> src/digital_bast/bot/payroll_attendance_natural.py:185:33
+    |
+184 |     if not candidates:
+185 |         return ExplicitWorkDate(False, None)
+    |                                 ^^^^^
+186 |     unique = {item for item in candidates if item is not None}
+187 |     if len(unique) != 1 or any(item is None for item in candidates):
+    |
+
+FBT003 Boolean positional value in function call
+   --> src/digital_bast/bot/payroll_attendance_natural.py:188:33
+    |
+186 |     unique = {item for item in candidates if item is not None}
+187 |     if len(unique) != 1 or any(item is None for item in candidates):
+188 |         return ExplicitWorkDate(True, None)
+    |                                 ^^^^
+189 |     return ExplicitWorkDate(True, next(iter(unique)))
+    |
+
+FBT003 Boolean positional value in function call
+   --> src/digital_bast/bot/payroll_attendance_natural.py:189:29
+    |
+187 |     if len(unique) != 1 or any(item is None for item in candidates):
+188 |         return ExplicitWorkDate(True, None)
+189 |     return ExplicitWorkDate(True, next(iter(unique)))
+    |                             ^^^^
+
+ISC004 Unparenthesized implicit string concatenation in collection
+  --> src/digital_bast/bot/payroll_attendance_repeat.py:78:17
+   |
+76 |                   "Clock In belum ada.",
+77 |                   "",
+78 | /                 f"{format_day(suggestion.source_work_date)} kamu mengajukan "
+79 | |                 f"Clock In {_clock_label(suggestion.proposed_check_in)}.",
+   | |_________________________________________________________________________^
+80 |                   "Untuk tanggal ini jam masuknya sama?",
+81 |               )
+   |
+help: Did you forget a comma?
+help: Wrap implicitly concatenated strings in parentheses
+
+ISC004 Unparenthesized implicit string concatenation in collection
+  --> src/digital_bast/bot/payroll_attendance_repeat.py:90:17
+   |
+88 |                   "Clock Out belum ada.",
+89 |                   "",
+90 | /                 f"{format_day(suggestion.source_work_date)} kamu mengajukan "
+91 | |                 f"Clock Out {_clock_label(suggestion.proposed_check_out)}.",
+   | |___________________________________________________________________________^
+92 |                   "Untuk tanggal ini jam pulangnya sama?",
+93 |               )
+   |
+help: Did you forget a comma?
+help: Wrap implicitly concatenated strings in parentheses
+
+PLR0913 Too many arguments in function definition (7 > 5)
+  --> src/digital_bast/bot/payroll_attendance_submit.py:37:15
+   |
+36 | class AttendanceResolutionSubmitter(Protocol):
+37 |     async def submit(
+   |               ^^^^^^
+38 |         self,
+39 |         employee_id: str,
+   |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+PLR0913 Too many arguments in function definition (8 > 5)
+  --> src/digital_bast/bot/payroll_attendance_submit.py:95:11
+   |
+95 | async def _continue_to_next_gap(
+   |           ^^^^^^^^^^^^^^^^^^^^^
+96 |     *,
+97 |     jid: str,
+   |
+
+PLR0913 Too many arguments in function definition (8 > 5)
+   --> src/digital_bast/bot/payroll_attendance_submit.py:133:11
+    |
+133 | async def submit_payroll_attendance_draft(
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+134 |     *,
+135 |     jid: str,
+    |
+
+G004 Logging statement uses f-string
+  --> src/digital_bast/flows/housekeeping.py:82:9
+   |
+80 |                   deleted += 1
+81 |       logger.info(
+82 | /         f"deleted {deleted} stale scheduled runs "
+83 | |         f"(overdue by more than {_STALE_AFTER}) for {_HIGH_FREQUENCY_DEPLOYMENTS}"
+   | |__________________________________________________________________________________^
+84 |       )
+85 |       return deleted
+   |
+help: Convert to lazy `%` formatting
+
+E501 Line too long (107 > 100)
+   --> src/digital_bast/flows/pipelines.py:99:101
+    |
+ 99 | @flow(name="nightly-reconciliation", validate_parameters=False, persist_result=False, timeout_seconds=1800)
+    |                                                                                                     ^^^^^^^
+100 | async def nightly_reconciliation_flow(
+101 |     period: str | None = None,
+    |
+
+E501 Line too long (103 > 100)
+   --> src/digital_bast/flows/pipelines.py:117:101
+    |
+117 | @flow(name="monthly-timesheets", validate_parameters=False, persist_result=False, timeout_seconds=1800)
+    |                                                                                                     ^^^
+118 | async def monthly_timesheets_flow(
+119 |     period: str | None = None,
+    |
+
+EXE002 The file is executable but no shebang is present
+--> src/digital_bast/infrastructure/legacy_pic.py:1:1
+
+EXE002 The file is executable but no shebang is present
+--> src/digital_bast/infrastructure/nocodb.py:1:1
+
+PLW2901 `for` loop variable `jpeg_bytes` overwritten by assignment target
+   --> src/digital_bast/infrastructure/pdf_export.py:143:13
+    |
+141 |             buffer = io.BytesIO()
+142 |             img.save(buffer, format="JPEG", quality=95)
+143 |             jpeg_bytes = buffer.getvalue()
+    |             ^^^^^^^^^^
+144 |             width, height = img.size
+    |
+
+PLW2901 `for` loop variable `width` overwritten by assignment target
+   --> src/digital_bast/infrastructure/pdf_export.py:144:13
+    |
+142 |             img.save(buffer, format="JPEG", quality=95)
+143 |             jpeg_bytes = buffer.getvalue()
+144 |             width, height = img.size
+    |             ^^^^^
+145 |
+146 |         img_num = add_object(
+    |
+
+PLW2901 `for` loop variable `height` overwritten by assignment target
+   --> src/digital_bast/infrastructure/pdf_export.py:144:20
+    |
+142 |             img.save(buffer, format="JPEG", quality=95)
+143 |             jpeg_bytes = buffer.getvalue()
+144 |             width, height = img.size
+    |                    ^^^^^^
+145 |
+146 |         img_num = add_object(
+    |
+
+E501 Line too long (103 > 100)
+   --> src/digital_bast/infrastructure/pdf_export.py:149:101
+    |
+147 |             b"<< /Type /XObject /Subtype /Image /Width %d /Height %d "
+148 |             b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode "
+149 |             b"/Length %d >>\nstream\n" % (width, height, len(jpeg_bytes)) + jpeg_bytes + b"\nendstream"
+    |                                                                                                     ^^^
+150 |         )
+151 |         content = b"q\n%f 0 0 %f 0 0 cm\n/Im0 Do\nQ" % (_A4_WIDTH_PT, _A4_HEIGHT_PT)
+    |
+
+E501 Line too long (105 > 100)
+   --> src/digital_bast/infrastructure/pdf_export.py:152:101
+    |
+150 |         )
+151 |         content = b"q\n%f 0 0 %f 0 0 cm\n/Im0 Do\nQ" % (_A4_WIDTH_PT, _A4_HEIGHT_PT)
+152 |         content_num = add_object(b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream")
+    |                                                                                                     ^^^^^
+153 |         page_num = add_object(
+154 |             b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %f %f] "
+    |
+
+EXE002 The file is executable but no shebang is present
+--> src/digital_bast/infrastructure/sqlserver.py:1:1
+
+PLW2901 `with` statement variable `img` overwritten by assignment target
+   --> src/digital_bast/web/bast_assembler.py:174:13
+    |
+172 |             if img.width <= max_dimension and img.height <= max_dimension:
+173 |                 return image
+174 |             img = img.copy()
+    |             ^^^
+175 |             img.thumbnail((max_dimension, max_dimension))
+176 |             buffer = io.BytesIO()
+    |
+
+N806 Variable `_DEVELOPER_TASKLIST_ITEMS_PER_PAGE` in function should be lowercase
+   --> src/digital_bast/web/bast_assembler.py:708:5
+    |
+706 |     # fallback for a page that's still too tall, instead of silently cropping
+707 |     # like the pre-fix 10/page + no-shrink combination did.
+708 |     _DEVELOPER_TASKLIST_ITEMS_PER_PAGE = 14
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+709 |     total_pages = (len(items) + _DEVELOPER_TASKLIST_ITEMS_PER_PAGE - 1) // _DEVELOPER_TASKLIST_ITEMS_PER_PAGE
+710 |     sections: list[dict[str, object]] = []
+    |
+
+E501 Line too long (109 > 100)
+   --> src/digital_bast/web/bast_assembler.py:709:101
+    |
+707 |     # like the pre-fix 10/page + no-shrink combination did.
+708 |     _DEVELOPER_TASKLIST_ITEMS_PER_PAGE = 14
+709 |     total_pages = (len(items) + _DEVELOPER_TASKLIST_ITEMS_PER_PAGE - 1) // _DEVELOPER_TASKLIST_ITEMS_PER_PAGE
+    |                                                                                                     ^^^^^^^^^
+710 |     sections: list[dict[str, object]] = []
+711 |     for page_number in range(1, total_pages + 1):
+    |
+
+E501 Line too long (117 > 100)
+   --> src/digital_bast/web/bast_assembler.py:713:101
+    |
+711 |     for page_number in range(1, total_pages + 1):
+712 |         chunk = items[
+713 |             (page_number - 1) * _DEVELOPER_TASKLIST_ITEMS_PER_PAGE : page_number * _DEVELOPER_TASKLIST_ITEMS_PER_PAGE
+    |                                                                                                     ^^^^^^^^^^^^^^^^^
+714 |         ]
+715 |         show_summary = page_number == total_pages
+    |
+
+E501 Line too long (101 > 100)
+   --> src/digital_bast/web/bast_assembler.py:959:101
+    |
+957 |     for page_number in range(1, respon_pages + 1):
+958 |         chunk = respon_data[
+959 |             (page_number - 1) * _IOT_RESPON_ITEMS_PER_PAGE : page_number * _IOT_RESPON_ITEMS_PER_PAGE
+    |                                                                                                     ^
+960 |         ]
+961 |         if not chunk:
+    |
+
+PLW2901 `with` statement variable `img` overwritten by assignment target
+    --> src/digital_bast/web/bast_assembler.py:1004:13
+     |
+1003 |         with Image.open(io.BytesIO(image)) as img:
+1004 |             img = img.convert("RGB")
+     |             ^^^
+1005 |             img.thumbnail((_EVIDENCE_MAX_DIMENSION, _EVIDENCE_MAX_DIMENSION))
+1006 |             buffer = io.BytesIO()
+     |
+
+N806 Variable `_EVIDENCE_ITEMS_PER_PAGE` in function should be lowercase
+    --> src/digital_bast/web/bast_assembler.py:1051:5
+     |
+1049 |     # by evidence_aktivitas.html) fits safely instead of needing the
+1050 |     # unbounded-content crash this chunking originally worked around.
+1051 |     _EVIDENCE_ITEMS_PER_PAGE = 2
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^
+1052 |     chunks = [
+1053 |         items[index : index + _EVIDENCE_ITEMS_PER_PAGE]
+     |
+
+PLR0913 Too many arguments in function definition (6 > 5)
+    --> src/digital_bast/web/bast_assembler.py:1123:5
+     |
+1123 | def _attendance_section(
+     |     ^^^^^^^^^^^^^^^^^^^
+1124 |     roster: Sequence[Employee],
+1125 |     attendance: Sequence[_AttendanceRow],
+     |
+
+PLR0917 Too many positional arguments (6 > 5)
+    --> src/digital_bast/web/bast_assembler.py:1123:5
+     |
+1123 | def _attendance_section(
+     |     ^^^^^^^^^^^^^^^^^^^
+1124 |     roster: Sequence[Employee],
+1125 |     attendance: Sequence[_AttendanceRow],
+     |
+
+C901 `payroll_followup_router` is too complex (11 > 10)
+   --> src/digital_bast/web/payroll_followup_router.py:108:5
+    |
+108 | def payroll_followup_router(
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+109 |     deps: WebDependencies,
+110 |     digest_service: PayrollDigestService | None = None,
+    |
+
+PLR0913 Too many arguments in function definition (6 > 5)
+   --> src/digital_bast/web/payroll_followup_router.py:173:15
+    |
+171 |         )
+172 |
+173 |     async def closing_query(
+    |               ^^^^^^^^^^^^^
+174 |         request: Request,
+175 |         payload: PayrollClosingQueryInput,
+    |
+
+PLR0917 Too many positional arguments (6 > 5)
+   --> src/digital_bast/web/payroll_followup_router.py:173:15
+    |
+171 |         )
+172 |
+173 |     async def closing_query(
+    |               ^^^^^^^^^^^^^
+174 |         request: Request,
+175 |         payload: PayrollClosingQueryInput,
+    |
+
+TC001 Move application import `digital_bast.web.payroll_contracts.PayrollCycleResponse` into a type-checking block
+  --> src/digital_bast/web/payroll_query_contracts.py:9:5
+   |
+ 8 | from digital_bast.web.payroll_contracts import (
+ 9 |     PayrollCycleResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^
+10 |     PayrollDigestSummaryResponse,
+11 |     PayrollFollowUpItemResponse,
+   |
+help: Move into type-checking block
+
+TC001 Move application import `digital_bast.web.payroll_contracts.PayrollDigestSummaryResponse` into a type-checking block
+  --> src/digital_bast/web/payroll_query_contracts.py:10:5
+   |
+ 8 | from digital_bast.web.payroll_contracts import (
+ 9 |     PayrollCycleResponse,
+10 |     PayrollDigestSummaryResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |     PayrollFollowUpItemResponse,
+12 | )
+   |
+help: Move into type-checking block
+
+TC001 Move application import `digital_bast.web.payroll_contracts.PayrollFollowUpItemResponse` into a type-checking block
+  --> src/digital_bast/web/payroll_query_contracts.py:11:5
+   |
+ 9 |     PayrollCycleResponse,
+10 |     PayrollDigestSummaryResponse,
+11 |     PayrollFollowUpItemResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 | )
+   |
+help: Move into type-checking block
+
+PLR0915 Too many statements (53 > 50)
+   --> src/digital_bast/web/production.py:133:5
+    |
+133 | def production_dependencies() -> WebDependencies:
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+134 |     try:
+135 |         settings = get_settings()
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/digital_bast/web/talentops_router.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | from typing import TYPE_CHECKING, Annotated, Literal
+ 4 | | from urllib.parse import urlsplit
+ 5 | | from uuid import UUID  # noqa: TC003 - FastAPI runtime metadata
+ 6 | |
+ 7 | | from anyio.to_thread import run_sync
+ 8 | | from fastapi import (
+ 9 | |     APIRouter,
+10 | |     BackgroundTasks,
+11 | |     File,
+12 | |     Form,
+13 | |     HTTPException,
+14 | |     Query,
+15 | |     Request,
+16 | |     Response,
+17 | |     UploadFile,
+18 | |     status,
+19 | | )
+20 | |
+21 | | from digital_bast.application.bast_generation_jobs import (
+22 | |     display_status as bast_job_display_status,
+23 | | )
+24 | | from digital_bast.application.bast_generation_jobs import (
+25 | |     execute as execute_bast_generation_job,
+26 | | )
+27 | | from digital_bast.application.bast_workflow import BastGenerationMode
+28 | | from digital_bast.application.operational_signals import (
+29 | |     command_center_signals,
+30 | |     talent_signals,
+31 | | )
+32 | | from digital_bast.application.talentops_followups import FollowUpSendCommand
+33 | | from digital_bast.application.workflow_control import WorkflowRole
+34 | | from digital_bast.bot.attendance_resolution import DecisionOutcome, ResolutionStatus, SubmitOutcome
+35 | | from digital_bast.bot.evidence import UploadOutcome
+36 | | from digital_bast.bot.rebind import RebindDecisionOutcome, RebindStatus
+37 | | from digital_bast.domain.completion import DateRange
+38 | | from digital_bast.domain.models import RecordKey
+39 | | from digital_bast.domain.time import JAKARTA, month_dates
+40 | | from digital_bast.operations import (
+41 | |     bast_artifact_path,
+42 | |     completion_status,
+43 | |     create_attendance_evidence_service,
+44 | | )
+45 | | from digital_bast.web.attendance_forms import clock_label, gap_for, read_upload, resolution_shape
+46 | | from digital_bast.web.security import HeaderCsrf, require_session, verify_csrf
+47 | | from digital_bast.web.talentops_contracts import (
+48 | |     AiCommandCenterInput,
+49 | |     AiCommandCenterResponse,
+50 | |     AiInvestigationResponse,
+51 | |     AttendanceGapItemResponse,
+52 | |     AttendanceGapMutationResponse,
+53 | |     AttendanceGapsResponse,
+54 | |     AttendanceResolutionDecisionResponse,
+55 | |     AttendanceResolutionRejectInput,
+56 | |     AttendanceResolutionResponse,
+57 | |     BastGenerationJobResponse,
+58 | |     BastReadinessResponse,
+59 | |     CommandCenterResponse,
+60 | |     FollowUpDraftInput,
+61 | |     FollowUpDraftResponse,
+62 | |     FollowUpSendInput,
+63 | |     FollowUpSendResponse,
+64 | |     IdentityRebindDecisionResponse,
+65 | |     IdentityRebindRejectInput,
+66 | |     IdentityRebindResponse,
+67 | |     NotificationSettingsInput,
+68 | |     NotificationSettingsResponse,
+69 | |     OperationalSignalResponse,
+70 | |     PeriodResponse,
+71 | |     SessionUserResponse,
+72 | |     TalentDetailResponse,
+73 | |     TaskStatusEventResponse,
+74 | |     TalentMobileSettingsInput,
+75 | |     TalentMobileSettingsResponse,
+76 | |     TalentOpsSessionResponse,
+77 | |     WhatsAppInviteResponse,
+78 | |     WhatsAppStatusResponse,
+79 | |     WhatsAppUnlinkResponse,
+80 | |     WorkflowOperatorResponse,
+81 | |     WorkflowOperatorUpsertInput,
+82 | | )
+   | |_^
+83 |
+84 |   if TYPE_CHECKING:
+   |
+help: Organize imports
+   |
+72 |     TalentDetailResponse,
+   -     TaskStatusEventResponse,
+73 |     TalentMobileSettingsInput,
+74 |     TalentMobileSettingsResponse,
+75 |     TalentOpsSessionResponse,
+76 +     TaskStatusEventResponse,
+77 |     WhatsAppInviteResponse,
+   |
+
+EXE002 The file is executable but no shebang is present
+--> tests/contract/test_nocodb_auth_contract.py:1:1
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/unit/application/test_attendance_closing.py:1:1
+   |
+ 1 | / from dataclasses import replace
+ 2 | | from datetime import date
+ 3 | |
+ 4 | | from digital_bast.application.attendance_closing import (
+ 5 | |     AttendanceClosingDayInput,
+ 6 | |     AttendanceClosingReason,
+ 7 | |     AttendanceClosingService,
+ 8 | |     AttendanceClosingStatus,
+ 9 | |     AttendanceCorrectionState,
+10 | |     AttendanceScheduleState,
+11 | |     AttendanceSourceState,
+12 | | )
+   | |_^
+help: Organize imports
+   |
+13 |
+   -
+14 | BASE_ROW = AttendanceClosingDayInput(
+   |
+
+FBT003 Boolean positional value in function call
+  --> tests/unit/application/test_payroll_read.py:77:13
+   |
+75 |             time(8),
+76 |             time(17),
+77 |             False,
+   |             ^^^^^
+78 |         ),
+79 |         PayrollAttendanceRecord(
+   |
+
+FBT003 Boolean positional value in function call
+  --> tests/unit/application/test_payroll_read.py:86:13
+   |
+84 |             time(8),
+85 |             None,
+86 |             True,
+   |             ^^^^
+87 |             resolution_id="request-b",
+88 |             resolution_status="pending",
+   |
+
+FBT003 Boolean positional value in function call
+   --> tests/unit/application/test_payroll_read.py:99:13
+    |
+ 97 |             None,
+ 98 |             time(17),
+ 99 |             True,
+    |             ^^^^
+100 |         ),
+101 |         PayrollAttendanceRecord(
+    |
+
+FBT003 Boolean positional value in function call
+   --> tests/unit/application/test_payroll_read.py:108:13
+    |
+106 |             None,
+107 |             None,
+108 |             True,
+    |             ^^^^
+109 |             resolution_id="request-e",
+110 |             resolution_status="approved",
+    |
+
+PYI034 `__enter__` methods in classes like `_FakeCursor` usually return `self` at runtime
+  --> tests/unit/bot/test_attendance_context.py:33:9
+   |
+31 |         self.statements: list[tuple[str, tuple[object, ...] | None]] = []
+32 |
+33 |     def __enter__(self) -> _FakeCursor:
+   |         ^^^^^^^^^
+34 |         return self
+   |
+help: Use `Self` as return type
+
+PYI034 `__enter__` methods in classes like `_FakeConnection` usually return `self` at runtime
+  --> tests/unit/bot/test_attendance_context.py:55:9
+   |
+53 |         self._cursor = cursor
+54 |
+55 |     def __enter__(self) -> _FakeConnection:
+   |         ^^^^^^^^^
+56 |         return self
+   |
+help: Use `Self` as return type
+
+PLR0913 Too many arguments in function definition (9 > 5)
+  --> tests/unit/bot/test_attendance_reminder.py:21:5
+   |
+21 | def _day(
+   |     ^^^^
+22 |     day: int,
+23 |     *,
+   |
+
+PLR0913 Too many arguments in function definition (7 > 5)
+  --> tests/unit/bot/test_attendance_reminder_routing.py:33:5
+   |
+33 | def _day(
+   |     ^^^^
+34 |     day: int,
+35 |     key: str,
+   |
+
+E501 Line too long (104 > 100)
+  --> tests/unit/bot/test_attendance_reminder_routing.py:54:101
+   |
+52 |         proposed_check_out=None,
+53 |         resolution_id=None,
+54 |         resolution_status="rejected" if reason is AttendanceClosingReason.CORRECTION_REJECTED else None,
+   |                                                                                                     ^^^^
+55 |         resolution_type=resolution_type,
+56 |         absence_type=None,
+   |
+
+PLW0108 Lambda may be unnecessary; consider inlining inner function
+   --> tests/unit/bot/test_dm_entry.py:296:62
+    |
+294 |     )
+295 |     monkeypatch.setattr(dm_entry, "create_activation_service", lambda: activation)
+296 |     monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: _ActiveEvidence())
+    |                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+297 |
+298 |     async def legacy(text: str, jid: str) -> str:
+    |
+help: Inline function call
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_entry_payroll_reminder.py:35:9
+   |
+33 |     async def pending(self, jid: str) -> None:
+34 |         assert jid == _JID
+35 |         return None
+   |         ^^^^^^^^^^^
+36 |
+37 |     async def begin(self, jid: str, employee_id: str, attendance_key: str) -> object:
+   |
+help: Remove explicit `return None`
+   |
+34 |         assert jid == _JID
+   -         return None
+35 +         return
+36 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_entry_payroll_reminder.py:35:9
+   |
+33 |     async def pending(self, jid: str) -> None:
+34 |         assert jid == _JID
+35 |         return None
+   |         ^^^^^^^^^^^
+36 |
+37 |     async def begin(self, jid: str, employee_id: str, attendance_key: str) -> object:
+   |
+help: Remove useless `return` statement
+   |
+34 |         assert jid == _JID
+   -         return None
+35 |
+   |
+
+PLW0108 Lambda may be unnecessary; consider inlining inner function
+   --> tests/unit/bot/test_dm_entry_payroll_reminder.py:139:64
+    |
+137 |         lambda: draft_state,
+138 |     )
+139 |     monkeypatch.setattr(dm_entry, "create_activation_service", lambda: _Activation())
+    |                                                                ^^^^^^^^^^^^^^^^^^^^^
+140 |     monkeypatch.setattr(
+141 |         dm_entry,
+    |
+help: Inline function call
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_entry_payroll_reminder.py:175:15
+    |
+174 |     def mobile_should_not_run(*_args: object, **_kwargs: object) -> str:
+175 |         raise AssertionError("Payroll reminder happy path must not open Talent Mobile")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+176 |
+177 |     monkeypatch.setattr(dm_entry, "configured_talent_mobile_url", mobile_should_not_run)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_entry_payroll_reminder.py:175:30
+    |
+174 |     def mobile_should_not_run(*_args: object, **_kwargs: object) -> str:
+175 |         raise AssertionError("Payroll reminder happy path must not open Talent Mobile")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+176 |
+177 |     monkeypatch.setattr(dm_entry, "configured_talent_mobile_url", mobile_should_not_run)
+    |
+help: Assign to variable; remove string literal
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:38:9
+   |
+36 |     async def pending(self, jid: str) -> None:
+37 |         assert jid == _JID
+38 |         return None
+   |         ^^^^^^^^^^^
+39 |
+40 |     async def begin(self, jid: str, employee_id: str, attendance_key: str) -> object:
+   |
+help: Remove explicit `return None`
+   |
+37 |         assert jid == _JID
+   -         return None
+38 +         return
+39 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:38:9
+   |
+36 |     async def pending(self, jid: str) -> None:
+37 |         assert jid == _JID
+38 |         return None
+   |         ^^^^^^^^^^^
+39 |
+40 |     async def begin(self, jid: str, employee_id: str, attendance_key: str) -> object:
+   |
+help: Remove useless `return` statement
+   |
+37 |         assert jid == _JID
+   -         return None
+38 |
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:60:15
+   |
+59 |     async def clear(self, jid: str) -> None:
+60 |         raise AssertionError("eligible same-gap continuation must keep context")
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:60:30
+   |
+59 |     async def clear(self, jid: str) -> None:
+60 |         raise AssertionError("eligible same-gap continuation must keep context")
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Assign to variable; remove string literal
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:66:9
+   |
+64 |     async def active_kind(self, jid: str) -> None:
+65 |         assert jid == _JID
+66 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+65 |         assert jid == _JID
+   -         return None
+66 +         return
+67 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_entry_payroll_repeat.py:66:9
+   |
+64 |     async def active_kind(self, jid: str) -> None:
+65 |         assert jid == _JID
+66 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+65 |         assert jid == _JID
+   -         return None
+66 |
+   |
+
+TC002 Move third-party import `pytest` into a type-checking block
+ --> tests/unit/bot/test_dm_message_entry.py:7:8
+  |
+5 | from types import SimpleNamespace
+6 |
+7 | import pytest
+  |        ^^^^^^
+8 |
+9 | from digital_bast.bot import dm_message_entry
+  |
+help: Move into type-checking block
+
+E501 Line too long (166 > 100)
+  --> tests/unit/bot/test_dm_message_entry.py:41:101
+   |
+39 | …
+40 | …
+41 | …tendance_key: str, resolution_type: ResolutionType, **kwargs: object) -> AttendanceResolutionDraft:
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+42 | …
+43 | …
+   |
+
+E501 Line too long (123 > 100)
+  --> tests/unit/bot/test_dm_message_entry.py:75:101
+   |
+74 | class _Routing:
+75 |     async def first_actionable(self, context: object, *, employee_id: str, now: datetime) -> AttendanceReminderRouteResult:
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^
+76 |         assert context is not None
+77 |         assert employee_id == _EMPLOYEE_ID
+   |
+
+E501 Line too long (124 > 100)
+  --> tests/unit/bot/test_dm_message_entry.py:93:101
+   |
+93 | def _wire(monkeypatch: pytest.MonkeyPatch, state: _State, interpreter: _Interpreter | None = None) -> list[tuple[str, str]]:
+   |                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^
+94 |     context = _ContextStore()
+95 |     delegated: list[tuple[str, str]] = []
+   |
+
+E501 Line too long (112 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:125:101
+    |
+125 | async def test_explicit_kemarin_clock_out_saves_only_current_exact_gap(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^^^^^^^
+126 |     state = _State()
+127 |     delegated = _wire(monkeypatch, state)
+    |
+
+E501 Line too long (106 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:138:101
+    |
+138 | async def test_explicit_wrong_date_does_not_mutate_or_switch_gap(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^
+139 |     state = _State()
+140 |     delegated = _wire(monkeypatch, state)
+    |
+
+E501 Line too long (113 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:150:101
+    |
+150 | async def test_numeric_same_gap_action_keeps_existing_parser_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^^^^^^^^
+151 |     state = _State()
+152 |     delegated = _wire(monkeypatch, state)
+    |
+
+E501 Line too long (110 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:161:101
+    |
+161 | async def test_natural_textual_time_candidate_revalidates_then_saves(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^^^^^
+162 |     state = _State()
+163 |     interpreter = _Interpreter(
+    |
+
+E501 Line too long (118 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:184:101
+    |
+184 | async def test_natural_candidate_for_other_date_is_rejected_without_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^^^^^^^^^^^^^
+185 |     state = _State()
+186 |     interpreter = _Interpreter(
+    |
+
+E501 Line too long (108 > 100)
+   --> tests/unit/bot/test_dm_message_entry.py:202:101
+    |
+202 | async def test_ambiguous_missing_both_natural_reply_does_not_guess(monkeypatch: pytest.MonkeyPatch) -> None:
+    |                                                                                                     ^^^^^^^^
+203 |     state = _State(ResolutionType.MISSING_BOTH_WORKED)
+204 |     interpreter = _Interpreter(None)
+    |
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_workflow.py:32:9
+   |
+30 |     async def load(self, wa_jid: str) -> None:
+31 |         assert wa_jid == _JID
+32 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+31 |         assert wa_jid == _JID
+   -         return None
+32 +         return
+33 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_workflow.py:32:9
+   |
+30 |     async def load(self, wa_jid: str) -> None:
+31 |         assert wa_jid == _JID
+32 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+31 |         assert wa_jid == _JID
+   -         return None
+32 |
+   |
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_workflow_payroll_draft.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 +         return
+20 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_workflow_payroll_draft.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 |
+   |
+
+PLR0913 Too many arguments in function definition (7 > 5)
+  --> tests/unit/bot/test_dm_workflow_payroll_draft.py:52:15
+   |
+50 |         return self.draft
+51 |
+52 |     async def save_proposal(
+   |               ^^^^^^^^^^^^^
+53 |         self,
+54 |         wa_jid: str,
+   |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_workflow_payroll_draft.py:123:15
+    |
+122 |     def resolution_service_must_not_run() -> object:
+123 |         raise AssertionError("Payroll clock input must not submit a PMO request")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+124 |
+125 |     monkeypatch.setattr(
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_workflow_payroll_draft.py:123:30
+    |
+122 |     def resolution_service_must_not_run() -> object:
+123 |         raise AssertionError("Payroll clock input must not submit a PMO request")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+124 |
+125 |     monkeypatch.setattr(
+    |
+help: Assign to variable; remove string literal
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 +         return
+20 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 |
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:114:15
+    |
+113 |     async def legacy_must_not_run(*_args: object, **_kwargs: object) -> str:
+114 |         raise AssertionError("active Payroll evidence must not enter legacy selection")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+115 |
+116 |     monkeypatch.setattr(dm_workflow.cli, "bot_evidence", legacy_must_not_run)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:114:30
+    |
+113 |     async def legacy_must_not_run(*_args: object, **_kwargs: object) -> str:
+114 |         raise AssertionError("active Payroll evidence must not enter legacy selection")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+115 |
+116 |     monkeypatch.setattr(dm_workflow.cli, "bot_evidence", legacy_must_not_run)
+    |
+help: Assign to variable; remove string literal
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:141:15
+    |
+140 |     async def attach_must_not_run(**_kwargs: object) -> str:
+141 |         raise AssertionError("wrong identity must not upload evidence")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |
+143 |     monkeypatch.setattr(dm_workflow, "attach_payroll_attendance_evidence", attach_must_not_run)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_workflow_payroll_evidence.py:141:30
+    |
+140 |     async def attach_must_not_run(**_kwargs: object) -> str:
+141 |         raise AssertionError("wrong identity must not upload evidence")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |
+143 |     monkeypatch.setattr(dm_workflow, "attach_payroll_attendance_evidence", attach_must_not_run)
+    |
+help: Assign to variable; remove string literal
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_workflow_payroll_repeat.py:20:9
+   |
+18 |     async def resolve_jid(self, wa_jid: str) -> None:
+19 |         assert wa_jid == _JID
+20 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+19 |         assert wa_jid == _JID
+   -         return None
+20 +         return
+21 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_workflow_payroll_repeat.py:20:9
+   |
+18 |     async def resolve_jid(self, wa_jid: str) -> None:
+19 |         assert wa_jid == _JID
+20 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+19 |         assert wa_jid == _JID
+   -         return None
+20 |
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_workflow_payroll_repeat.py:108:15
+    |
+107 |     async def submit_must_not_run(**_kwargs: object) -> str:
+108 |         raise AssertionError("same-gap choice must not submit a PMO request")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+109 |
+110 |     monkeypatch.setattr(dm_workflow, "handle_payroll_repeat_command", repeat)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_workflow_payroll_repeat.py:108:30
+    |
+107 |     async def submit_must_not_run(**_kwargs: object) -> str:
+108 |         raise AssertionError("same-gap choice must not submit a PMO request")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+109 |
+110 |     monkeypatch.setattr(dm_workflow, "handle_payroll_repeat_command", repeat)
+    |
+help: Assign to variable; remove string literal
+
+RET501 [*] Do not explicitly `return None` in function if it is the only possible return value
+  --> tests/unit/bot/test_dm_workflow_payroll_submit.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove explicit `return None`
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 +         return
+20 |
+   |
+
+PLR1711 [*] Useless `return` statement at end of function
+  --> tests/unit/bot/test_dm_workflow_payroll_submit.py:19:9
+   |
+17 |     async def resolve_jid(self, wa_jid: str) -> None:
+18 |         assert wa_jid == _JID
+19 |         return None
+   |         ^^^^^^^^^^^
+help: Remove useless `return` statement
+   |
+18 |         assert wa_jid == _JID
+   -         return None
+19 |
+   |
+
+TRY003 Avoid specifying long messages outside the exception class
+   --> tests/unit/bot/test_dm_workflow_payroll_submit.py:141:15
+    |
+140 |     def submit_service_must_not_run() -> object:
+141 |         raise AssertionError("edit must not construct or submit a PMO request")
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |
+143 |     monkeypatch.setattr(dm_workflow, "edit_payroll_attendance_draft", edit)
+    |
+
+EM101 Exception must not use a string literal, assign to variable first
+   --> tests/unit/bot/test_dm_workflow_payroll_submit.py:141:30
+    |
+140 |     def submit_service_must_not_run() -> object:
+141 |         raise AssertionError("edit must not construct or submit a PMO request")
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+142 |
+143 |     monkeypatch.setattr(dm_workflow, "edit_payroll_attendance_draft", edit)
+    |
+help: Assign to variable; remove string literal
+
+PLR0913 Too many arguments in function definition (11 > 5)
+  --> tests/unit/bot/test_payroll_attendance_repeat.py:43:5
+   |
+43 | def _day(
+   |     ^^^^
+44 |     *,
+45 |     key: str,
+   |
+
+PLR0913 Too many arguments in function definition (7 > 5)
+   --> tests/unit/bot/test_payroll_attendance_repeat.py:261:15
+    |
+259 |         self.cleared = 0
+260 |
+261 |     async def save_proposal(
+    |               ^^^^^^^^^^^^^
+262 |         self,
+263 |         wa_jid: str,
+    |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+PLR0913 Too many arguments in function definition (7 > 5)
+   --> tests/unit/bot/test_payroll_attendance_submit.py:99:15
+    |
+ 97 |         self.calls: list[tuple[str, str, str, ResolutionType, time | None]] = []
+ 98 |
+ 99 |     async def submit(
+    |               ^^^^^^
+100 |         self,
+101 |         employee_id: str,
+    |
+help: Consider adding `@typing.override` if changing the function signature would violate the Liskov Substitution Principle
+
+EXE002 The file is executable but no shebang is present
+--> tests/unit/infrastructure/test_legacy_pic.py:1:1
+
+EXE002 The file is executable but no shebang is present
+--> tests/unit/infrastructure/test_nocodb.py:1:1
+
+TRY003 Avoid specifying long messages outside the exception class
+  --> tests/unit/web/test_payroll_routes.py:58:15
+   |
+57 |     async def report(self, *args: object, **kwargs: object) -> object:
+58 |         raise AssertionError("Payroll read API must not call the BAST report backend")
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+EM101 Exception must not use a string literal, assign to variable first
+  --> tests/unit/web/test_payroll_routes.py:58:30
+   |
+57 |     async def report(self, *args: object, **kwargs: object) -> object:
+58 |         raise AssertionError("Payroll read API must not call the BAST report backend")
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Assign to variable; remove string literal
+
+S106 Possible hardcoded password assigned to argument: "csrf_token"
+   --> tests/unit/web/test_payroll_routes.py:118:9
+    |
+116 |             role="owner",
+117 |         ),
+118 |         csrf_token="csrf",
+    |         ^^^^^^^^^^^^^^^^^
+119 |         created_at=now,
+120 |         expires_at=datetime(2026, 9, 20, 8, 0, tzinfo=UTC),
+    |
+
+EXE002 The file is executable but no shebang is present
+--> typings/googleapiclient/discovery.pyi:1:1
+
+EXE002 The file is executable but no shebang is present
+--> typings/holidays/__init__.pyi:1:1
+
+EXE002 The file is executable but no shebang is present
+--> typings/prefect_redis/messaging.pyi:1:1
+
+EXE002 The file is executable but no shebang is present
+--> typings/pymssql/__init__.pyi:1:1
+
+Found 142 errors.
+[*] 19 fixable with the `--fix` option (27 hidden fixes can be enabled with the `--unsafe-fixes` option).

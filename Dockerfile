@@ -6,11 +6,7 @@ RUN npm install --no-audit --no-fund
 COPY frontend ./
 RUN npm run build
 
-# Keep builder and runtime on the same Python security release so the copied
-# virtualenv ABI and stdlib match exactly. 3.12.14 is the current 3.12
-# security release and includes fixes released after the previous 3.12.11
-# base without forcing a major-version migration.
-FROM python:3.12.14-slim-bookworm AS builder
+FROM python:3.12.11-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
 ENV UV_FROZEN=1 UV_NO_DEV=1 UV_NO_EDITABLE=1 UV_PYTHON_DOWNLOADS=0 UV_PROJECT_ENVIRONMENT=/opt/digital-bast/.venv
@@ -20,11 +16,21 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync
 
-FROM python:3.12.14-slim-bookworm AS runtime
+FROM python:3.12.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH=/opt/digital-bast/bin:/opt/digital-bast/.venv/bin:$PATH PYTHONPATH=/opt/digital-bast/src TZ=Asia/Jakarta
 
-RUN apt-get update \
+# python:3.12.11-slim-bookworm ships gpgv but not gpg, and apt's own Release-file
+# verification shells out to apt-key, which needs the full gpg binary -- so the very
+# first "apt-get update" fails ("At least one invalid signature was encountered")
+# even though the fetched Release file and keyring are both genuinely valid (checked
+# directly with gpgv). Bootstrap gnupg itself with signature checking off, then turn
+# it back on immediately: the insecure window covers only fetching gnupg.
+RUN echo 'Acquire::AllowInsecureRepositories "true";' > /etc/apt/apt.conf.d/99allow-insecure-bootstrap \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y gnupg \
+    && rm -f /etc/apt/apt.conf.d/99allow-insecure-bootstrap \
+    && apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates curl tini unixodbc \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 app \

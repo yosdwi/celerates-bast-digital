@@ -15,7 +15,8 @@ const DEFAULT_TOKEN_FILE = "/run/secrets/sync_ingest_token";
 const ROOT = path.resolve(__dirname, "..");
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const PYTHON = process.env.BAST_PYTHON || "python";
-const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
+// 600s: a full developer BAST renders ~320s locally (Chromium, batches of 10 pages); 180s killed it mid-render.
+const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 600000);
 const PORT = Number(process.env.BOT_WORKER_PORT || 8091);
 const HOST = process.env.BOT_WORKER_HOST || "0.0.0.0";
 const MAX_BODY_BYTES = 16 * 1024;
@@ -57,7 +58,24 @@ function executionFor(args) {
   if (args[0] === "bot-reply" && optionValue(args, "--channel") === "dm") {
     const text = optionValue(args, "--text");
     const jid = optionValue(args, "--jid");
+    const messageAt = optionValue(args, "--message-at");
     if (text !== null && jid) {
+      if (messageAt) {
+        return {
+          command: PYTHON,
+          args: [
+            "-m",
+            "digital_bast.bot.dm_message_entry",
+            "reply",
+            "--text",
+            text,
+            "--jid",
+            jid,
+            "--message-at",
+            messageAt,
+          ],
+        };
+      }
       return {
         command: PYTHON,
         args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
@@ -103,10 +121,15 @@ function cliArgsFor(payload) {
     return ["bot-evidence", "--jid", jid, "--file", filePath, "--caption", String(caption || "")];
   }
   if (payload && payload.kind === "text") {
-    const { text, jid, channel } = payload;
+    const { text, jid, channel, message_at: messageAt } = payload;
     if (typeof text !== "string") return null;
     const args = ["bot-reply", "--text", text];
-    if (jid && channel) args.push("--jid", jid, "--channel", channel);
+    if (jid && channel) {
+      args.push("--jid", jid, "--channel", channel);
+      if (typeof messageAt === "string" && messageAt.trim()) {
+        args.push("--message-at", messageAt.trim());
+      }
+    }
     return args;
   }
   return null;

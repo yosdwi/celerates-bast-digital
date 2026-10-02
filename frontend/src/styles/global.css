@@ -192,6 +192,13 @@ svg { display: block; }
 .blocker-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 .blocker-head strong { font-size: 11px; font-weight: 600; }
 .blocker-card ul { margin: 8px 0 0; padding-left: 17px; color: #5f6368; font-size: 10px; line-height: 1.5; }
+.task-status-timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+.task-status-timeline li { position: relative; padding: 0 0 16px 16px; }
+.task-status-timeline li::before { content: ""; position: absolute; left: -5px; top: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent, #1a73e8); }
+.task-status-timeline li:last-child { padding-bottom: 0; }
+.task-status-timeline strong { display: block; font-size: 11px; font-weight: 600; }
+.task-status-timeline > li > div > span { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
+.task-status-duration { display: block; margin-top: 3px; color: var(--quiet); font-size: 9px; }
 .blocker-card li + li { margin-top: 4px; }
 .blocker-card p { margin: 7px 0 0; color: var(--quiet); font-size: 10px; }
 .drawer-actions { padding: 12px 15px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--line); }

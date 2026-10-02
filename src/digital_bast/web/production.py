@@ -4,7 +4,9 @@ from pydantic import ValidationError
 from redis.asyncio import Redis
 
 from digital_bast.application.attendance_review import AttendanceReviewService
+from digital_bast.application.bast_generation_jobs import BastGenerationJobService
 from digital_bast.application.bast_workflow import BastWorkflowService
+from digital_bast.application.payroll_read import PayrollReadService
 from digital_bast.application.talentops import TalentOpsService
 from digital_bast.application.talentops_ai import TalentOpsAiService
 from digital_bast.application.talentops_followups import TalentOpsFollowUpService
@@ -23,9 +25,13 @@ from digital_bast.infrastructure.local_completion_source import (
     PostgresTaskEvidenceReader,
 )
 from digital_bast.infrastructure.ollama_chat import OllamaChatClient
+from digital_bast.infrastructure.payroll_attendance import PostgresPayrollAttendanceReader
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 from digital_bast.infrastructure.redis_url import parse_redis_url
-from digital_bast.infrastructure.repositories import PostgresDomainRepository
+from digital_bast.infrastructure.repositories import (
+    PostgresDomainRepository,
+    PostgresTaskStatusHistoryReader,
+)
 from digital_bast.infrastructure.source_sync_state import PostgresSourceSyncStateStore
 from digital_bast.infrastructure.talentops_followup_store import (
     PostgresTalentOpsFollowUpRepository,
@@ -168,6 +174,7 @@ def production_dependencies() -> WebDependencies:
 
     backend: WebBackend = UnavailableWebBackend()
     talentops: TalentOpsService | None = None
+    payroll_read: PayrollReadService | None = None
     talentops_ai: TalentOpsAiService | None = None
     talentops_followups: TalentOpsFollowUpService | None = None
     task_evidence_review: TaskEvidenceReviewService | None = None
@@ -176,7 +183,9 @@ def production_dependencies() -> WebDependencies:
     workflow_control: WorkflowControlService | None = None
     identity_rebinds: IdentityRebindService | None = None
     bast_workflow: BastWorkflowService | None = None
+    bast_generation_jobs: BastGenerationJobService | None = None
     source_sync_state: PostgresSourceSyncStateStore | None = None
+    task_status_history: PostgresTaskStatusHistoryReader | None = None
 
     if app_dsn is not None:
         backend = PostgresWebBackend(app_dsn)
@@ -188,7 +197,13 @@ def production_dependencies() -> WebDependencies:
             PostgresAttendanceFactReader(app_dsn),
             PostgresTaskEvidenceReader(app_dsn),
         )
+        payroll_read = PayrollReadService(
+            employees,
+            records,
+            PostgresPayrollAttendanceReader(app_dsn),
+        )
         source_sync_state = PostgresSourceSyncStateStore(app_dsn)
+        task_status_history = PostgresTaskStatusHistoryReader(app_dsn)
         attendance_resolutions = AttendanceResolutionService(app_dsn)
         attendance_review = AttendanceReviewService(app_dsn)
         task_evidence_review = TaskEvidenceReviewService(app_dsn)
@@ -201,6 +216,7 @@ def production_dependencies() -> WebDependencies:
             source_sync_state,
         )
         bast_workflow = BastWorkflowService(app_dsn, talentops)
+        bast_generation_jobs = BastGenerationJobService(app_dsn)
 
         if (
             settings.llm_provider == "cloudflare"
@@ -249,6 +265,7 @@ def production_dependencies() -> WebDependencies:
         backend=backend,
         cookie=CookieSettings(ttl_seconds=settings.session_ttl_seconds),
         talentops=talentops,
+        payroll_read=payroll_read,
         talentops_ai=talentops_ai,
         talentops_followups=talentops_followups,
         task_evidence_review=task_evidence_review,
@@ -257,8 +274,10 @@ def production_dependencies() -> WebDependencies:
         workflow_control=workflow_control,
         identity_rebinds=identity_rebinds,
         bast_workflow=bast_workflow,
+        bast_generation_jobs=bast_generation_jobs,
         source_sync_state=source_sync_state,
         bot_bridge_status=bot_bridge_status,
+        task_status_history=task_status_history,
     )
 
 

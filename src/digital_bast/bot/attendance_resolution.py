@@ -36,6 +36,7 @@ class AbsenceType(StrEnum):
     CUTI = "cuti"
     IZIN = "izin"
     SAKIT = "sakit"
+    LIBUR = "libur"
 
 
 class ResolutionStatus(StrEnum):
@@ -183,6 +184,32 @@ def _eligible(row: _AttendanceRow, resolution_type: ResolutionType) -> bool:
     return False
 
 
+def _already_applied(
+    row: _AttendanceRow,
+    resolution_type: ResolutionType,
+    proposed_check_in: time | None,
+    proposed_check_out: time | None,
+) -> bool:
+    """The client's attendance already holds exactly what the Talent proposed.
+
+    The sheet sync can fill the missing clock-in/out after the request was filed. Approving is then a
+    no-op on the data (approve only flips the request status), so it must not 409 as "source changed".
+    """
+    if resolution_type is ResolutionType.MISSING_CLOCK_IN:
+        return (
+            proposed_check_in is not None
+            and row.check_in == proposed_check_in
+            and row.check_out is not None
+        )
+    if resolution_type is ResolutionType.MISSING_CLOCK_OUT:
+        return (
+            proposed_check_out is not None
+            and row.check_out == proposed_check_out
+            and row.check_in is not None
+        )
+    return False
+
+
 def _valid_request_shape(
     resolution_type: ResolutionType,
     proposed_check_in: time | None,
@@ -208,11 +235,9 @@ def _valid_request_shape(
             and absence_type is None
         )
     if resolution_type is ResolutionType.ABSENCE:
-        return (
-            proposed_check_in is None
-            and proposed_check_out is None
-            and absence_type is not None
-        )
+        # Clock in/out are optional (not mandatory) on an absence day -- a
+        # talent on Cuti/Izin/Sakit may still have a partial punch.
+        return absence_type is not None
     return False
 
 
@@ -450,7 +475,8 @@ class AttendanceResolutionService:
                 _ = cursor.execute(
                     """
                     SELECT r.status, r.resolution_type,
-                           a.check_in, a.check_out
+                           a.check_in, a.check_out,
+                           r.proposed_check_in, r.proposed_check_out
                     FROM attendance_resolution_requests r
                     JOIN attendance a ON a.id = r.attendance_id
                     WHERE r.id = %s
@@ -471,7 +497,17 @@ class AttendanceResolutionService:
                     check_in=cast("time | None", row[2]),
                     check_out=cast("time | None", row[3]),
                 )
-                if approve and not _eligible(source, ResolutionType(str(row[1]))):
+                resolution_type = ResolutionType(str(row[1]))
+                if (
+                    approve
+                    and not _eligible(source, resolution_type)
+                    and not _already_applied(
+                        source,
+                        resolution_type,
+                        cast("time | None", row[4]),
+                        cast("time | None", row[5]),
+                    )
+                ):
                     return DecisionResult(DecisionOutcome.SOURCE_CHANGED)
                 new_status = ResolutionStatus.APPROVED if approve else ResolutionStatus.REJECTED
                 _ = cursor.execute(

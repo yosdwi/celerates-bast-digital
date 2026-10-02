@@ -20,8 +20,7 @@ from digital_bast.bot.evidence import (
     select_by_index,
     sniff_content_type,
 )
-from digital_bast.bot.identity import ActivationOutcome, resolve_employee_by_nrp
-from digital_bast.bot.talent_home import home as talent_home
+from digital_bast.bot.identity import resolve_employee_by_nrp
 from digital_bast.bot.whatsapp import (
     EVIDENCE_UPLOAD_IN_GROUP_REPLY,
     GROUP_ONLY_COMMAND_IN_DM_REPLY,
@@ -508,23 +507,16 @@ def _other_employee_reply(name: str) -> str:
     )
 
 
-# NRP-based onboarding (§1): talent know their NRP and name, never the
-# internal Employee ID -- that stays purely an internal key from here on.
-_NRP_HELP: Final = "Aku belum tahu kamu siapa.\nKirim NRP kamu ya."
-_NRP_ATTEMPT_MAX_ECHO: Final = 40
-# dm_workflow.py imports this to route an already-bound talent's greeting to
-# the home menu -- one canonical set instead of two copies. An unbound
-# sender typing "halo" deserves the same friendly _NRP_HELP a blank message
-# gets, not "NRP 'halo' belum aku kenali", which reads as an error for a
-# greeting.
-GREETING_WORDS: Final = frozenset({"menu", "halo", "hai", "hi", "start", "help", "bantuan"})
-_CONFIRM_CANCELLED: Final = "Oke, dibatalkan. Kirim NRP kamu lagi ya."
-_CONFIRM_RETRY: Final = "Balas YA atau BUKAN ya."
-_ALREADY_BOUND_ELSEWHERE: Final = (
-    "NRP ini sudah terhubung ke nomor WhatsApp lain. Hubungi admin untuk reset."
+# Self-service "reply your NRP" onboarding is retired: every Talent's
+# WhatsApp identity is bound by an admin now, so an unresolved identity here
+# is always a binding gap or a resolution mismatch, never a genuinely new/
+# unregistered sender.
+_NRP_HELP: Final = (
+    "Nomor WhatsApp ini belum terhubung ke data Talent.\nHubungi admin untuk didaftarkan."
 )
-_YES_WORDS: Final = frozenset({"ya", "iya", "yes", "y", "betul", "benar", "yoi", "bener"})
-_NO_WORDS: Final = frozenset({"bukan", "tidak", "no", "salah", "nggak", "gak", "ga"})
+# dm_workflow.py imports this to route an already-bound talent's greeting to
+# the home menu -- one canonical set instead of two copies.
+GREETING_WORDS: Final = frozenset({"menu", "halo", "hai", "hi", "start", "help", "bantuan"})
 _SUMMARY_WORDS: Final = ("tasklist", "task list", "kurang", "progress", "evidence")
 _MIN_AMBIGUOUS_MATCHES: Final = 2
 _MIN_NAME_TOKEN_LENGTH: Final = 4
@@ -553,63 +545,6 @@ def _other_employee_mentioned(
         if any(token in words for token in tokens):
             return employee.name
     return None
-
-
-def _confirm_prompt(name: str, nrp: str) -> str:
-    return f"Aku menemukan:\n{name}\nNRP: {nrp}\n\nIni kamu?\nBalas YA atau BUKAN."
-
-
-def _nrp_not_found_reply(attempted: str) -> str:
-    echo = attempted[:_NRP_ATTEMPT_MAX_ECHO]
-    return (
-        f'NRP "{echo}" belum aku kenali.\n'
-        "Cek lagi ejaannya (tanpa spasi/tanda baca tambahan), atau hubungi admin kalau NRP "
-        "kamu memang itu."
-    )
-
-
-def _bound_reply(name: str) -> str:
-    return f"✅ Terhubung sebagai {name}."
-
-
-async def _bound_reply_with_nudge(name: str, employee_id: str) -> str:
-    """Greet with the same button-first home screen dm_workflow.reply()
-    already shows a bound talent who types "halo"/"menu" (see
-    bot.talent_home.home) instead of leaving a freshly-connected user on a
-    bare confirmation with no idea what to type, or -- as it did before this
-    -- on a differently-formatted, pre-button-era summary this onboarding
-    flow was never updated to drop in favor of.
-    """
-    return await talent_home(employee_id, greeting=_bound_reply(name))
-
-
-async def _dm_onboarding(text: str, jid: str) -> str:  # noqa: PLR0911 -- one short-circuit per case
-    activation = create_activation_service()
-    pending_employee_id = await activation.pending_claim(jid)
-    lowered = text.strip().casefold()
-    if pending_employee_id is not None:
-        if lowered in _YES_WORDS:
-            outcome = await activation.bind(jid, pending_employee_id)
-            await activation.clear_claim(jid)
-            if outcome is not ActivationOutcome.SUCCESS:
-                return _ALREADY_BOUND_ELSEWHERE
-            roster = await load_roster()
-            name = next(
-                (e.name for e in roster if str(e.id) == pending_employee_id), pending_employee_id
-            )
-            return await _bound_reply_with_nudge(name, pending_employee_id)
-        if lowered in _NO_WORDS:
-            await activation.clear_claim(jid)
-            return _CONFIRM_CANCELLED
-        return _CONFIRM_RETRY
-    if not lowered or lowered in GREETING_WORDS:
-        return _NRP_HELP
-    roster = await load_roster()
-    employee = resolve_employee_by_nrp(text, roster)
-    if employee is None:
-        return _nrp_not_found_reply(text.strip())
-    await activation.claim(jid, str(employee.id))
-    return _confirm_prompt(employee.name, employee.external_id)
 
 
 def _format_evidence_list(candidates: tuple[EvidenceCandidate, ...]) -> str:
@@ -916,7 +851,7 @@ async def _dm_reply(  # noqa: C901, PLR0911, PLR0912 -- a resolution priority ch
     activation = create_activation_service()
     employee_id = await activation.resolve(jid)
     if employee_id is None:
-        return await _dm_onboarding(text, jid)
+        return _NRP_HELP
     evidence = create_evidence_service()
     attendance = create_attendance_evidence_service()
     normalized = strip_mentions(text)

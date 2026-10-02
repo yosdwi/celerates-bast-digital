@@ -7,7 +7,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 40px;
+            margin: 0;
             background-color: white;
         }
         .header {
@@ -24,16 +24,26 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 12px;
+            table-layout: fixed;
         }
         .dev-support-section th {
             background-color: #9BB5D6;
             color: #000;
             font-weight: bold;
-            padding: 10px 8px;
+            font-size: 11px;
+            padding: 8px 4px;
             text-align: center;
             border: 1px solid #000;
             vertical-align: middle;
         }
+        .dev-support-section th:nth-child(1) { width: 5%; }  /* No */
+        .dev-support-section th:nth-child(2) { width: 39%; } /* Task List */
+        .dev-support-section th:nth-child(3) { width: 11%; } /* Requestor */
+        .dev-support-section th:nth-child(4) { width: 11%; } /* PIC */
+        .dev-support-section th:nth-child(5) { width: 9%; } /* Status */
+        .dev-support-section th:nth-child(6) { width: 8%; } /* Start Date */
+        .dev-support-section th:nth-child(7) { width: 8%; } /* End Date */
+        .dev-support-section th:nth-child(8) { width: 9%; } /* Pencapaian */
         .dev-support-section td {
             padding: 8px;
             border: 1px solid #000;
@@ -48,22 +58,22 @@
             text-align: center;
         }
         td.task-col {
-            width: 30%;
+            width: 39%;
         }
         td.requestor-col {
-            width: 15%;
+            width: 11%;
         }
         td.pic-col {
-            width: 15%;
+            width: 11%;
         }
         td.status-col {
-            width: 10%;
+            width: 9%;
         }
         td.date-col {
-            width: 10%;
+            width: 8%;
         }
         td.pencapaian-col {
-            width: 15%;
+            width: 9%;
         }
         .summary-row {
             background-color: #9BB5D6;

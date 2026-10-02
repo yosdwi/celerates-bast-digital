@@ -1,5 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as payrollApi from "../api/payroll";
+import type { PayrollOverviewResponse } from "../api/payroll";
 import * as api from "../api/talentops";
 import type { CommandCenterResponse, TalentOpsSession } from "../api/types";
 import App from "./App";
@@ -63,6 +65,40 @@ function dataFor(year: number, month: number): CommandCenterResponse {
   };
 }
 
+function payrollOverview(): PayrollOverviewResponse {
+  return {
+    cycle: {
+      cycle_id: "2026-09:2026-08-21:2026-09-20",
+      label: "Payroll September 2026",
+      year: 2026,
+      month: 9,
+      start: "2026-08-21",
+      end: "2026-09-20",
+    },
+    evaluated_through: "2026-09-18",
+    summary: {
+      total_talents: 1,
+      complete: 1,
+      waiting_submitted: 0,
+      needs_talent_action: 0,
+      unverified: 0,
+    },
+    talents: [{
+      employee_id: "e1",
+      nrp: "NRP001",
+      name: "Alpha Talent",
+      role: "Developer",
+      status: "COMPLETE",
+      evaluated_days: 20,
+      complete_days: 20,
+      waiting_days: 0,
+      actionable_days: 0,
+      unverified_days: 0,
+      talent_action_required: false,
+    }],
+  };
+}
+
 beforeEach(() => {
   window.history.replaceState({}, "", "/admin/talentops/?year=2026&month=7");
 });
@@ -97,5 +133,31 @@ describe("App global period", () => {
       expect(screen.getByLabelText("Reporting period")).toHaveValue("2026-08");
     });
     expect(window.location.search).toContain("month=8");
+  });
+
+  it("boots Payroll from its own API without loading Command Center", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/admin/talentops/payroll?year=2026&month=9",
+    );
+    vi.spyOn(api, "getSession").mockResolvedValue(session);
+    const getCommandCenter = vi.spyOn(api, "getCommandCenter");
+    const getPayrollOverview = vi
+      .spyOn(payrollApi, "getPayrollOverview")
+      .mockResolvedValue(payrollOverview());
+
+    render(<App />);
+
+    const heading = await screen.findByRole("heading", { name: "Payroll" });
+    expect(heading).toBeInTheDocument();
+    expect(getPayrollOverview).toHaveBeenCalledWith(2026, 9);
+    expect(getCommandCenter).not.toHaveBeenCalled();
+    // The export panel further down the page repeats the same cycle label
+    // for its own confirmation line, so scope to the page-heading block
+    // rather than screen-wide getByText.
+    const headingBlock = heading.closest(".payroll-heading") as HTMLElement;
+    expect(within(headingBlock).getByText(/Payroll September 2026/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Reporting period")).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,18 @@
+{
+  "name": "digital-bast-whatsapp-web-session",
+  "version": "0.1.0-prototype",
+  "private": true,
+  "description": "Prototype wa-session replacement using whatsapp-web.js. NOT wired into production compose.yaml -- isolated by design, see README.md.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "github:Adi1231234/whatsapp-web.js#85443fa4c8f86111457590dd06564c3efe0f6d1d",
+    "qrcode": "1.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

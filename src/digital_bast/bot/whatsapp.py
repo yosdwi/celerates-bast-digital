@@ -291,8 +291,13 @@ def parse_period(text: str, today: date) -> DateRange | None:
 _INTENT_RULES: Final[tuple[tuple[Intent, tuple[str, ...]], ...]] = (
     (Intent.UNSUPPORTED_MUTATION, _MUTATION_WORDS),
     (Intent.SYSTEM_STATUS, (*_SYSTEM_WORDS, "docker")),
+    # Checked before EXPORT_ATTENDANCE: "export" alone is that intent's
+    # trigger, so "export bast ..." would otherwise match it first and never
+    # reach this rule at all. Only the specific phrase "export bast" is
+    # added here (not a bare "bast") -- "status bast agustus" must still
+    # fall through to COMPLETION_STATUS below, unaffected by this rule.
+    (Intent.GENERATE_BAST, ("generate", "buat bast", "bikin bast", "export bast")),
     (Intent.EXPORT_ATTENDANCE, ("export", "absen")),
-    (Intent.GENERATE_BAST, ("generate", "buat bast", "bikin bast")),
     (Intent.EVIDENCE_RESUME, ("evidence",)),
     (Intent.COMPLETION_STATUS, ("status", "cek", "detail", "kenapa")),
     # Checked last -- a business keyword above always wins first, so smalltalk

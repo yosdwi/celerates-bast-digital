@@ -172,6 +172,28 @@ async def test_absence_requires_both_source_punches_empty(database_dsn: str) -> 
 
 
 @pytest.mark.asyncio
+async def test_libur_absence_can_be_submitted_and_approved(database_dsn: str) -> None:
+    employee_id, _, _, attendance_key = seed_attendance(
+        database_dsn, check_in=None, check_out=None
+    )
+    service = AttendanceResolutionService(database_dsn)
+
+    submitted = await service.submit(
+        employee_id,
+        attendance_key,
+        "pmo-web:pmo@example.com",
+        ResolutionType.ABSENCE,
+        absence_type=AbsenceType.LIBUR,
+    )
+    assert submitted.outcome is SubmitOutcome.CREATED
+    assert submitted.request_id is not None
+
+    decided = await service.decide(submitted.request_id, "pmo@example.com", approve=True)
+    assert decided.outcome is DecisionOutcome.UPDATED
+    assert decided.status is ResolutionStatus.APPROVED
+
+
+@pytest.mark.asyncio
 async def test_reject_requires_reason_and_decision_is_idempotent(database_dsn: str) -> None:
     employee_id, _, _, attendance_key = seed_attendance(
         database_dsn, check_in=None, check_out=time(17, 12)

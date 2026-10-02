@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import time
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
@@ -10,12 +9,8 @@ from digital_bast.application.talent_mobile_access import (
     talent_mobile_binding_matches,
     verify_talent_mobile_token,
 )
-from digital_bast.bot.attendance_resolution import (
-    AbsenceType,
-    ResolutionType,
-    SubmitOutcome,
-)
-from digital_bast.bot.evidence import MAX_IMAGE_BYTES, UploadOutcome
+from digital_bast.bot.attendance_resolution import SubmitOutcome
+from digital_bast.bot.evidence import UploadOutcome
 from digital_bast.config import get_settings
 from digital_bast.operations import (
     completion_status,
@@ -23,6 +18,13 @@ from digital_bast.operations import (
     create_attendance_resolution_service,
     create_rebind_onboarding_service,
     create_task_evidence_submission_service,
+)
+from digital_bast.web.attendance_forms import (
+    clock_label,
+    gap_for,
+    read_upload,
+    request_label,
+    resolution_shape,
 )
 from digital_bast.web.talent_mobile_contracts import (
     TalentMobileAttendanceItem,
@@ -40,7 +42,6 @@ if TYPE_CHECKING:
 
 _API_PREFIX = "/api/talent/v1"
 _AUTH_SCHEME = "bearer"
-type AttendanceGap = Literal["missing_clock_in", "missing_clock_out", "missing_both"]
 
 
 def _period(claims: TalentMobileClaims) -> DateRange:
@@ -94,94 +95,6 @@ async def _claims(request: Request) -> tuple[TalentMobileClaims, str]:
     return claims, current_jid
 
 
-def _clock_label(value: time | None) -> str | None:
-    return None if value is None else value.strftime("%H:%M")
-
-
-def _gap(check_in: time | None, check_out: time | None) -> AttendanceGap:
-    if check_in is None and check_out is None:
-        return "missing_both"
-    return "missing_clock_in" if check_in is None else "missing_clock_out"
-
-
-def _request_label(resolution_type: ResolutionType, absence_type: AbsenceType | None) -> str:
-    if resolution_type is ResolutionType.MISSING_CLOCK_IN:
-        return "Koreksi Clock In"
-    if resolution_type is ResolutionType.MISSING_CLOCK_OUT:
-        return "Koreksi Clock Out"
-    if resolution_type is ResolutionType.MISSING_BOTH_WORKED:
-        return "Saya bekerja"
-    return absence_type.value.capitalize() if absence_type is not None else "Attendance"
-
-
-async def _read_upload(upload: UploadFile) -> bytes:
-    try:
-        content = await upload.read(MAX_IMAGE_BYTES + 1)
-    finally:
-        await upload.close()
-    if len(content) > MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Ukuran evidence maksimal 5 MB",
-        )
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File evidence kosong")
-    return content
-
-
-def _parse_time(value: str | None, label: str) -> time | None:
-    if value is None or not value.strip():
-        return None
-    try:
-        parsed = time.fromisoformat(value.strip())
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{label} tidak valid",
-        ) from error
-    return parsed.replace(second=0, microsecond=0)
-
-
-def _resolution_shape(
-    gap: AttendanceGap,
-    action: str,
-    check_in_text: str | None,
-    check_out_text: str | None,
-) -> tuple[ResolutionType, time | None, time | None, AbsenceType | None]:
-    normalized = action.strip().casefold()
-    check_in = _parse_time(check_in_text, "Jam masuk")
-    check_out = _parse_time(check_out_text, "Jam pulang")
-    if gap == "missing_clock_in":
-        if normalized != "worked" or check_in is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Isi jam masuk yang benar untuk melanjutkan",
-            )
-        return ResolutionType.MISSING_CLOCK_IN, check_in, None, None
-    if gap == "missing_clock_out":
-        if normalized != "worked" or check_out is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Isi jam pulang yang benar untuk melanjutkan",
-            )
-        return ResolutionType.MISSING_CLOCK_OUT, None, check_out, None
-    if normalized == "worked":
-        if check_in is None or check_out is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Isi jam masuk dan jam pulang untuk melanjutkan",
-            )
-        return ResolutionType.MISSING_BOTH_WORKED, check_in, check_out, None
-    try:
-        absence = AbsenceType(normalized)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pilih Saya bekerja, Sakit, Izin, atau Cuti",
-        ) from error
-    return ResolutionType.ABSENCE, None, None, absence
-
-
 def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
     router = APIRouter(prefix=_API_PREFIX)
 
@@ -221,17 +134,24 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         task_staged = sum(not item.complete and item.staged_count > 0 for item in task_items)
 
         attendance_service = create_attendance_evidence_service()
-        attendance_candidates = await attendance_service.list_candidates(
-            claims.employee_id,
-            frozenset(mine.log_1_pama_evidence_days),
+        attendance_candidates = (
+            await attendance_service.list_candidates(
+                claims.employee_id,
+                frozenset(mine.log_1_pama_evidence_days),
+            )
+        ) + (
+            await attendance_service.list_missing(
+                claims.employee_id,
+                frozenset(mine.log_1_pama_missing_data_days),
+            )
         )
         attendance_items = tuple(
             TalentMobileAttendanceItem(
                 attendance_key=item.attendance_key,
                 work_date=item.work_date,
-                check_in=_clock_label(item.check_in),
-                check_out=_clock_label(item.check_out),
-                gap=_gap(item.check_in, item.check_out),
+                check_in=clock_label(item.check_in),
+                check_out=clock_label(item.check_out),
+                gap=gap_for(item.check_in, item.check_out),
                 evidence_count=item.evidence_count,
             )
             for item in attendance_candidates
@@ -243,7 +163,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 id=str(item.id),
                 work_date=item.work_date,
                 status=item.status.value,
-                label=_request_label(item.resolution_type, item.absence_type),
+                label=request_label(item.resolution_type, item.absence_type),
                 rejection_reason=item.rejection_reason,
             )
             for item in resolutions
@@ -296,7 +216,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         result = await service.stage(
             claims.employee_id,
             task_key,
-            await _read_upload(file),
+            await read_upload(file),
             caption.strip(),
         )
         if result.outcome is UploadOutcome.STORED:
@@ -376,8 +296,16 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
             claims.employee_id,
             frozenset(mine.log_1_pama_evidence_days),
         )
+        missing_candidates = await attendance_service.list_missing(
+            claims.employee_id,
+            frozenset(mine.log_1_pama_missing_data_days),
+        )
         target = next(
-            (item for item in candidates if item.attendance_key == attendance_key),
+            (
+                item
+                for item in candidates + missing_candidates
+                if item.attendance_key == attendance_key
+            ),
             None,
         )
         if target is None:
@@ -385,9 +313,15 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Attendance sudah berubah. Refresh halaman sebelum melanjutkan.",
             )
+        if target in missing_candidates:
+            # No attendance row exists yet for this day -- create the stub
+            # row the rest of this flow (upload -> resolution submit) needs
+            # to attach to. Safe against a concurrent PAMA sync: same
+            # record_key, ON CONFLICT DO NOTHING (see AttendanceEvidenceService.ensure_manual).
+            await attendance_service.ensure_manual(claims.employee_id, target.work_date)
 
-        resolution_type, proposed_in, proposed_out, absence_type = _resolution_shape(
-            _gap(target.check_in, target.check_out),
+        resolution_type, proposed_in, proposed_out, absence_type = resolution_shape(
+            gap_for(target.check_in, target.check_out),
             action,
             check_in,
             check_out,
@@ -395,7 +329,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         upload_result = await attendance_service.upload(
             claims.employee_id,
             attendance_key,
-            await _read_upload(file),
+            await read_upload(file),
             caption.strip(),
         )
         if upload_result.outcome not in {UploadOutcome.STORED, UploadOutcome.DUPLICATE}:

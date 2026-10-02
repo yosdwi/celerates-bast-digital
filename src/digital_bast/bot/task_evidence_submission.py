@@ -48,12 +48,15 @@ class TaskEvidenceCandidate:
     work_date: date
     evidence_count: int
     staged_count: int
+    status: str
+    closed: bool
 
 
 class _CandidateRow:
     __slots__ = (
         "evidence_count",
         "staged_count",
+        "status",
         "task_key",
         "task_source",
         "title",
@@ -68,6 +71,7 @@ class _CandidateRow:
         work_date: date,
         evidence_count: int,
         staged_count: int,
+        status: str | None,
     ) -> None:
         self.task_source = task_source
         self.task_key = task_key
@@ -75,6 +79,7 @@ class _CandidateRow:
         self.work_date = work_date
         self.evidence_count = evidence_count
         self.staged_count = staged_count
+        self.status = status or ""
 
 
 class _TaskRow:
@@ -129,6 +134,7 @@ class TaskEvidenceSubmissionService:
                            t.record_key AS task_key,
                            t.title,
                            t.work_date,
+                           t.status,
                            (
                                SELECT COUNT(*)
                                FROM task_evidence e
@@ -141,11 +147,10 @@ class TaskEvidenceSubmissionService:
                            ) AS staged_count
                     FROM tasks t
                     WHERE t.employee_id = %s
-                      AND lower(t.status) = %s
                       AND t.task_source IN (%s, %s)
                     ORDER BY t.work_date, t.record_key
                     """,
-                    (employee_id, CLOSED_STATUS, *TASK_EVIDENCE_SOURCES),
+                    (employee_id, *TASK_EVIDENCE_SOURCES),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
@@ -160,6 +165,8 @@ class TaskEvidenceSubmissionService:
                 row.work_date,
                 row.evidence_count,
                 row.staged_count,
+                row.status,
+                row.status.strip().casefold() == CLOSED_STATUS,
             )
             for row in rows
         )
@@ -268,7 +275,9 @@ class TaskEvidenceSubmissionService:
                         caption, content_type, byte_size, sha256, image,
                         now(), %s
                     FROM moved
-                    ON CONFLICT (task_id, sha256) DO NOTHING
+                    -- No conflict target: migration 0011 dropped the (task_id, sha256)
+                    -- unique index on purpose, and a target without it is an error.
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         employee_id,

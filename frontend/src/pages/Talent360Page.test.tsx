@@ -69,6 +69,7 @@ const talent: TalentDetailResponse = {
     state: "incomplete",
   }],
   tasks: [{
+    record_key: "task:2026-08-01:EMP-1:abc123",
     work_date: "2026-08-01",
     title: "Closed task",
     status: "Closed",

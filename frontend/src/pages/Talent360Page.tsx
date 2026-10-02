@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { askTalent } from "../api/talentops";
+import { askTalent, getTaskStatusHistory } from "../api/talentops";
 import type {
   AiInvestigation,
   CommandCenterResponse,
   TalentDetailResponse,
   TalentOpsSession,
+  TalentTask,
+  TaskStatusEvent,
 } from "../api/types";
 import FollowUpComposer from "../components/FollowUpComposer";
 import { ChevronIcon, CloseIcon, SparkleIcon } from "../components/Icons";
@@ -30,6 +32,24 @@ function dayLabel(value: string): string {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(
     new Date(`${value}T00:00:00`),
   );
+}
+
+function timestampLabel(value: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function durationLabel(fromIso: string, toIso: string): string {
+  const minutes = Math.max(0, Math.round((new Date(toIso).getTime() - new Date(fromIso).getTime()) / 60000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
 }
 
 function initials(name: string): string {
@@ -58,6 +78,9 @@ export default function Talent360Page({
   const [aiInvestigation, setAiInvestigation] = useState<AiInvestigation | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [historyTask, setHistoryTask] = useState<TalentTask | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<TaskStatusEvent[] | null>(null);
+  const [historyError, setHistoryError] = useState(false);
 
   const issueCount = talent.blockers.reduce(
     (total, blocker) => total + blocker.issues.length,
@@ -123,6 +146,15 @@ export default function Talent360Page({
     } finally {
       setAiLoading(false);
     }
+  }
+
+  function openHistory(task: TalentTask) {
+    setHistoryTask(task);
+    setHistoryEvents(null);
+    setHistoryError(false);
+    getTaskStatusHistory(task.record_key)
+      .then(setHistoryEvents)
+      .catch(() => setHistoryError(true));
   }
 
   function openInvestigation(question?: string) {
@@ -350,6 +382,8 @@ export default function Talent360Page({
                       <tr
                         className={evidenceMissing ? "task-row-missing-evidence" : ""}
                         key={`${task.work_date}-${task.title}-${index}`}
+                        onClick={() => openHistory(task)}
+                        style={{ cursor: "pointer" }}
                       >
                         <td>{dayLabel(task.work_date)}</td>
                         <td><div className="talent-name">{task.title}</div></td>
@@ -372,9 +406,11 @@ export default function Talent360Page({
                 {talent.tasks.map((task, index) => {
                   const evidenceMissing = task.evidence_ready === false && task.is_closed;
                   return (
-                    <div
+                    <button
+                      type="button"
                       className={`task-mobile-card${evidenceMissing ? " task-row-missing-evidence" : ""}`}
                       key={`${task.work_date}-${task.title}-${index}`}
+                      onClick={() => openHistory(task)}
                     >
                       <div>
                         <strong>{task.title}</strong>
@@ -389,7 +425,7 @@ export default function Talent360Page({
                               : "Evidence missing")
                             : "Evidence pending close"}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -552,6 +588,59 @@ export default function Talent360Page({
           onClose={() => setFollowUpOpen(false)}
         />
       ) : null}
+
+      <div className={`drawer-overlay ${historyTask ? "open" : ""}`} onClick={() => setHistoryTask(null)} />
+      <aside className={`detail-drawer ${historyTask ? "open" : ""}`} aria-hidden={!historyTask}>
+        {historyTask ? (
+          <>
+            <div className="drawer-header">
+              <div>
+                <span>Status timeline</span>
+                <h2>{historyTask.title}</h2>
+                <p>{dayLabel(historyTask.work_date)} · currently {historyTask.status}</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close status timeline"
+                onClick={() => setHistoryTask(null)}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="drawer-body">
+              {historyError ? (
+                <p>Could not load status history. Try again.</p>
+              ) : historyEvents === null ? (
+                <p>Loading…</p>
+              ) : historyEvents.length === 0 ? (
+                <p>No status change has been recorded yet for this task.</p>
+              ) : (
+                <ul className="task-status-timeline">
+                  {historyEvents.map((event, index) => (
+                    <li key={`${event.changed_at}-${index}`}>
+                      <div>
+                        <strong>{event.old_status ?? "Created"} → {event.new_status}</strong>
+                        <span>{timestampLabel(event.changed_at)}</span>
+                      </div>
+                      {index > 0 ? (
+                        <span className="task-status-duration">
+                          {durationLabel(historyEvents[index - 1].changed_at, event.changed_at)} in {historyEvents[index - 1].new_status}
+                        </span>
+                      ) : null}
+                      {index === historyEvents.length - 1 && historyTask.status === event.new_status ? (
+                        <span className="task-status-duration">
+                          {durationLabel(event.changed_at, new Date().toISOString())} in {event.new_status} so far
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        ) : null}
+      </aside>
     </WorkspaceFrame>
   );
 }

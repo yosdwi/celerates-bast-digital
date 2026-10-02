@@ -212,10 +212,13 @@ def test_employee_detail_groups_repeated_daily_issues_into_ranges() -> None:
     message = format_employee_detail(report.employees[0], period)
 
     assert message.startswith("*Yoses — BAST 1-5 Agustus 2026*")
-    # Days 1, 2, 3, 5 are missing attendance (4 is present) -- one grouped
-    # line with a compressed range, not four separate per-date lines.
-    assert "4 hari — Data attendance belum tersedia. (1-3, 5)" in message
-    assert message.count(" — Data attendance belum tersedia.") == 1
+    # Days with no attendance row at all (1-3, 5) are no longer a Log 1 PAMA
+    # issue -- the sync pipeline usually catches up, so they're surfaced via
+    # log_1_pama_missing_data_days instead (self-serve Sakit/Izin/Cuti) rather
+    # than blocking here. All 5 days still have no timesheet row, though, so
+    # that shows up as one grouped Timesheet range line instead.
+    assert "✅ Log 1 PAMA\nLengkap." in message
+    assert "5 hari — Timesheet belum tersedia. (1-5)" in message
 
 
 def test_extract_index_handles_explicit_references() -> None:
@@ -238,6 +241,23 @@ def test_conversation_never_wins_over_a_business_keyword() -> None:
     )
     assert parse_command("@conform restart postgres dong", TODAY).intent is (
         Intent.UNSUPPORTED_MUTATION
+    )
+
+
+def test_export_bast_routes_to_generate_bast_not_export_attendance() -> None:
+    # "export" alone is EXPORT_ATTENDANCE's trigger word, so "export bast"
+    # would otherwise match it first and never reach GENERATE_BAST -- a real
+    # production bug where a Talent asking to export the BAST document
+    # instead got sent a raw attendance CSV.
+    command = parse_command(
+        "@conform export bast september ini untuk developer ya", TODAY
+    )
+    assert command.intent is Intent.GENERATE_BAST
+
+    # A plain export-attendance request with no mention of "bast" must be
+    # completely unaffected by the new rule.
+    assert parse_command("@conform export attendance developer 5 juni", TODAY).intent is (
+        Intent.EXPORT_ATTENDANCE
     )
 
 

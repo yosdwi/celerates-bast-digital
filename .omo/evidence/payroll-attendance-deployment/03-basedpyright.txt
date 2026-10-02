@@ -1,0 +1,323 @@
+/home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py:252:13 - warning: Result of call expression is of type "PayrollGroupDigestDelivery | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py:291:13 - warning: Result of call expression is of type "PayrollGroupDigestDelivery | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py:304:13 - warning: Result of call expression is of type "PayrollGroupDigestDelivery | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py:316:13 - warning: Result of call expression is of type "PayrollGroupDigestDelivery | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_group_digest.py:328:9 - warning: Result of call expression is of type "PayrollGroupDigestDelivery | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_query.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_query.py:13:79 - error: Import "PayrollDigestService" is not accessed (reportUnusedImport)
+/home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:362:13 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:382:13 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:401:13 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:409:13 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:416:13 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/application/payroll_reminders.py:423:9 - warning: Result of call expression is of type "PayrollDeliveryRecord | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/bot/attendance_context.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/bot/attendance_context.py:126:9 - error: Type of "item" is unknown (reportUnknownVariableType)
+/home/debian/script/digital-bast-v2/src/digital_bast/bot/dm_entry.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/bot/dm_entry.py:117:9 - warning: Result of call expression is of type "AttendanceResolution" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/bot/dm_workflow.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/bot/dm_workflow.py:185:9 - warning: Result of call expression is of type "AttendanceResolution" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/bot/pmo_bast.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/bot/pmo_bast.py:188:5 - warning: Result of call expression is of type "UUID" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/bot/talent_home.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/bot/talent_home.py:91:9 - warning: Result of call expression is of type "AttendanceResolution" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/flows/housekeeping.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/flows/housekeeping.py:69:80 - error: Argument of type "datetime" cannot be assigned to parameter "before_" of type "DateTime | None" in function "__init__"
+    Type "datetime" is not assignable to type "DateTime | None"
+      "datetime" is not assignable to "DateTime"
+      "datetime" is not assignable to "None" (reportArgumentType)
+/home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:155:25 - error: Argument of type "str | int | float | bool | date | datetime" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "str | int | float | bool | date | datetime" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex"
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:155:25 - error: Argument of type "str | int | float | bool | date | datetime" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "str | int | float | bool | date | datetime" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex" (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:230:16 - error: Type "Connection[TupleRow]" is not assignable to return type "Connection[SqlRow]"
+    "Connection[TupleRow]" is not assignable to "Connection[SqlRow]"
+      Type parameter "Row@Connection" is covariant, but "TupleRow" is not a subtype of "SqlRow"
+        "tuple[Any, ...]" is not assignable to "dict[str, SqlValue]" (reportReturnType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:233:25 - error: Argument of type "(cursor: BaseCursor[Any, Any]) -> RowMaker[DictRow]" cannot be assigned to parameter "row_factory" of type "RowFactory[TupleRow] | None" in function "connect"
+    Type "(cursor: BaseCursor[Any, Any]) -> RowMaker[DictRow]" is not assignable to type "RowFactory[TupleRow] | None"
+      Type "(cursor: BaseCursor[Any, Any]) -> RowMaker[DictRow]" is not assignable to type "(__cursor: Cursor[Any], /) -> RowMaker[TupleRow]"
+        Function return type "RowMaker[DictRow]" is incompatible with type "RowMaker[TupleRow]"
+          "RowMaker[DictRow]" is not assignable to "RowMaker[TupleRow]"
+            Type parameter "Row@RowMaker" is covariant, but "DictRow" is not a subtype of "TupleRow"
+      "FunctionType" is not assignable to "None" (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:367:24 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex"
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:367:24 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex" (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:388:20 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex"
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:388:20 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex" (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:437:57 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex"
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:437:57 - error: Argument of type "SqlValue" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "SqlValue" is not assignable to type "ConvertibleToInt"
+      Type "date" is not assignable to type "ConvertibleToInt"
+        "date" is not assignable to "str"
+        "date" is incompatible with protocol "Buffer"
+          "__buffer__" is not present
+        "date" is incompatible with protocol "SupportsInt"
+          "__int__" is not present
+        "date" is incompatible with protocol "SupportsIndex" (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:446:25 - warning: Result of call expression is of type "int | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/nocodb_repository.py:452:25 - warning: Result of call expression is of type "int | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:40:23 - error: Argument type is unknown
+    Argument corresponds to parameter "x" in function "__new__" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:40:34 - error: Type of "value" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:45:23 - error: Argument type is unknown
+    Argument corresponds to parameter "object" in function "__new__" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:45:34 - error: Type of "value" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:53:29 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:53:29 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:54:31 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:54:31 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:57:37 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:57:37 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:58:33 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:58:33 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:59:33 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present
+    ... (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:59:33 - error: Argument of type "object" cannot be assigned to parameter "x" of type "ConvertibleToInt" in function "__new__"
+    Type "object" is not assignable to type "ConvertibleToInt"
+      "object" is not assignable to "str"
+      "object" is incompatible with protocol "Buffer"
+        "__buffer__" is not present
+      "object" is incompatible with protocol "SupportsInt"
+        "__int__" is not present
+      "object" is incompatible with protocol "SupportsIndex"
+        "__index__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/payroll_closing_settings.py:85:21 - error: Argument of type "str" cannot be assigned to parameter "query" of type "QueryNoTemplate" in function "execute"
+    Type "str" is not assignable to type "QueryNoTemplate"
+      "str" is not assignable to "LiteralString"
+      "str" is not assignable to "bytes"
+      "str" is not assignable to "SQL"
+      "str" is not assignable to "Composed" (reportArgumentType)
+/home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:139:13 - warning: Result of call expression is of type "PixelAccess | None" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:165:5 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:169:9 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:170:9 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:171:9 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:174:5 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:175:5 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:177:9 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:178:5 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:179:5 - warning: Result of call expression is of type "int" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:183:5 - error: Return type, "tuple[Unknown, Unknown]", is partially unknown (reportUnknownParameterType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:183:16 - error: Type of parameter "playwright" is unknown (reportUnknownParameterType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:183:16 - error: Type annotation is missing for parameter "playwright" (reportMissingParameterType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:184:5 - error: Type of "browser" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:184:15 - error: Type of "chromium" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:184:15 - error: Type of "launch" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:185:5 - error: Type of "page" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:185:12 - error: Type of "new_page" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:186:5 - error: Type of "set_default_timeout" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:187:5 - error: Type of "_" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:187:9 - error: Type of "goto" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:190:5 - error: Type of "_" is unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:190:9 - error: Type of "wait_for_function" is unknown (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:191:12 - error: Return type, "tuple[Unknown, Unknown]", is partially unknown (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:271:13 - warning: Result of call expression is of type "Response" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/pdf_export.py:330:13 - warning: Result of call expression is of type "Response" and is not used; assign to variable "_" if this is intentional (reportUnusedCallResult)
+/home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/whatsapp_outbound.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/whatsapp_outbound.py:172:5 - error: Type of "error" is partially unknown
+    Type of "error" is "Unknown | None" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/whatsapp_outbound.py:172:13 - error: Type of "get" is partially unknown
+    Type of "get" is "Overload[(key: Unknown, default: None = None, /) -> (Unknown | None), (key: Unknown, default: Unknown, /) -> Unknown, (key: Unknown, default: _T@get, /) -> (Unknown | _T@get)]" (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/infrastructure/whatsapp_outbound.py:173:16 - error: Argument type is unknown
+    Argument corresponds to parameter "object" in function "__new__" (reportUnknownArgumentType)
+/home/debian/script/digital-bast-v2/src/digital_bast/render_worker_asgi.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/render_worker_asgi.py:27:52 - error: "_render_pdf_local" is private and used outside of the module in which it is declared (reportPrivateUsage)
+  /home/debian/script/digital-bast-v2/src/digital_bast/render_worker_asgi.py:27:71 - error: "_render_png_local" is private and used outside of the module in which it is declared (reportPrivateUsage)
+/home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:905:9 - error: Type of "respon_actual" is partially unknown
+    Type of "respon_actual" is "float | Unknown" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:905:25 - error: Operator "-" not supported for types "datetime | None" and "datetime | None"
+    Operator "-" not supported for types "datetime" and "None"
+    Operator "-" not supported for types "None" and "datetime"
+    Operator "-" not supported for types "None" and "None" (reportOperatorIssue)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:905:25 - error: Type of "total_seconds" is partially unknown
+    Type of "total_seconds" is "(() -> float) | Unknown" (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:906:9 - error: Type of "penyelesaian_actual" is partially unknown
+    Type of "penyelesaian_actual" is "float | Unknown" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:906:31 - error: Operator "-" not supported for types "datetime | None" and "datetime | None"
+    Operator "-" not supported for types "datetime" and "None"
+    Operator "-" not supported for types "None" and "datetime"
+    Operator "-" not supported for types "None" and "None" (reportOperatorIssue)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:906:31 - error: Type of "total_seconds" is partially unknown
+    Type of "total_seconds" is "(() -> float) | Unknown" (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:907:51 - error: Argument type is partially unknown
+    Argument corresponds to parameter "actual_minutes" in function "_iot_sla_performance"
+    Argument type is "float | Unknown" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:921:9 - error: Type of "append" is partially unknown
+    Type of "append" is "(object: Unknown, /) -> None" (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:925:50 - error: "strftime" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:926:48 - error: "strftime" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:927:52 - error: "strftime" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:928:55 - error: "strftime" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:929:53 - error: "strftime" is not a known attribute of "None" (reportOptionalMemberAccess)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:955:13 - error: Argument type is partially unknown
+    Argument corresponds to parameter "obj" in function "len"
+    Argument type is "list[Unknown]" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:958:9 - error: Type of "chunk" is partially unknown
+    Type of "chunk" is "list[Unknown]" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:974:25 - error: Argument type is partially unknown
+    Argument corresponds to parameter "context" in function "_render"
+    Argument type is "dict[str, list[Unknown] | float | str]" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1026:9 - error: Type of "append" is partially unknown
+    Type of "append" is "(object: Unknown, /) -> None" (reportUnknownMemberType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1052:5 - error: Type of "chunks" is partially unknown
+    Type of "chunks" is "list[list[Unknown]]" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1054:35 - error: Argument type is partially unknown
+    Argument corresponds to parameter "obj" in function "len"
+    Argument type is "list[Unknown]" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1063:21 - error: Argument type is partially unknown
+    Argument corresponds to parameter "context" in function "_render"
+    Argument type is "dict[str, list[Unknown] | str]" (reportUnknownArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1068:13 - error: Type of "chunk" is partially unknown
+    Type of "chunk" is "list[Unknown]" (reportUnknownVariableType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1187:48 - error: Argument of type "object" cannot be assigned to parameter "obj" of type "Sized" in function "len"
+    "object" is incompatible with protocol "Sized"
+      "__len__" is not present (reportArgumentType)
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/bast_assembler.py:1208:56 - error: Argument of type "object" cannot be assigned to parameter "employee_name" of type "str" in function "_attendance_evidence_pages"
+    "object" is not assignable to "str" (reportArgumentType)
+/home/debian/script/digital-bast-v2/src/digital_bast/web/payroll_followup_router.py
+  /home/debian/script/digital-bast-v2/src/digital_bast/web/payroll_followup_router.py:195:20 - error: Argument of type "str" cannot be assigned to parameter "status" of type "Literal['ok', 'unavailable']" in function "__init__"
+    Type "str" is not assignable to type "Literal['ok', 'unavailable']"
+      "str" is not assignable to type "Literal['ok']"
+      "str" is not assignable to type "Literal['unavailable']" (reportArgumentType)
+71 errors, 29 warnings, 0 notes
