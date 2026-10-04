@@ -107,9 +107,10 @@ class AttendanceFact:
 class TimesheetFact:
     work_date: date
     remarks: str
-    # Whether the timesheet row itself is marked as a day off. Defaults to True (= "no objection")
-    # so callers that do not know it never raise the "still a working day" finding below.
-    marked_off: bool = True
+    # What the timesheet row itself says: True = marked as a day off, False = a working day,
+    # None = not known. Callers that do not know it (None) never get the two findings in
+    # `_timesheet` that compare the row with the schedule and the attendance.
+    marked_off: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +290,12 @@ def _timesheet(
     invalid_log_days: frozenset[date],
 ) -> CheckResult:
     by_day = {record.work_date: record for record in facts.timesheets}
+    # Days with a complete clock-in AND clock-out.
+    clocked = {
+        record.work_date
+        for record in facts.attendance
+        if record.has_clock_in and record.has_clock_out
+    }
     issues: list[str] = []
     for work_date in period.days():
         label = format_day(work_date)
@@ -298,7 +305,7 @@ def _timesheet(
                 issues.append(f"{label} — Timesheet untuk jadwal OFF belum tersedia.")
             elif not record.remarks.strip():
                 issues.append(f"{label} — Keterangan OFF pada Timesheet belum terisi.")
-            elif not record.marked_off:
+            elif record.marked_off is False:
                 # The sheet generated this row while the day was still a shift and nothing
                 # updated it when the schedule became Libur: a working day (e.g. "SHIFT 1")
                 # with no attendance behind it. "Not empty" is not enough -- the remark has
@@ -313,6 +320,17 @@ def _timesheet(
             continue
         if record is None:
             issues.append(f"{label} — Timesheet belum tersedia.")
+            continue
+        if record.marked_off is True and work_date in clocked:
+            # The opposite of the case above: the schedule says a working day and the talent clocked
+            # in AND out, but the timesheet row says OFF. The BAST drops the hours of a day the
+            # timesheet marks as off, so real work would vanish from the document. Not auto-fixed:
+            # PMO decides whether the timesheet row or the attendance is right.
+            issues.append(
+                f"{label} — Timesheet bertanda OFF ({record.remarks.strip() or 'Libur'}) padahal "
+                "Clock In dan Clock Out terisi; jam kerjanya tidak masuk BAST. "
+                "Periksa keterangan Timesheet."
+            )
     state = CheckState.INCOMPLETE if issues else CheckState.COMPLETE
     return CheckResult(state, tuple(issues))
 
