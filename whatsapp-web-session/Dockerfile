@@ -36,7 +36,7 @@ RUN npm install --omit=dev --no-audit --no-fund
 COPY whatsapp-web-session/patch-stream-mode-enum.js whatsapp-web-session/patch-serialized-rename.js whatsapp-web-session/patch-media-id-collision.js ./
 RUN node patch-stream-mode-enum.js && node patch-serialized-rename.js && node patch-media-id-collision.js
 
-COPY whatsapp-web-session/server.js whatsapp-web-session/state.js whatsapp-web-session/bridge.js whatsapp-web-session/helpers.js whatsapp-web-session/stub-worker.js whatsapp-web-session/gateway-receipts.js whatsapp-web-session/session-safety.js whatsapp-web-session/session-supervisor.js ./
+COPY whatsapp-web-session/server.js whatsapp-web-session/state.js whatsapp-web-session/bridge.js whatsapp-web-session/worker-client.js whatsapp-web-session/helpers.js whatsapp-web-session/stub-worker.js whatsapp-web-session/gateway-receipts.js whatsapp-web-session/session-safety.js whatsapp-web-session/session-supervisor.js ./
 
 RUN mkdir -p /data/auth-whatsapp-web-js /data/evidence-uploads /data/exports \
     && chown -R 10001:10001 /data /opt/whatsapp-web-session
