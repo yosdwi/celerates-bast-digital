@@ -27,6 +27,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const QRCode = require("qrcode");
+const { callWorker } = require("./worker-client");
 
 const {
   GROUP_TRIGGER,
@@ -55,7 +56,7 @@ const EVIDENCE_IN_GROUP_REPLY =
   "Upload evidence-nya lewat chat pribadi ke aku ya, bukan di grup \u{1F64F} Tinggal kirim foto/dokumennya langsung ke DM aku.";
 
 class Bridge {
-  constructor({ state, authDir, dataDir, workerBaseUrl, bridgeToken, waitNoticeDelayMs, workerTimeoutMs = 630_000 }) {
+  constructor({ state, authDir, dataDir, workerBaseUrl, bridgeToken, waitNoticeDelayMs, workerTimeoutMs = 2_100_000 }) {
     this.state = state;
     this.dataDir = dataDir;
     this.workerBaseUrl = workerBaseUrl.replace(/\/+$/, "");
@@ -194,20 +195,13 @@ class Bridge {
   }
 
   async callWorker(payload) {
-    const url = `${this.workerBaseUrl}/internal/v1/reply`;
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-bridge-token": this.bridgeToken },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(this.workerTimeoutMs),
-      });
-      const json = await res.json();
-      return { ok: Boolean(json.ok), text: String(json.text ?? "") };
-    } catch (err) {
-      this.state.logf(`callWorker: fetch threw: ${err.stack || err}`);
-      return { ok: false, text: `bot-worker unreachable: ${err.message}` };
-    }
+    return callWorker({
+      baseUrl: this.workerBaseUrl,
+      token: this.bridgeToken,
+      payload,
+      totalTimeoutMs: this.workerTimeoutMs,
+      log: (line) => this.state.logf(line),
+    });
   }
 
   async callWorkerWithNotice(msg, payload, delayed) {

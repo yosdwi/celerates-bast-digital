@@ -38,12 +38,15 @@ if TYPE_CHECKING:
     from digital_bast.domain.completion import DateRange
 
 _FLOW_NAME: Final = "bast-generate"
-# Observed real generation time tops out around ~150s for a full month across
-# every team; 10 minutes is a generous backstop against a row left stuck at
-# pending/running by a mid-job container recreate (a blue/green redeploy, an
-# OOM), not a tight SLA -- purely a read-time display fallback, no separate
-# reconciliation process.
-_STALE_AFTER: Final = timedelta(minutes=10)
+# Observed real generation time (Oct 2026): a September report takes 4-11
+# minutes (Chromium renders in batches of 10 pages), the renderer runs one
+# render at a time so a job can also queue behind another, and the renderer
+# request itself is capped at 20 minutes (infrastructure/pdf_export.py). 30
+# minutes is a backstop against a row left stuck at pending/running by a
+# mid-job container recreate (a blue/green redeploy, an OOM), not a tight SLA
+# -- purely a read-time display fallback, no separate reconciliation process.
+# At the old 10 minutes, healthy 11-minute jobs were shown as "Stale".
+_STALE_AFTER: Final = timedelta(minutes=30)
 
 JobStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
 DisplayStatus = Literal["pending", "running", "succeeded", "failed", "cancelled", "stale"]

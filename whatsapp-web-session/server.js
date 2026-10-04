@@ -36,10 +36,11 @@ const WORKER_BASE_URL = getenv("BOT_WORKER_BASE_URL", "http://127.0.0.1:8091");
 // read as noise. 10s keeps the ack for genuinely slow paths (BAST PDF
 // export, LLM interpretation: 10-40s) without nagging on fast ones.
 const WAIT_NOTICE_DELAY_MS = envNumber("BOT_WAIT_NOTICE_DELAY_MS", 10_000);
-// 2026-10-01: was a hardcoded 90s, which cut off "export bast ... developer" (~320s of Chromium rendering) with
-// "bot-worker unreachable: timeout" while bot-worker kept working and then dropped the finished file. bot-worker is
-// the real limit (BAST_CLI_TIMEOUT_MS, 600s); this stays just above it so the gateway never gives up first.
-const WORKER_TIMEOUT_MS = envNumber("BOT_WORKER_TIMEOUT_MS", 630_000);
+// Total time a command may take, polled as a job (worker-client.js). 35 min: just above bot-worker's own limit
+// (BAST_CLI_TIMEOUT_MS, 30 min) so the gateway never gives up first. This is no longer one HTTP request, so the
+// 300s fetch limit that made every export longer than 5 minutes fail ("bot-worker unreachable: fetch failed",
+// the 2026-10-01 "fix" to 630s never reached it) no longer applies.
+const WORKER_TIMEOUT_MS = envNumber("BOT_WORKER_TIMEOUT_MS", 2_100_000);
 const RECEIPT_MAX = envNumber("BOT_OUTBOUND_RECEIPT_MAX", 2048);
 const OWNER_TTL_MS = envNumber("BOT_SESSION_OWNER_TTL_MS", 90_000);
 const OWNER_HEARTBEAT_MS = envNumber("BOT_SESSION_OWNER_HEARTBEAT_MS", 15_000);

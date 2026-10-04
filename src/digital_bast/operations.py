@@ -270,6 +270,10 @@ async def generate_bast(
     period: DateRange,
     report_type: str = "developer",
 ) -> tuple[Path, AssembledReport]:
+    from digital_bast.infrastructure.bast_render_cache import (  # noqa: PLC0415
+        BastRenderCache,
+        cache_key,
+    )
     from digital_bast.infrastructure.pdf_export import render_pdf  # noqa: PLC0415
     from digital_bast.web.bast_assembler import (  # noqa: PLC0415
         PostgresBastArtifactStore,
@@ -278,7 +282,16 @@ async def generate_bast(
 
     secret = _application_dsn()
     report = await assemble(report_type, period.start.year, period.start.month, secret)
-    pdf_bytes = await render_pdf(report.editor_html)
+    # Rendering is the slow part (minutes). An identical report -- same data AND same
+    # templates, hence the same editor HTML -- is served from the cache instead of being
+    # rendered again, and concurrent identical requests share one render.
+    pdf_bytes, _ = await BastRenderCache(_exports_directory() / ".bast-cache").get_or_render(
+        report.report_type,
+        report.year,
+        report.month,
+        cache_key(report.editor_html),
+        lambda: render_pdf(report.editor_html),
+    )
     _ = await PostgresBastArtifactStore(secret).save(report)
     path = bast_artifact_path(report_type, report.year, report.month)
     path.parent.mkdir(parents=True, exist_ok=True)
