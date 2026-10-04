@@ -91,6 +91,15 @@ def generate_monthly_timesheets(request: TimesheetGeneration) -> tuple[Timesheet
     return tuple(rows)
 
 
+def is_off_shift(shift_name: str | None) -> bool:
+    """A schedule row whose shift is "Libur" is a day off (IoT Operations).
+
+    The single definition: `day_status` (readiness) and the BAST timesheet renderer both use it,
+    so a day cannot be "OFF" for one and a working day for the other.
+    """
+    return shift_name is not None and "libur" in shift_name.casefold()
+
+
 def day_status(
     role: EmployeeRole,
     weekday: int,
@@ -102,7 +111,7 @@ def day_status(
             if schedule is None or schedule.shift_name is None:
                 return True, "OFF"
             shift_name = schedule.shift_name.strip()
-            return "libur" in shift_name.casefold(), shift_name or "OFF"
+            return is_off_shift(shift_name), shift_name or "OFF"
         case EmployeeRole.DEVELOPER:
             if holiday is not None:
                 return True, holiday.name

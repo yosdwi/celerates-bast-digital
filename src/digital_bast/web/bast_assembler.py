@@ -47,6 +47,7 @@ from psycopg.rows import class_row
 
 from digital_bast.domain.models import EmployeeRole
 from digital_bast.domain.time import JAKARTA
+from digital_bast.domain.timesheets import is_off_shift
 from digital_bast.infrastructure.errors import InfrastructureError
 from digital_bast.infrastructure.postgres_employees import PostgresEmployeeSource
 
@@ -507,6 +508,7 @@ def _timesheet_report(  # noqa: PLR0913, PLR0917
     work_descriptions: str,
     month_name: str,
     year: int,
+    schedule_off_days: frozenset[date] = frozenset(),
 ) -> dict[str, object] | None:
     rows: list[dict[str, str]] = []
     totals = {"break": 0.0, "total": 0.0, "overtime": 0.0, "regular": 0.0}
@@ -522,6 +524,7 @@ def _timesheet_report(  # noqa: PLR0913, PLR0917
             # without it this rendered as a blank "working day" with no
             # indication anything was approved.
             absence_type = absences.get(day)
+            scheduled_off = absence_type is None and day in schedule_off_days
             if absence_type is not None:
                 has_activity = True
             rows.append(
@@ -536,11 +539,13 @@ def _timesheet_report(  # noqa: PLR0913, PLR0917
                     "Total Hours": "",
                     "Over Time Hours": "",
                     "Regular Hours": "",
-                    "Is Holiday": "H" if absence_type is not None else "",
+                    "Is Holiday": "H" if absence_type is not None or scheduled_off else "",
                     "Remarks": (
                         _ABSENCE_LABELS.get(absence_type, absence_type)
                         if absence_type is not None
-                        else ("Weekend" if day.weekday() >= 5 else "")  # noqa: PLR2004
+                        else (
+                            "Libur" if scheduled_off else ("Weekend" if day.weekday() >= 5 else "")  # noqa: PLR2004
+                        )
                     ),
                 }
             )
@@ -557,11 +562,13 @@ def _timesheet_report(  # noqa: PLR0913, PLR0917
         # truth and overrides it here, same as the no-timesheet-row-at-all
         # case above.
         absence_type = absences.get(day)
-        is_off_day = (
-            record.is_holiday
-            or record.remarks.strip().casefold() in _ABSENCE_LABELS
-            or absence_type is not None
-        )
+        recorded_off = record.is_holiday or record.remarks.strip().casefold() in _ABSENCE_LABELS
+        # The schedule says Libur but the row (generated at the start of the month, never
+        # corrected) still reads as a working shift. With no complete clock-in/out behind it
+        # the day is off; if the talent really clocked in and out, the hours are real and kept.
+        worked = punches is not None and bool(punches.check_in and punches.check_out)
+        scheduled_off = day in schedule_off_days and not worked and not recorded_off
+        is_off_day = recorded_off or absence_type is not None or scheduled_off
         break_hours = total_hours = overtime_hours = regular_hours = 0.0
         start_time = end_time = ""
         if not is_off_day and punches is not None and punches.check_in and punches.check_out:
@@ -588,7 +595,7 @@ def _timesheet_report(  # noqa: PLR0913, PLR0917
                 "Remarks": (
                     _ABSENCE_LABELS.get(absence_type, absence_type)
                     if absence_type is not None
-                    else record.remarks
+                    else ("Libur" if scheduled_off else record.remarks)
                 ),
             }
         )
@@ -625,6 +632,7 @@ def _timesheet_sections(  # noqa: PLR0913, PLR0917
     end: date,
     month_name: str,
     year: int,
+    schedule_off: Mapping[str, set[date]] | None = None,
 ) -> list[dict[str, object]]:
     sections: list[dict[str, object]] = []
     for employee in roster:
@@ -646,6 +654,7 @@ def _timesheet_sections(  # noqa: PLR0913, PLR0917
             _work_descriptions(tasks, employee_id),
             month_name,
             year,
+            frozenset((schedule_off or {}).get(employee_id, ())),
         )
         if report is None:
             continue
@@ -1406,6 +1415,52 @@ def _load_evidence_scope(
         return tuple((row.evidence_id, row.sha256) for row in cursor.fetchall())
 
 
+class _ScheduleRow:
+    __slots__ = (
+        "employee_id",
+        "external_id",
+        "shift_name",
+        "source",
+        "updated_at",
+        "version",
+        "work_date",
+    )
+
+    def __init__(  # noqa: PLR0913, PLR0917
+        self,
+        source: str,
+        external_id: str,
+        employee_id: str,
+        work_date: date,
+        shift_name: str | None,
+        version: int,
+        updated_at: datetime,
+    ) -> None:
+        self.source = source
+        self.external_id = external_id
+        self.employee_id = employee_id
+        self.work_date = work_date
+        self.shift_name = shift_name
+        self.version = version
+        self.updated_at = updated_at
+
+
+def _load_schedules(
+    connection: psycopg.Connection[object], start: date, end: date
+) -> tuple[_ScheduleRow, ...]:
+    with connection.cursor(row_factory=class_row(_ScheduleRow)) as cursor:
+        _ = cursor.execute(
+            """
+            SELECT 'schedules' AS source, record_key AS external_id, employee_id, work_date,
+                   shift_name, version, updated_at
+            FROM schedules
+            WHERE work_date BETWEEN %s AND %s
+            """,
+            (start, end),
+        )
+        return tuple(cursor.fetchall())
+
+
 def _load_holiday_scope(
     connection: psycopg.Connection[object], start: date, end: date
 ) -> tuple[_ScopeRow, ...]:
@@ -1444,10 +1499,22 @@ def _assemble(
             attendance_evidence = _load_attendance_evidence(connection, start, end)
             evidence_scope = _load_evidence_scope(connection, start, end)
             holiday_scope = _load_holiday_scope(connection, start, end)
+            schedules = (
+                _load_schedules(connection, start, end)
+                if role is EmployeeRole.IOT_OPERATIONS
+                else ()
+            )
     except psycopg.Error as error:
         raise InfrastructureError(service="postgres", operation="assemble_bast") from error
 
     roster_ids = set(roster_names)
+    # Days the SCHEDULE says are off (IoT Operations "Libur"), per employee. The timesheet
+    # row is generated at the start of the month and never corrected when the schedule
+    # changes afterwards, so it cannot be the only source for "is this day off".
+    schedule_off: dict[str, set[date]] = {}
+    for row in schedules:
+        if row.employee_id in roster_ids and is_off_shift(row.shift_name):
+            schedule_off.setdefault(row.employee_id, set()).add(row.work_date)
     tasks = tuple(task for task in tasks if task.employee_id in roster_ids)
     tasks_by_key = {task.external_id: task for task in tasks}
 
@@ -1459,7 +1526,16 @@ def _assemble(
     html_sections: list[dict[str, object]] = [{"type": "timesheet_header", "title": "1. Timesheet"}]
     html_sections.extend(
         _timesheet_sections(
-            roster, tasks, timesheets, attendance, absences, start, end, month_name, year
+            roster,
+            tasks,
+            timesheets,
+            attendance,
+            absences,
+            start,
+            end,
+            month_name,
+            year,
+            schedule_off,
         )
     )
     html_sections.append({"type": "tasklist_header", "title": "2. Task List"})
@@ -1492,7 +1568,7 @@ def _assemble(
     document = _render("all_report_template.html", context)
     editor_html = _render("report_editor.html", context)
 
-    scoped_rows = (*tasks, *timesheets, *attendance, *holiday_scope)
+    scoped_rows = (*tasks, *timesheets, *attendance, *holiday_scope, *schedules)
     durable_rows = [
         (row.source, row.external_id, row.version, row.updated_at) for row in scoped_rows
     ]

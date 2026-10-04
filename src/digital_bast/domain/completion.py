@@ -107,6 +107,9 @@ class AttendanceFact:
 class TimesheetFact:
     work_date: date
     remarks: str
+    # Whether the timesheet row itself is marked as a day off. Defaults to True (= "no objection")
+    # so callers that do not know it never raise the "still a working day" finding below.
+    marked_off: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +298,15 @@ def _timesheet(
                 issues.append(f"{label} — Timesheet untuk jadwal OFF belum tersedia.")
             elif not record.remarks.strip():
                 issues.append(f"{label} — Keterangan OFF pada Timesheet belum terisi.")
+            elif not record.marked_off:
+                # The sheet generated this row while the day was still a shift and nothing
+                # updated it when the schedule became Libur: a working day (e.g. "SHIFT 1")
+                # with no attendance behind it. "Not empty" is not enough -- the remark has
+                # to say the day is OFF.
+                issues.append(
+                    f"{label} — Timesheet masih tercatat hari kerja ({record.remarks.strip()}), "
+                    "padahal jadwal OFF; ubah keterangannya menjadi Libur."
+                )
             continue
         if work_date in invalid_log_days:
             issues.append(f"{label} — Timesheet belum dapat lengkap karena Log 1 PAMA belum valid.")

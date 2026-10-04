@@ -117,7 +117,7 @@ class CompletionSource:
                     if employee_id == str(person.id)
                 ),
                 timesheets=tuple(
-                    TimesheetFact(record.work_date, record.remarks)
+                    TimesheetFact(record.work_date, record.remarks, record.is_holiday)
                     for record in timesheets
                     if record.employee_id == person.id
                 ),
