@@ -16,8 +16,10 @@ Status legend: **DONE** shipped and verified · **OPEN** not started · **WAITIN
 | `553aeaf` | Schedule-Libur day renders as Libur in the IoT BAST; readiness flags a timesheet still marked as a working day on an OFF day |
 | `a6f8dda` | Readiness flags a timesheet marked OFF on a day with complete clock-in and clock-out |
 
-Data fix (no commit): Yoses Dwi Maheswara, 2026-09-02, `check_in` set to `09:06` from the 1 PAMA export
-(row marked `manual`, so the sync cannot overwrite it; original row saved in `~/backups/`).
+Data fixes (no commit), each row set to `manual` so the sync cannot overwrite it; originals saved in `~/backups/`:
+- Yoses Dwi Maheswara 2026-09-02 `check_in` = 09:06 (from the 1 PAMA export).
+- Hanung Rizqi Widianto 2026-09-10 `check_in` = 07:20 and Oditya Andalas Putra 2026-09-12 `check_in` = 14:50
+  (values supplied by the owner on 2026-10-04). September attendance (Log 1 PAMA) is now complete for all 17 talents.
 
 ## P1 — Attendance data is silently lost or corrupted
 
@@ -37,9 +39,9 @@ Data fix (no commit): Yoses Dwi Maheswara, 2026-09-02, `check_in` set to `09:06`
 - **Diagnostic still wanted:** run on the PAMA PC for NRP `JIMT24002`, 2026-09-01..03, both
   `tbl_t_att_daily` and `tbl_t_att_daily_history`, to see whether 09:06 was ever returned and with what `trans`.
 
-### B2. Hanung (10 Sep) and Oditya (12 Sep) clock-in gaps  — WAITING
-- Same pattern as B1. Needs their 1 PAMA export (like the Yoses one) to confirm the IN exists, then the same
-  one-row manual correction. Until then readiness keeps showing them as incomplete.
+### B2. Hanung (10 Sep) and Oditya (12 Sep) clock-in gaps  — DONE (data only)
+- Same pattern as B1. Corrected by hand on 2026-10-04 (Hanung 07:20, Oditya 14:50). The cause (B1) is still open,
+  so the next gap of this kind will need the same manual fix.
 
 ### B3. Yoses and Ovianto clock-ins around 05:20 before 16 Sep  — WAITING
 - **Observed:** Yoses IN 05:18–05:28 on 3–14 Sep (8 days) then ~07:2x from 16 Sep; Ovianto 10 days before 06:00.
