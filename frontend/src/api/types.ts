@@ -177,12 +177,19 @@ export interface TimesheetDay {
 }
 
 export interface TalentTask {
+  record_key: string;
   work_date: string;
   title: string;
   status: string;
   evidence_count: number;
   is_closed: boolean;
   evidence_ready: boolean | null;
+}
+
+export interface TaskStatusEvent {
+  old_status: string | null;
+  new_status: string;
+  changed_at: string;
 }
 
 export interface TalentDataAvailability {
@@ -350,4 +357,25 @@ export interface FollowUpSendResponse {
   sent_at: string | null;
   error_code: string | null;
   duplicate: boolean;
+}
+
+export interface AttendanceGapItem {
+  employee_id: string;
+  name: string;
+  attendance_key: string;
+  work_date: string;
+  check_in: string | null;
+  check_out: string | null;
+  gap: "missing_clock_in" | "missing_clock_out" | "missing_both";
+  evidence_count: number;
+}
+
+export interface AttendanceGapsResponse {
+  period: PeriodView;
+  items: AttendanceGapItem[];
+}
+
+export interface AttendanceGapMutationResponse {
+  status: "applied" | "already_open";
+  message: string;
 }

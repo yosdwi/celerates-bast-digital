@@ -15,7 +15,8 @@ the trigger, so no upsert touches them.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Final, LiteralString, assert_never, final
 
 import psycopg
@@ -51,6 +52,13 @@ if TYPE_CHECKING:
 
 _PROCEDURE_PART_COUNT = 2
 
+
+@dataclass(frozen=True, slots=True)
+class TaskStatusEvent:
+    old_status: str | None
+    new_status: str
+    changed_at: datetime
+
 _SELECT: dict[EntityKind, LiteralString] = {
     EntityKind.HOLIDAY: "SELECT record_key, work_date, name, origin FROM holidays",
     EntityKind.ATTENDANCE: (
@@ -76,6 +84,10 @@ _MONTH_SUFFIX: Final = (
     " WHERE work_date >= make_date(%s, %s, 1)"
     "   AND work_date < make_date(%s, %s, 1) + interval '1 month'"
     " ORDER BY work_date, record_key"
+)
+_SELECT_TASKS_ENDING: Final[LiteralString] = (
+    _SELECT[EntityKind.TASK]
+    + " WHERE end_date BETWEEN %s AND %s ORDER BY end_date, work_date, record_key"
 )
 # Built once so psycopg receives LiteralString rather than a runtime f-string.
 _SELECT_BY_KEY: dict[EntityKind, LiteralString] = {
@@ -137,31 +149,48 @@ def _upsert_statement(record: DomainRecord) -> tuple[LiteralString, tuple[Any, .
                 ),
             )
         case Task():
+            # The CTEs share one statement snapshot, so `old` reads the
+            # pre-upsert row even though `upsert` writes to the same table
+            # (see the Postgres docs on data-modifying WITH queries) -- that's
+            # what makes the before/after status comparison correct. `upsert`
+            # returns nothing when the manual-edit guard blocks the write, so
+            # a locked task logs no history row either.
             return (
                 """
-                INSERT INTO tasks (
-                    record_key, employee_id, work_date, title, requestor, status,
-                    category, task_source, source_id, assignee, start_at,
-                    response_at, close_at, end_date, achievement, issue_type, origin
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (record_key) DO UPDATE SET
-                    work_date = EXCLUDED.work_date,
-                    title = EXCLUDED.title,
-                    requestor = EXCLUDED.requestor,
-                    status = EXCLUDED.status,
-                    category = EXCLUDED.category,
-                    task_source = EXCLUDED.task_source,
-                    source_id = EXCLUDED.source_id,
-                    assignee = EXCLUDED.assignee,
-                    start_at = EXCLUDED.start_at,
-                    response_at = EXCLUDED.response_at,
-                    close_at = EXCLUDED.close_at,
-                    end_date = EXCLUDED.end_date,
-                    achievement = EXCLUDED.achievement,
-                    issue_type = EXCLUDED.issue_type
-                WHERE tasks.origin <> 'manual'
+                WITH old AS (
+                    SELECT status FROM tasks WHERE record_key = %s
+                ),
+                upsert AS (
+                    INSERT INTO tasks (
+                        record_key, employee_id, work_date, title, requestor, status,
+                        category, task_source, source_id, assignee, start_at,
+                        response_at, close_at, end_date, achievement, issue_type, origin
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (record_key) DO UPDATE SET
+                        work_date = EXCLUDED.work_date,
+                        title = EXCLUDED.title,
+                        requestor = EXCLUDED.requestor,
+                        status = EXCLUDED.status,
+                        category = EXCLUDED.category,
+                        task_source = EXCLUDED.task_source,
+                        source_id = EXCLUDED.source_id,
+                        assignee = EXCLUDED.assignee,
+                        start_at = EXCLUDED.start_at,
+                        response_at = EXCLUDED.response_at,
+                        close_at = EXCLUDED.close_at,
+                        end_date = EXCLUDED.end_date,
+                        achievement = EXCLUDED.achievement,
+                        issue_type = EXCLUDED.issue_type
+                    WHERE tasks.origin <> 'manual'
+                    RETURNING record_key, status
+                )
+                INSERT INTO task_status_history (record_key, old_status, new_status)
+                SELECT u.record_key, o.status, u.status
+                FROM upsert u LEFT JOIN old o ON true
+                WHERE o.status IS DISTINCT FROM u.status
                 """,
                 (
+                    str(record.key),
                     str(record.key),
                     str(record.employee_id),
                     record.work_date,
@@ -323,6 +352,14 @@ class PostgresDomainRepository:
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]:
         return await run_sync(self._list_month, kind, period)
 
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        """Tasks whose END date is in [start, end] (domain.models.reported_in_period).
+
+        Deliberately not `list_month`: that stays keyed on `work_date` because the sync and
+        reconciliation flows compare stored records against the source month by month.
+        """
+        return await run_sync(self._list_tasks_ending, start, end)
+
     def _get(self, key: RecordKey) -> DomainRecord | None:
         kind = _kind_of_key(key)
         if kind is None:
@@ -358,6 +395,25 @@ class PostgresDomainRepository:
                 operation="upsert_domain_record",
             ) from error
 
+    def _list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        try:
+            with (
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(_SELECT_TASKS_ENDING, (start, end))
+                rows = cursor.fetchall()
+            return tuple(
+                record
+                for record in (_row_to_record(EntityKind.TASK, row) for row in rows)
+                if isinstance(record, Task)
+            )
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="list_tasks_ending") from error
+
     def _list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]:
         try:
             with (
@@ -375,6 +431,50 @@ class PostgresDomainRepository:
             return tuple(_row_to_record(kind, row) for row in rows)
         except psycopg.Error as error:
             raise InfrastructureError(service="postgres", operation="list_month") from error
+
+
+@final
+class PostgresTaskStatusHistoryReader:
+    """Read side for the status-transition log the Task upsert writes to.
+
+    Kept separate from PostgresDomainRepository/DomainRepository so adding
+    this doesn't force the legacy NocoDBDomainRepository to implement it too.
+    """
+
+    def __init__(self, dsn: str, connect_timeout_seconds: int = 5) -> None:
+        self._dsn: str = dsn
+        self._connect_timeout_seconds: int = connect_timeout_seconds
+
+    async def for_task(self, record_key: RecordKey) -> tuple[TaskStatusEvent, ...]:
+        return await run_sync(self._for_task, record_key)
+
+    def _for_task(self, record_key: RecordKey) -> tuple[TaskStatusEvent, ...]:
+        try:
+            with (
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(
+                    """
+                    SELECT old_status, new_status, changed_at
+                    FROM task_status_history
+                    WHERE record_key = %s
+                    ORDER BY changed_at
+                    """,
+                    (str(record_key),),
+                )
+                rows = cursor.fetchall()
+            return tuple(
+                TaskStatusEvent(row["old_status"], row["new_status"], row["changed_at"])
+                for row in rows
+            )
+        except psycopg.Error as error:
+            raise InfrastructureError(
+                service="postgres", operation="task_status_history"
+            ) from error
 
 
 @final

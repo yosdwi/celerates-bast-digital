@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from prefect.deployments.runner import RunnerDeployment
 from prefect.schedules import Cron
 
+from digital_bast.flows.housekeeping import prefect_housekeeping_flow
 from digital_bast.flows.notifications import pmo_notifications_flow
 from digital_bast.flows.pipelines import (
     iot_pic_update_flow,
@@ -30,6 +31,7 @@ _SCHEDULES: tuple[DeploymentSchedule, ...] = (
     DeploymentSchedule("reference-data", "15 0 * * *"),
     DeploymentSchedule("monthly-timesheets", "30 0 1 * *"),
     DeploymentSchedule("iot-pic-update", "0 1 * * *"),
+    DeploymentSchedule("prefect-housekeeping", "0 * * * *"),
 )
 
 
@@ -38,7 +40,9 @@ def deployment_schedules() -> tuple[DeploymentSchedule, ...]:
 
 
 def build_deployments() -> tuple[RunnerDeployment, ...]:
-    operational, notifications, reconciliation, references, timesheets, iot_pic = _SCHEDULES
+    operational, notifications, reconciliation, references, timesheets, iot_pic, housekeeping = (
+        _SCHEDULES
+    )
     return (
         RunnerDeployment.from_flow(
             operational_import_flow,
@@ -75,5 +79,11 @@ def build_deployments() -> tuple[RunnerDeployment, ...]:
             name=iot_pic.name,
             schedule=Cron(iot_pic.cron, timezone=iot_pic.timezone),
             concurrency_limit=iot_pic.concurrency_limit,
+        ),
+        RunnerDeployment.from_flow(
+            prefect_housekeeping_flow,
+            name=housekeeping.name,
+            schedule=Cron(housekeeping.cron, timezone=housekeeping.timezone),
+            concurrency_limit=housekeeping.concurrency_limit,
         ),
     )

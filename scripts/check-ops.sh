@@ -19,7 +19,13 @@ NOCODB_V2_DB_PASSWORD=ci-placeholder \
 SECRETS_GID=${SECRETS_GID:-0} \
 docker compose --profile blue --profile green config --quiet
 
-if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*[[:alnum:]])' .; then
+# The password sub-pattern requires a quote character immediately after the
+# assignment operator, so it matches an inline literal value but not a
+# variable/attribute reference passed as a keyword argument -- the previous
+# unquoted version had this backwards: it never matched a properly quoted
+# literal at all, while still flagging plain reference-passing as a false
+# positive.
+if rg -n --glob 'Dockerfile' --glob 'compose*.yaml' --glob '.github/**' --glob 'scripts/**' '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|password\s*[:=]\s*['"'"'"][[:alnum:]])' .; then
     printf '%s\n' "possible embedded secret detected" >&2
     exit 1
 fi
@@ -34,6 +40,13 @@ grep -q 'proxy and bot-worker rolled back' scripts/deploy.sh
 grep -q 'compose build bot-worker' scripts/deploy.sh
 grep -q 'bot-worker failed health gate; previous image restored' scripts/deploy.sh
 grep -q 'rollback_worker' scripts/deploy.sh
+# deploy.sh requires compose.production.yaml and rebuilds bot-worker inside
+# every staged release directory. Keep the exact release bundle and its
+# staging/production validation in lockstep so an otherwise-green release
+# cannot fail on-host before the rollout gates start.
+grep -q 'compose.yaml compose.production.yaml scripts bot-worker config/nginx/nginx.conf' .github/workflows/release.yml
+grep -q 'test -f "$stage_dir/compose.production.yaml"' .github/workflows/release.yml
+grep -q 'test -f "$stage_dir/bot-worker/Dockerfile"' .github/workflows/release.yml
 grep -q 'wa-session/outbound.js' wa-session/Dockerfile
 grep -q '^USER 10001:10001$' whatsmeow-session/Dockerfile
 # The invariant that matters most in this file: whatsmeow must never read the
@@ -45,4 +58,11 @@ grep -q 'flock -n' scripts/deploy-wa-session.sh
 # coupling is exactly what caused WhatsApp to revoke the session in the
 # first place. Keep this a standing guard against it regressing silently.
 ! grep -q 'wa-session' scripts/deploy.sh
+grep -q '^USER 10001:10001$' whatsapp-web-session/Dockerfile
+grep -q 'flock -n' scripts/deploy-whatsapp-web-session.sh
+# Same guard as wa-session above, for the candidate whatsapp-web.js
+# transport -- see docs/wa-session-whatsapp-web-js-migration-plan.md. It
+# must never be touched by the automated blue/green flow either, for the
+# identical anti-abuse-penalty reason.
+! grep -q 'whatsapp-web-session' scripts/deploy.sh
 printf '%s\n' "operations static checks passed"

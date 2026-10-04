@@ -94,7 +94,7 @@ class TaskEvidenceReviewService:
                     FROM task_evidence te
                     JOIN tasks t ON t.id = te.task_id
                     JOIN employees e ON e.employee_id = te.employee_id
-                    WHERE t.work_date BETWEEN %s AND %s
+                    WHERE t.end_date BETWEEN %s AND %s
                       AND (%s = '' OR lower(e.nrp) = lower(%s))
                     """,
                     (period.start, period.end, normalized_nrp, normalized_nrp),
@@ -119,7 +119,7 @@ class TaskEvidenceReviewService:
                     FROM task_evidence te
                     JOIN tasks t ON t.id = te.task_id
                     JOIN employees e ON e.employee_id = te.employee_id
-                    WHERE t.work_date BETWEEN %s AND %s
+                    WHERE t.end_date BETWEEN %s AND %s
                       AND (%s = '' OR lower(e.nrp) = lower(%s))
                     ORDER BY te.uploaded_at DESC, te.id DESC
                     LIMIT %s OFFSET %s

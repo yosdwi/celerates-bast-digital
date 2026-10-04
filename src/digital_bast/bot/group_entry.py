@@ -4,9 +4,11 @@ import argparse
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from functools import partial
 from typing import Final, Literal
 
 import anyio
+from anyio.to_thread import run_sync
 from pydantic import BaseModel, ValidationError, field_validator
 
 from digital_bast.bot.whatsapp import strip_mentions
@@ -173,6 +175,7 @@ def _legacy_command(text: str) -> bool:
     prefixes = (
         "export attendance",
         "export absensi",
+        "export bast",
         "generate bast",
         "buat bast",
         "bikin bast",
@@ -304,13 +307,24 @@ async def _status_reply(query: GroupQuery) -> str:
     return "\n".join(lines)
 
 
+async def _legacy_reply(text: str) -> str:
+    from digital_bast.cli import bot_reply  # noqa: PLC0415
+
+    # bot_reply's own async work (LLM interpret, export, ...) runs via
+    # anyio.run() internally, since its other caller (cli.main()) is a
+    # genuine sync top-level with no event loop yet. reply() below is
+    # already running inside one (see main()'s anyio.run(reply, ...)), so
+    # calling bot_reply() directly here would nest anyio.run() inside a
+    # running loop and raise "Already running asyncio in this thread" --
+    # run it in a worker thread instead, which has no loop of its own.
+    return await run_sync(partial(bot_reply, text, channel="group"))
+
+
 async def reply(text: str) -> str:
     # Keep explicit export/generate/system commands on the existing audited
     # path. This wrapper only redesigns PMO read-only status queries.
     if _legacy_command(text):
-        from digital_bast.cli import bot_reply  # noqa: PLC0415
-
-        return bot_reply(text, channel="group")
+        return await _legacy_reply(text)
 
     today = datetime.now(JAKARTA).date()
     interpreted = await _interpret(text, today)
@@ -319,9 +333,7 @@ async def reply(text: str) -> str:
 
     # Conversation/unknown/LLM outage preserves the current group behavior
     # rather than inventing a deterministic substring guess.
-    from digital_bast.cli import bot_reply  # noqa: PLC0415
-
-    return bot_reply(text, channel="group")
+    return await _legacy_reply(text)
 
 
 def main() -> int:

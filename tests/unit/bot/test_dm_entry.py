@@ -280,11 +280,20 @@ async def test_bare_digit_stays_with_legacy_evidence_selection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     draft_state = _DraftState()
+    activation = _Activation()
+
+    class _ActiveEvidence:
+        async def active_kind(self, jid: str) -> str:
+            assert jid == _JID
+            return "attendance"
+
     monkeypatch.setattr(
         dm_entry,
         "create_attendance_resolution_dm_state_service",
         lambda: draft_state,
     )
+    monkeypatch.setattr(dm_entry, "create_activation_service", lambda: activation)
+    monkeypatch.setattr(dm_entry, "create_evidence_service", lambda: _ActiveEvidence())
 
     async def legacy(text: str, jid: str) -> str:
         assert text == "1"
@@ -315,3 +324,36 @@ async def test_active_attendance_draft_wins_before_navigation(
     monkeypatch.setattr(dm_entry, "workflow_reply", legacy)
 
     assert await dm_entry.reply("attendance", _JID) == "RESOLUTION PROMPT"
+
+
+@pytest.mark.asyncio
+async def test_unresolved_identity_never_falls_back_to_nrp_onboarding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Self-service NRP onboarding is retired -- every Talent is bound by an
+    admin now, so an unresolved identity must never prompt for an NRP again
+    (regression: WhatsApp's own @lid vs @c.us identity split routed an
+    already-bound Talent's bare digit reply into exactly that dead-end
+    onboarding flow in production).
+    """
+    draft_state = _DraftState(None)
+    monkeypatch.setattr(
+        dm_entry,
+        "create_attendance_resolution_dm_state_service",
+        lambda: draft_state,
+    )
+
+    class _UnboundActivation:
+        async def resolve(self, jid: str) -> str | None:
+            assert jid == _JID
+            return None
+
+    monkeypatch.setattr(dm_entry, "create_activation_service", _UnboundActivation)
+
+    def legacy_should_not_run(*_args: object, **_kwargs: object) -> str:
+        msg = "must not fall back to workflow_reply/onboarding"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(dm_entry, "workflow_reply", legacy_should_not_run)
+
+    assert await dm_entry.reply("Halo, saya JIMT99999", _JID) == dm_entry._NOT_BOUND_REPLY

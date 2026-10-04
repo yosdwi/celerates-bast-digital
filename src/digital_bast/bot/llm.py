@@ -70,8 +70,14 @@ _COMMAND_SYSTEM_PROMPT: Final = (
     "berarti completion-status (status kelengkapan dokumen BAST talent), BUKAN "
     'system-status. Contoh: pesan "liat status bast dong bulan agustus ini" -> '
     '{"intent":"completion-status",...}, BUKAN system-status. export-attendance wajib '
-    "mengisi report_type. Lengkapi tanggal/tahun yang tidak disebutkan eksplisit memakai "
-    "tanggal hari ini yang diberikan di pesan user.\n"
+    "mengisi report_type. Kata 'export' SENDIRIAN tidak selalu berarti export-attendance: "
+    "jika pesan juga menyebut 'bast' (mis. 'export bast developer', 'tolong export bast "
+    "bulan ini'), itu SELALU generate-bast, BUKAN export-attendance -- export-attendance "
+    "hanya untuk permintaan data attendance mentah (csv), bukan dokumen BAST. Contoh: "
+    '"export bast september untuk developer" -> {"intent":"generate-bast",'
+    '"report_type":"developer",...} (BUKAN export-attendance). Lengkapi tanggal/tahun '
+    "yang tidak disebutkan eksplisit memakai tanggal hari ini yang diberikan di pesan "
+    "user.\n"
     "Jika pesan menyebut dua tanggal, dipisah kata apa pun seperti 'sampai', 'sampe', "
     "'s/d', 'hingga', atau tanda '-', tanggal pertama yang disebut adalah start_date dan "
     "tanggal kedua adalah end_date -- jangan pernah mengganti salah satunya dengan "

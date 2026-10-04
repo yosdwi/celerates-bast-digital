@@ -96,7 +96,7 @@ async def _task_missing_count(employee_id: str, period: DateRange) -> int:
     candidates = tuple(
         item
         for item in await create_task_evidence_submission_service().list_candidates(employee_id)
-        if period.start <= item.work_date <= period.end
+        if item.in_period(period)
     )
     return sum(item.evidence_count <= 0 for item in candidates)
 

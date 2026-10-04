@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 
 from digital_bast.domain.errors import InvalidTimeError
-from digital_bast.domain.models import DomainRecord, EntityKind, Month, RecordKey
+from digital_bast.domain.models import DomainRecord, EntityKind, Month, RecordKey, Task
 from digital_bast.domain.scheduling import ProcedureName
 from digital_bast.domain.time import in_jakarta
 
@@ -14,6 +14,8 @@ class DomainRepository(Protocol):
     async def upsert(self, record: DomainRecord) -> None: ...
 
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]: ...
+
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]: ...
 
 
 class CursorStore(Protocol):

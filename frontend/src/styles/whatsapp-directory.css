@@ -1,0 +1,211 @@
+.whatsapp-directory-card {
+  margin-top: 1rem;
+}
+
+.whatsapp-directory-title {
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.whatsapp-directory-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+  margin: 1rem 0;
+}
+
+.whatsapp-directory-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .8rem .9rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: .75rem;
+  background: var(--surface-subtle, #f8fafc);
+}
+
+.whatsapp-directory-summary span,
+.whatsapp-directory-section-head span,
+.whatsapp-talent-identity span,
+.whatsapp-talent-identity small,
+.whatsapp-group-card small,
+.whatsapp-member-row small {
+  color: var(--text-muted, #64748b);
+}
+
+.whatsapp-directory-layout {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.whatsapp-directory-column {
+  min-width: 0;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: .9rem;
+  padding: .9rem;
+}
+
+.whatsapp-directory-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+
+.whatsapp-directory-section-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+
+.whatsapp-closing-control,
+.whatsapp-map-control {
+  display: flex;
+  gap: .55rem;
+  align-items: center;
+}
+
+.whatsapp-closing-control select,
+.whatsapp-map-control select {
+  min-width: 0;
+  flex: 1;
+}
+
+.whatsapp-closing-state {
+  margin: .65rem 0 1.1rem;
+  padding: .55rem .7rem;
+  border-radius: .55rem;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: .88rem;
+}
+
+.whatsapp-closing-state.verified {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.whatsapp-group-list,
+.whatsapp-talent-list {
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+
+.whatsapp-group-card,
+.whatsapp-talent-row {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: .7rem;
+  background: var(--surface, #fff);
+}
+
+.whatsapp-group-card summary {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: center;
+  padding: .7rem .8rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.whatsapp-group-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.whatsapp-group-card summary > span,
+.whatsapp-member-row > span:first-child,
+.whatsapp-talent-identity {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  min-width: 0;
+}
+
+.whatsapp-group-card summary small,
+.whatsapp-member-row small,
+.whatsapp-talent-identity small {
+  overflow-wrap: anywhere;
+}
+
+.whatsapp-member-list {
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.whatsapp-member-row {
+  display: flex;
+  justify-content: space-between;
+  gap: .7rem;
+  align-items: center;
+  padding: .6rem .8rem;
+}
+
+.whatsapp-member-row + .whatsapp-member-row {
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.mapping-pill {
+  flex: 0 0 auto;
+  padding: .22rem .45rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.mapping-pill.mapped {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.whatsapp-talent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, auto);
+  gap: .75rem;
+  align-items: center;
+  padding: .7rem .8rem;
+}
+
+.whatsapp-directory-boundary {
+  margin: 1rem 0 0;
+  padding-top: .85rem;
+  border-top: 1px solid var(--border, #e5e7eb);
+  color: var(--text-muted, #64748b);
+  font-size: .88rem;
+}
+
+@media (max-width: 900px) {
+  .whatsapp-directory-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .whatsapp-directory-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .whatsapp-directory-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .whatsapp-directory-title,
+  .whatsapp-closing-control,
+  .whatsapp-map-control,
+  .whatsapp-member-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .whatsapp-talent-row {
+    grid-template-columns: 1fr;
+  }
+
+  .whatsapp-map-control select,
+  .whatsapp-closing-control select {
+    width: 100%;
+  }
+}

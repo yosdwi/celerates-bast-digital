@@ -1,0 +1,79 @@
+
+> digital-bast-whatsapp-web-session@0.1.0-prototype test
+> node --test
+
+TAP version 13
+# Subtest: sent receipt survives restart and replays without a second send
+ok 1 - sent receipt survives restart and replays without a second send
+  ---
+  duration_ms: 11.553519
+  ...
+# Subtest: same request id with a different payload remains a strict conflict after restart
+ok 2 - same request id with a different payload remains a strict conflict after restart
+  ---
+  duration_ms: 1.573298
+  ...
+# Subtest: accepted receipt from an interrupted process becomes unknown and is never resent
+ok 3 - accepted receipt from an interrupted process becomes unknown and is never resent
+  ---
+  duration_ms: 1.423236
+  ...
+# Subtest: concurrent accepted requests are both durable before either send finishes
+ok 4 - concurrent accepted requests are both durable before either send finishes
+  ---
+  duration_ms: 17.261688
+  ...
+# Subtest: ambiguous send failure becomes durable unknown instead of retrying blindly
+ok 5 - ambiguous send failure becomes durable unknown instead of retrying blindly
+  ---
+  duration_ms: 1.885355
+  ...
+# Subtest: durable receipts stay bounded
+ok 6 - durable receipts stay bounded
+  ---
+  duration_ms: 2.660968
+  ...
+# Subtest: only one fresh owner lease can hold the shared whatsapp session
+ok 7 - only one fresh owner lease can hold the shared whatsapp session
+  ---
+  duration_ms: 14.102819
+  ...
+# Subtest: chromium singleton cleanup is blocked without the owner lease
+ok 8 - chromium singleton cleanup is blocked without the owner lease
+  ---
+  duration_ms: 3.691987
+  ...
+# Subtest: storage safety rejects a symlinked auth authority
+ok 9 - storage safety rejects a symlinked auth authority
+  ---
+  duration_ms: 1.756932
+  ...
+# Subtest: transient disconnect starts bounded reconnect without logout or auth reset
+ok 10 - transient disconnect starts bounded reconnect without logout or auth reset
+  ---
+  duration_ms: 11.794367
+  ...
+# Subtest: operator-action-required blocks automatic reconnect
+ok 11 - operator-action-required blocks automatic reconnect
+  ---
+  duration_ms: 1.243406
+  ...
+# Subtest: pause is durable and suppresses recovery after process restart
+ok 12 - pause is durable and suppresses recovery after process restart
+  ---
+  duration_ms: 1.62351
+  ...
+# Subtest: recovery budget enters durable cooldown instead of looping reconnect
+ok 13 - recovery budget enters durable cooldown instead of looping reconnect
+  ---
+  duration_ms: 1.698744
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 335.471154

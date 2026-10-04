@@ -12,8 +12,6 @@ from digital_bast.domain.models import (
     Employee,
     EmployeeId,
     EmployeeRole,
-    EntityKind,
-    Month,
     RecordKey,
     RecordOrigin,
     Task,
@@ -72,9 +70,9 @@ class FakeEmployees:
 
 
 class FakeRecords:
-    async def list_month(self, kind: EntityKind, period: Month) -> tuple[Task, ...]:
-        assert kind is EntityKind.TASK
-        assert period == Month(2026, 8)
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        # The tasklist for a period is the tasks that END in it (domain.models.reported_in_period).
+        assert (start, end) == (DAY, DAY)
         return (
             _task("task-1", "e-ready", "Closed"),
             _task("task-2", "e-blocked", "  In Progress  "),
@@ -126,7 +124,10 @@ async def test_command_center_uses_shared_completion_and_real_task_states() -> N
     assert result.summary.open_tasks == 1
     assert result.summary.evidence_ready == 2
     assert result.attention[0].name == "Blocked Talent"
-    assert result.attention[0].blockers[0].domain == "attendance"
+    # e-blocked has no attendance row at all for DAY -- no longer a Log 1 PAMA
+    # (attendance) issue, so the primary blocker is now the missing timesheet
+    # row (there are no TimesheetFact entries in the fixture either).
+    assert result.attention[0].blockers[0].domain == "timesheet"
     assert result.delivery.closed_tasks == 1
     assert result.delivery.non_closed_tasks == 1
     assert result.sources[0].age_seconds == 120
@@ -140,7 +141,12 @@ async def test_talent_detail_uses_nrp_and_exposes_rule_grounded_daily_states() -
     assert result.nrp == "NRP2"
     assert result.name == "Blocked Talent"
     assert result.overall_state is CheckState.INCOMPLETE
-    assert result.checks.attendance.issue_count == 1
+    # No attendance row at all is surfaced (attendance_days below), but no
+    # longer counted as a blocking Log 1 PAMA issue -- the sync pipeline
+    # usually catches up. The missing timesheet row is what makes this day
+    # incomplete now.
+    assert result.checks.attendance.issue_count == 0
+    assert result.checks.timesheet.issue_count == 1
     assert result.attendance_days[0].state is CheckState.INCOMPLETE
     assert result.attendance_days[0].has_record is False
     assert result.timesheet_days[0].blocked_by_attendance is True

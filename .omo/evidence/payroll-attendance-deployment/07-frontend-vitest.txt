@@ -1,0 +1,2447 @@
+
+ RUN  v2.1.9 /home/debian/script/digital-bast-v2/frontend
+
+ ✓ src/pages/PayrollReviewQueuePanel.test.tsx (3 tests) 796ms
+   ✓ PayrollReviewQueuePanel > keeps stale requests visible but not selectable and exposes existing evidence 461ms
+ ✓ src/pages/SystemSyncPage.test.tsx (2 tests) 1203ms
+   ✓ SystemSyncPage > uses real health endpoints and keeps source freshness observation semantics 668ms
+   ✓ SystemSyncPage > shows operator action instead of silently offering reconnect for a permanent logout 529ms
+ ❯ src/pages/PayrollPage.test.tsx (4 tests | 3 failed) 1592ms
+   × PayrollPage > shows concise closing status and keeps unverified source separate from Talent action 482ms
+     → Found multiple elements with the text: /Payroll September 2026/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu – 20 Sep 2026[0m
+  [0m · Dievaluasi s.d. 18 Sep 2026[0m
+[36m</p>[39m
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu 2026 – 20 Sep 2026[0m
+  [0m. File memakai attendance correction projection terbaru melalui exporter CSV existing.[0m
+[36m</p>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+   × PayrollPage > filters the Talent list by status and global search 257ms
+     → Found multiple elements with the text of: Search talents
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<button[39m
+  [33maria-label[39m=[32m"Search talents"[39m
+  [33mclass[39m=[32m"search-toggle"[39m
+  [33mtype[39m=[32m"button"[39m
+[36m>[39m
+  [36m<svg[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mfill[39m=[32m"none"[39m
+    [33mstroke[39m=[32m"currentColor"[39m
+    [33mstroke-linecap[39m=[32m"round"[39m
+    [33mstroke-linejoin[39m=[32m"round"[39m
+    [33mstroke-width[39m=[32m"1.8"[39m
+    [33mviewBox[39m=[32m"0 0 24 24"[39m
+  [36m>[39m
+    [36m<circle[39m
+      [33mcx[39m=[32m"11"[39m
+      [33mcy[39m=[32m"11"[39m
+      [33mr[39m=[32m"6"[39m
+    [36m/>[39m
+    [36m<path[39m
+      [33md[39m=[32m"m16 16 4 4"[39m
+    [36m/>[39m
+  [36m</svg>[39m
+[36m</button>[39m
+
+Ignored nodes: comments, script, style
+[36m<input[39m
+  [33maria-label[39m=[32m"Search talents"[39m
+  [33mplaceholder[39m=[32m"Search talents, NRP, or team"[39m
+  [33mvalue[39m=[32m""[39m
+[36m/>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+   × PayrollPage > loads attendance detail on demand and shows actual, proposed and evidence facts 467ms
+     → Found multiple elements with the text: Evidence:
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span>[39m
+  [0mEvidence: [0m
+  [36m<strong>[39m
+    [0mAda[0m
+  [36m</strong>[39m
+[36m</span>[39m
+
+Ignored nodes: comments, script, style
+[36m<span>[39m
+  [0mEvidence: [0m
+  [36m<strong>[39m
+    [0mTidak ada[0m
+  [36m</strong>[39m
+[36m</span>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<aside[39m
+  [33maria-label[39m=[32m"Detail attendance Budi"[39m
+  [33maria-modal[39m=[32m"true"[39m
+  [33mclass[39m=[32m"payroll-detail-drawer"[39m
+  [33mrole[39m=[32m"dialog"[39m
+[36m>[39m
+  [36m<header[39m
+    [33mclass[39m=[32m"payroll-detail-header"[39m
+  [36m>[39m
+    [36m<div>[39m
+      [36m<span>[39m
+        [0mDetail attendance[0m
+      [36m</span>[39m
+      [36m<h2>[39m
+        [0mBudi[0m
+      [36m</h2>[39m
+      [36m<p>[39m
+        [0mB01[0m
+        [0m · [0m
+        [0mDeveloper[0m
+        [0m · [0m
+        [0mPayroll September 2026[0m
+      [36m</p>[39m
+    [36m</div>[39m
+    [36m<button[39m
+      [33maria-label[39m=[32m"Tutup detail"[39m
+      [33mclass[39m=[32m"icon-button"[39m
+      [33mtype[39m=[32m"button"[39m
+    [36m>[39m
+      [36m<svg[39m
+        [33maria-hidden[39m=[32m"true"[39m
+        [33mfill[39m=[32m"none"[39m
+        [33mstroke[39m=[32m"currentColor"[39m
+        [33mstroke-linecap[39m=[32m"round"[39m
+        [33mstroke-linejoin[39m=[32m"round"[39m
+        [33mstroke-width[39m=[32m"1.8"[39m
+        [33mviewBox[39m=[32m"0 0 24 24"[39m
+      [36m>[39m
+        [36m<path[39m
+          [33md[39m=[32m"m6 6 12 12M18 6 6 18"[39m
+        [36m/>[39m
+      [36m</svg>[39m
+    [36m</button>[39m
+  [36m</header>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"payroll-detail-body"[39m
+  [36m>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"payroll-detail-summary"[39m
+    [36m>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mDievaluasi[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m20[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mComplete[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m18[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mMenunggu[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m2[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mPerlu Talent[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m0[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"payroll-detail-days"[39m
+    [36m>[39m
+      [36m<article[39m
+        [33mclass[39m=[32m"payroll-day-card waiting"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-head"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<strong>[39m
+              [0m4 Sep 2026[0m
+            [36m</strong>[39m
+            [36m<span>[39m
+              [0mPengajuan menunggu review PMO[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"payroll-status waiting"[39m
+          [36m>[39m
+            [0mMenunggu review[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-clock-grid"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<span>[39m
+              [0mAktual[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m07:32[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m—[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m""[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mDiajukan[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m—[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m17:40[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-meta"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mJenis: [0m
+            [36m<strong>[39m
+              [0mLengkapi Clock Out[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+          [36m<span>[39m
+            [0mEvidence: [0m
+            [36m<strong>[39m
+              [0mAda[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+          [36m<span>[39m
+            [0mReview: [0m
+            [36m<strong>[39m
+              [0mpending[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</article>[39m
+      [36m<article[39m
+        [33mclass[39m=[32m"payroll-day-card complete"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-head"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<strong>[39m
+              [0m5 Sep 2026[0m
+            [36m</strong>[39m
+            [36m<span>[39m
+              [0mAttendance aktual lengkap[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"payroll-status complete"[39m
+          [36m>[39m
+            [0mComplete[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-clock-grid"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<span>[39m
+              [0mAktual[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m07:29[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m17:38[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"muted"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mDiajukan[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m—[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m—[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-meta"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mEvidence: [0m
+            [36m<strong>[39m
+              [0mTidak ada[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</article>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</aside>[39m
+   ✓ PayrollPage > shows rejection context without turning the drawer into an approval surface 384ms
+ ✓ src/pages/PayrollExportPanel.test.tsx (2 tests) 429ms
+ ✓ src/pages/BastReadinessPage.test.tsx (2 tests) 1359ms
+   ✓ BastReadinessPage > shows deterministic blocker facts and signals before AI investigation 931ms
+   ✓ BastReadinessPage > keeps preview and final generation explicit and separate from readiness filtering 425ms
+ ❯ src/app/App.test.tsx (2 tests | 1 failed) 568ms
+   × App global period > boots Payroll from its own API without loading Command Center 285ms
+     → Found multiple elements with the text: /Payroll September 2026/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu – 20 Sep 2026[0m
+  [0m · Dievaluasi s.d. 18 Sep 2026[0m
+[36m</p>[39m
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu 2026 – 20 Sep 2026[0m
+  [0m. File memakai attendance correction projection terbaru melalui exporter CSV existing.[0m
+[36m</p>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+ ❯ src/components/WhatsAppDirectorySettings.test.tsx (2 tests | 1 failed) 544ms
+   × WhatsAppDirectorySettings > shows live groups and exact mapped/unmapped Talent identities 264ms
+     → Unable to find an element with the text: Andi WA. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<section[39m
+      [33mclass[39m=[32m"panel settings-card whatsapp-directory-card"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel-title-row whatsapp-directory-title"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2>[39m
+            [0mContacts & WhatsApp[0m
+          [36m</h2>[39m
+          [36m<span>[39m
+            [0mReal group discovery, Talent identity mapping, and Payroll closing destination[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"secondary-button"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0mRefresh discovery[0m
+        [36m</button>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"whatsapp-directory-summary"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mSession[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0mConnected[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mGroups[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mTalent mapped[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mNeed mapping[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"whatsapp-directory-layout"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"whatsapp-directory-column"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mPayroll closing group[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mOnly this saved group becomes the destination authority for later Payroll digest delivery.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-closing-control"[39m
+          [36m>[39m
+            [36m<select[39m
+              [33maria-label[39m=[32m"Payroll closing group"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0mNo closing group[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"120363000000000000@g.us"[39m
+              [36m>[39m
+                [0mPayroll Closing[0m
+                [0m · [0m
+                [0m2[0m
+                [0m members[0m
+              [36m</option>[39m
+            [36m</select>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"primary-button"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mSave group[0m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-closing-state verified"[39m
+          [36m>[39m
+            [0mVerified · Payroll Closing[0m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mDiscovered groups[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mRead live from the currently authenticated whatsapp-web.js session.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-group-list"[39m
+          [36m>[39m
+            [36m<details[39m
+              [33mclass[39m=[32m"whatsapp-group-card"[39m
+            [36m>[39m
+              [36m<summary>[39m
+                [36m<span>[39m
+                  [36m<strong>[39m
+                    [0mPayroll Closing[0m
+                  [36m</strong>[39m
+                  [36m<small>[39m
+                    [0m120363000000000000@g.us[0m
+                  [36m</small>[39m
+                [36m</span>[39m
+                [36m<b>[39m
+                  [0m2[0m
+                [36m</b>[39m
+              [36m</summary>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-member-list"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"whatsapp-member-row"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [36m<strong>[39m
+                      [0mAndi[0m
+                    [36m</strong>[39m
+                    [36m<small>[39m
+                      [0m628111@c.us[0m
+                    [36m</small>[39m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"mapping-pill mapped"[39m
+                  [36m>[39m
+                    [0mMapped · 10001[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"whatsapp-member-row"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [36m<strong>[39m
+                      [0mBudi WA[0m
+                    [36m</strong>[39m
+                    [36m<small>[39m
+                      [0m628222@lid[0m
+                    [36m</small>[39m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"mapping-pill"[39m
+                  [36m>[39m
+                    [0mUnmapped[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+              [36m</div>[39m
+            [36m</details>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"whatsapp-directory-column"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mTalent identity mapping[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mBind an active Talent to one exact WhatsApp identity. Conflicts never auto-reassign.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-talent-list"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"whatsapp-talent-row"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-talent-identity"[39m
+              [36m>[39m
+                [36m<strong>[39m
+                  [0mAndi[0m
+                [36m</strong>[39m
+                [36m<span>[39m
+                  [0m10001[0m
+                  [0m · [0m
+                  [0mDeveloper[0m
+                [36m</span>[39m
+                [36m<small>[39m
+                  [0mAndi · 628111@c.us[0m
+                  [0m · discovered[0m
+                [36m</small>[39m
+              [36m</div>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"secondary-button"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mUnlink[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"whatsapp-talent-row"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-talent-identity"[39m
+              [36m>[39m
+                [36m<strong>[39m
+                  [0mBudi[0m
+                [36m</strong>[39m
+                [36m<span>[39m
+                  [0m10002[0m
+                  [0m · [0m
+                  [0mIoT Operations[0m
+                [36m</span>[39m
+                [36m<small>[39m
+                  [0mNot mapped[0m
+                [36m</small>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-map-control"[39m
+              [36m>[39m
+                [36m<select[39m
+                  [33maria-label[39m=[32m"WhatsApp identity for Budi"[39m
+                [36m>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m""[39m
+                  [36m>[39m
+                    [0mSelect discovered contact[0m
+                  [36m</option>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m"628222@lid"[39m
+                  [36m>[39m
+                    [0mBudi WA · 628222@lid[0m
+                    [0m · [0m
+                    [0mPayroll Closing[0m
+                  [36m</option>[39m
+                [36m</select>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"primary-button"[39m
+                  [33mdisabled[39m=[32m""[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mBind[0m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"whatsapp-directory-boundary"[39m
+      [36m>[39m
+        [0mMapping here reuses the existing Talent [0m
+        [36m<code>[39m
+          [0mwa_identity[0m
+        [36m</code>[39m
+        [0m. PMO operator WhatsApp identity remains a separate authorization boundary. Selecting a closing group does not send anything; scheduled/group delivery is enabled only in later Payroll delivery cards.[0m
+      [36m</p>[39m
+    [36m</section>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ✓ src/pages/PayrollFollowUpPanel.test.tsx (2 tests) 362ms
+ ✓ src/pages/AttendanceGapsPage.test.tsx (1 test) 621ms
+   ✓ AttendanceGapsPage > lists gaps across talents and submits an absence resolution with optional clock values 617ms
+ ✓ src/api/payroll.test.ts (4 tests) 53ms
+ ✓ src/pages/Talent360Page.test.tsx (1 test) 559ms
+   ✓ Talent360Page > surfaces deterministic cross-domain dependencies without AI 557ms
+ ✓ src/pages/ActionCenterPage.test.tsx (2 tests) 880ms
+   ✓ ActionCenterPage > renders a grounded queue and opens Talent 360 by NRP 736ms
+ ✓ src/pages/CommandCenterPage.test.tsx (1 test) 413ms
+   ✓ CommandCenterPage > renders values from the API contract and readiness states 411ms
+ ✓ src/components/FollowUpComposer.test.tsx (2 tests) 411ms
+   ✓ FollowUpComposer > shows identity binding precisely and sends only after an explicit click 347ms
+ ✓ src/components/WorkspaceFrame.test.tsx (2 tests) 310ms
+ ✓ src/api/payrollExport.test.ts (2 tests) 30ms
+ ✓ src/pages/DeliveryPage.test.tsx (1 test) 673ms
+   ✓ DeliveryPage > renders only supported delivery facts and drills into task blockers 671ms
+ ✓ src/domain/insights.test.ts (3 tests) 22ms
+ ✓ src/pages/TalentsPage.test.tsx (1 test) 294ms
+ ✓ src/pages/SettingsPage.test.tsx (1 test) 548ms
+   ✓ SettingsPage > shows real workflow controls and the authorization boundary 546ms
+ ✓ src/app/period.test.ts (5 tests) 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/WhatsAppDirectorySettings.test.tsx > WhatsAppDirectorySettings > shows live groups and exact mapped/unmapped Talent identities
+TestingLibraryElementError: Unable to find an element with the text: Andi WA. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<section[39m
+      [33mclass[39m=[32m"panel settings-card whatsapp-directory-card"[39m
+    [36m>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"panel-title-row whatsapp-directory-title"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h2>[39m
+            [0mContacts & WhatsApp[0m
+          [36m</h2>[39m
+          [36m<span>[39m
+            [0mReal group discovery, Talent identity mapping, and Payroll closing destination[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"secondary-button"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0mRefresh discovery[0m
+        [36m</button>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"whatsapp-directory-summary"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mSession[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0mConnected[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mGroups[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mTalent mapped[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+        [36m<div>[39m
+          [36m<span>[39m
+            [0mNeed mapping[0m
+          [36m</span>[39m
+          [36m<strong>[39m
+            [0m1[0m
+          [36m</strong>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"whatsapp-directory-layout"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"whatsapp-directory-column"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mPayroll closing group[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mOnly this saved group becomes the destination authority for later Payroll digest delivery.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-closing-control"[39m
+          [36m>[39m
+            [36m<select[39m
+              [33maria-label[39m=[32m"Payroll closing group"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0mNo closing group[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"120363000000000000@g.us"[39m
+              [36m>[39m
+                [0mPayroll Closing[0m
+                [0m · [0m
+                [0m2[0m
+                [0m members[0m
+              [36m</option>[39m
+            [36m</select>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"primary-button"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mSave group[0m
+            [36m</button>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-closing-state verified"[39m
+          [36m>[39m
+            [0mVerified · Payroll Closing[0m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mDiscovered groups[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mRead live from the currently authenticated whatsapp-web.js session.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-group-list"[39m
+          [36m>[39m
+            [36m<details[39m
+              [33mclass[39m=[32m"whatsapp-group-card"[39m
+            [36m>[39m
+              [36m<summary>[39m
+                [36m<span>[39m
+                  [36m<strong>[39m
+                    [0mPayroll Closing[0m
+                  [36m</strong>[39m
+                  [36m<small>[39m
+                    [0m120363000000000000@g.us[0m
+                  [36m</small>[39m
+                [36m</span>[39m
+                [36m<b>[39m
+                  [0m2[0m
+                [36m</b>[39m
+              [36m</summary>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-member-list"[39m
+              [36m>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"whatsapp-member-row"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [36m<strong>[39m
+                      [0mAndi[0m
+                    [36m</strong>[39m
+                    [36m<small>[39m
+                      [0m628111@c.us[0m
+                    [36m</small>[39m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"mapping-pill mapped"[39m
+                  [36m>[39m
+                    [0mMapped · 10001[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+                [36m<div[39m
+                  [33mclass[39m=[32m"whatsapp-member-row"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [36m<strong>[39m
+                      [0mBudi WA[0m
+                    [36m</strong>[39m
+                    [36m<small>[39m
+                      [0m628222@lid[0m
+                    [36m</small>[39m
+                  [36m</span>[39m
+                  [36m<span[39m
+                    [33mclass[39m=[32m"mapping-pill"[39m
+                  [36m>[39m
+                    [0mUnmapped[0m
+                  [36m</span>[39m
+                [36m</div>[39m
+              [36m</div>[39m
+            [36m</details>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"whatsapp-directory-column"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-directory-section-head"[39m
+          [36m>[39m
+            [36m<div>[39m
+              [36m<strong>[39m
+                [0mTalent identity mapping[0m
+              [36m</strong>[39m
+              [36m<span>[39m
+                [0mBind an active Talent to one exact WhatsApp identity. Conflicts never auto-reassign.[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"whatsapp-talent-list"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"whatsapp-talent-row"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-talent-identity"[39m
+              [36m>[39m
+                [36m<strong>[39m
+                  [0mAndi[0m
+                [36m</strong>[39m
+                [36m<span>[39m
+                  [0m10001[0m
+                  [0m · [0m
+                  [0mDeveloper[0m
+                [36m</span>[39m
+                [36m<small>[39m
+                  [0mAndi · 628111@c.us[0m
+                  [0m · discovered[0m
+                [36m</small>[39m
+              [36m</div>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"secondary-button"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0mUnlink[0m
+              [36m</button>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"whatsapp-talent-row"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-talent-identity"[39m
+              [36m>[39m
+                [36m<strong>[39m
+                  [0mBudi[0m
+                [36m</strong>[39m
+                [36m<span>[39m
+                  [0m10002[0m
+                  [0m · [0m
+                  [0mIoT Operations[0m
+                [36m</span>[39m
+                [36m<small>[39m
+                  [0mNot mapped[0m
+                [36m</small>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"whatsapp-map-control"[39m
+              [36m>[39m
+                [36m<select[39m
+                  [33maria-label[39m=[32m"WhatsApp identity for Budi"[39m
+                [36m>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m""[39m
+                  [36m>[39m
+                    [0mSelect discovered contact[0m
+                  [36m</option>[39m
+                  [36m<option[39m
+                    [33mvalue[39m=[32m"628222@lid"[39m
+                  [36m>[39m
+                    [0mBudi WA · 628222@lid[0m
+                    [0m · [0m
+                    [0mPayroll Closing[0m
+                  [36m</option>[39m
+                [36m</select>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"primary-button"[39m
+                  [33mdisabled[39m=[32m""[39m
+                  [33mtype[39m=[32m"button"[39m
+                [36m>[39m
+                  [0mBind[0m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</div>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"whatsapp-directory-boundary"[39m
+      [36m>[39m
+        [0mMapping here reuses the existing Talent [0m
+        [36m<code>[39m
+          [0mwa_identity[0m
+        [36m</code>[39m
+        [0m. PMO operator WhatsApp identity remains a separate authorization boundary. Selecting a closing group does not send anything; scheduled/group delivery is enabled only in later Payroll delivery cards.[0m
+      [36m</p>[39m
+    [36m</section>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/components/WhatsAppDirectorySettings.test.tsx:97:19
+     95| 
+     96|     expect(await screen.findByText("Payroll Closing")).toBeInTheDocume…
+     97|     expect(screen.getByText("Andi WA")).toBeInTheDocument();
+       |                   ^
+     98|     expect(screen.getByText("Budi WA")).toBeInTheDocument();
+     99|     expect(screen.getByText("Mapped · 10001")).toBeInTheDocument();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/app/App.test.tsx > App global period > boots Payroll from its own API without loading Command Center
+TestingLibraryElementError: Found multiple elements with the text: /Payroll September 2026/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu – 20 Sep 2026[0m
+  [0m · Dievaluasi s.d. 18 Sep 2026[0m
+[36m</p>[39m
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu 2026 – 20 Sep 2026[0m
+  [0m. File memakai attendance correction projection terbaru melalui exporter CSV existing.[0m
+[36m</p>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/app/App.test.tsx:155:19
+    153|     expect(getPayrollOverview).toHaveBeenCalledWith(2026, 9);
+    154|     expect(getCommandCenter).not.toHaveBeenCalled();
+    155|     expect(screen.getByText(/Payroll September 2026/)).toBeInTheDocume…
+       |                   ^
+    156|     expect(screen.queryByLabelText("Reporting period")).not.toBeInTheD…
+    157|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/pages/PayrollPage.test.tsx > PayrollPage > shows concise closing status and keeps unverified source separate from Talent action
+TestingLibraryElementError: Found multiple elements with the text: /Payroll September 2026/
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu – 20 Sep 2026[0m
+  [0m · Dievaluasi s.d. 18 Sep 2026[0m
+[36m</p>[39m
+
+Ignored nodes: comments, script, style
+[36m<p>[39m
+  [0mPayroll September 2026[0m
+  [0m · [0m
+  [0m21 Agu 2026 – 20 Sep 2026[0m
+  [0m. File memakai attendance correction projection terbaru melalui exporter CSV existing.[0m
+[36m</p>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/PayrollPage.test.tsx:204:19
+    202| 
+    203|     expect(screen.getByRole("heading", { name: "Payroll" })).toBeInThe…
+    204|     expect(screen.getByText(/Payroll September 2026/)).toBeInTheDocume…
+       |                   ^
+    205|     expect(screen.getByText(/Dievaluasi s.d. 18 Sep 2026/)).toBeInTheD…
+    206|     expect(screen.getByText("1 Talent perlu cek data sumber.")).toBeIn…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/pages/PayrollPage.test.tsx > PayrollPage > filters the Talent list by status and global search
+TestingLibraryElementError: Found multiple elements with the text of: Search talents
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<button[39m
+  [33maria-label[39m=[32m"Search talents"[39m
+  [33mclass[39m=[32m"search-toggle"[39m
+  [33mtype[39m=[32m"button"[39m
+[36m>[39m
+  [36m<svg[39m
+    [33maria-hidden[39m=[32m"true"[39m
+    [33mfill[39m=[32m"none"[39m
+    [33mstroke[39m=[32m"currentColor"[39m
+    [33mstroke-linecap[39m=[32m"round"[39m
+    [33mstroke-linejoin[39m=[32m"round"[39m
+    [33mstroke-width[39m=[32m"1.8"[39m
+    [33mviewBox[39m=[32m"0 0 24 24"[39m
+  [36m>[39m
+    [36m<circle[39m
+      [33mcx[39m=[32m"11"[39m
+      [33mcy[39m=[32m"11"[39m
+      [33mr[39m=[32m"6"[39m
+    [36m/>[39m
+    [36m<path[39m
+      [33md[39m=[32m"m16 16 4 4"[39m
+    [36m/>[39m
+  [36m</svg>[39m
+[36m</button>[39m
+
+Ignored nodes: comments, script, style
+[36m<input[39m
+  [33maria-label[39m=[32m"Search talents"[39m
+  [33mplaceholder[39m=[32m"Search talents, NRP, or team"[39m
+  [33mvalue[39m=[32m""[39m
+[36m/>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"app-shell"[39m
+    [36m>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"Workspace navigation"[39m
+        [33mclass[39m=[32m"sidebar "[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"nav-group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"nav-label"[39m
+          [36m>[39m
+            [0mWorkspace[0m
+          [36m</div>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mCommand Center[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item active"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12 7v5l3.5 2"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mPayroll[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"8"[39m
+                [33mr[39m=[32m"3.2"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M5 20c.7-4 3-6 7-6s6.3 2 7 6"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTalents[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m4 17 5-5 4 3 7-8"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M20 7v5h-5"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mDelivery[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mTask Evidence[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"1.8"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M6 3h9l3 3v15H6z"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"m9 13 2 2 4-4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [36m<span>[39m
+              [0mBAST readiness[0m
+            [36m</span>[39m
+          [36m</button>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"nav-item "[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"nav-icon"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+            ...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/PayrollPage.test.tsx:227:29
+    225| 
+    226|     fireEvent.click(within(filters).getByRole("button", { name: "Semua…
+    227|     fireEvent.change(screen.getByLabelText("Search talents"), { target…
+       |                             ^
+    228| 
+    229|     expect(screen.getAllByText("Budi").length).toBeGreaterThan(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/pages/PayrollPage.test.tsx > PayrollPage > loads attendance detail on demand and shows actual, proposed and evidence facts
+TestingLibraryElementError: Found multiple elements with the text: Evidence:
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<span>[39m
+  [0mEvidence: [0m
+  [36m<strong>[39m
+    [0mAda[0m
+  [36m</strong>[39m
+[36m</span>[39m
+
+Ignored nodes: comments, script, style
+[36m<span>[39m
+  [0mEvidence: [0m
+  [36m<strong>[39m
+    [0mTidak ada[0m
+  [36m</strong>[39m
+[36m</span>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<aside[39m
+  [33maria-label[39m=[32m"Detail attendance Budi"[39m
+  [33maria-modal[39m=[32m"true"[39m
+  [33mclass[39m=[32m"payroll-detail-drawer"[39m
+  [33mrole[39m=[32m"dialog"[39m
+[36m>[39m
+  [36m<header[39m
+    [33mclass[39m=[32m"payroll-detail-header"[39m
+  [36m>[39m
+    [36m<div>[39m
+      [36m<span>[39m
+        [0mDetail attendance[0m
+      [36m</span>[39m
+      [36m<h2>[39m
+        [0mBudi[0m
+      [36m</h2>[39m
+      [36m<p>[39m
+        [0mB01[0m
+        [0m · [0m
+        [0mDeveloper[0m
+        [0m · [0m
+        [0mPayroll September 2026[0m
+      [36m</p>[39m
+    [36m</div>[39m
+    [36m<button[39m
+      [33maria-label[39m=[32m"Tutup detail"[39m
+      [33mclass[39m=[32m"icon-button"[39m
+      [33mtype[39m=[32m"button"[39m
+    [36m>[39m
+      [36m<svg[39m
+        [33maria-hidden[39m=[32m"true"[39m
+        [33mfill[39m=[32m"none"[39m
+        [33mstroke[39m=[32m"currentColor"[39m
+        [33mstroke-linecap[39m=[32m"round"[39m
+        [33mstroke-linejoin[39m=[32m"round"[39m
+        [33mstroke-width[39m=[32m"1.8"[39m
+        [33mviewBox[39m=[32m"0 0 24 24"[39m
+      [36m>[39m
+        [36m<path[39m
+          [33md[39m=[32m"m6 6 12 12M18 6 6 18"[39m
+        [36m/>[39m
+      [36m</svg>[39m
+    [36m</button>[39m
+  [36m</header>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"payroll-detail-body"[39m
+  [36m>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"payroll-detail-summary"[39m
+    [36m>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mDievaluasi[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m20[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mComplete[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m18[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mMenunggu[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m2[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+      [36m<span>[39m
+        [36m<small>[39m
+          [0mPerlu Talent[0m
+        [36m</small>[39m
+        [36m<strong>[39m
+          [0m0[0m
+        [36m</strong>[39m
+      [36m</span>[39m
+    [36m</div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"payroll-detail-days"[39m
+    [36m>[39m
+      [36m<article[39m
+        [33mclass[39m=[32m"payroll-day-card waiting"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-head"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<strong>[39m
+              [0m4 Sep 2026[0m
+            [36m</strong>[39m
+            [36m<span>[39m
+              [0mPengajuan menunggu review PMO[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"payroll-status waiting"[39m
+          [36m>[39m
+            [0mMenunggu review[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-clock-grid"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<span>[39m
+              [0mAktual[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m07:32[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m—[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m""[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mDiajukan[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m—[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m17:40[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-meta"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mJenis: [0m
+            [36m<strong>[39m
+              [0mLengkapi Clock Out[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+          [36m<span>[39m
+            [0mEvidence: [0m
+            [36m<strong>[39m
+              [0mAda[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+          [36m<span>[39m
+            [0mReview: [0m
+            [36m<strong>[39m
+              [0mpending[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</article>[39m
+      [36m<article[39m
+        [33mclass[39m=[32m"payroll-day-card complete"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-head"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<strong>[39m
+              [0m5 Sep 2026[0m
+            [36m</strong>[39m
+            [36m<span>[39m
+              [0mAttendance aktual lengkap[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"payroll-status complete"[39m
+          [36m>[39m
+            [0mComplete[0m
+          [36m</span>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-clock-grid"[39m
+        [36m>[39m
+          [36m<div>[39m
+            [36m<span>[39m
+              [0mAktual[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m07:29[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m17:38[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"muted"[39m
+          [36m>[39m
+            [36m<span>[39m
+              [0mDiajukan[0m
+            [36m</span>[39m
+            [36m<strong>[39m
+              [0mMasuk [0m
+              [0m—[0m
+            [36m</strong>[39m
+            [36m<strong>[39m
+              [0mPulang [0m
+              [0m—[0m
+            [36m</strong>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"payroll-day-meta"[39m
+        [36m>[39m
+          [36m<span>[39m
+            [0mEvidence: [0m
+            [36m<strong>[39m
+              [0mTidak ada[0m
+            [36m</strong>[39m
+          [36m</span>[39m
+        [36m</div>[39m
+      [36m</article>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</aside>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getElementError node_modules/@testing-library/dom/dist/query-helpers.js:20:35
+ ❯ getMultipleElementsFoundError node_modules/@testing-library/dom/dist/query-helpers.js:23:10
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:55:13
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/PayrollPage.test.tsx:246:27
+    244|     expect(within(dialog).getByText("4 Sep 2026")).toBeInTheDocument();
+    245|     expect(within(dialog).getByText("Pulang 17:40")).toBeInTheDocument…
+    246|     expect(within(dialog).getByText("Evidence:").parentElement).toHave…
+       |                           ^
+    247|     expect(within(dialog).getByText("Review:").parentElement).toHaveTe…
+    248| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+ Test Files  3 failed | 18 passed (21)
+      Tests  5 failed | 40 passed (45)
+   Start at  12:11:34
+   Duration  21.45s (transform 2.29s, setup 5.32s, collect 8.11s, tests 11.68s, environment 23.46s, prepare 3.40s)
+

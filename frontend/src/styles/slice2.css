@@ -164,7 +164,7 @@
   .calendar-day { min-height: 44px; padding: 5px; }
   .calendar-day span { font-size: 7px; }
   .talent-task-panel .desktop-table-wrap { display: none; }
-  .task-mobile-card { padding: 12px 13px; border-bottom: 1px solid var(--line-soft); }
+  .task-mobile-card { width: 100%; display: block; border: 0; background: #fff; text-align: left; padding: 12px 13px; border-bottom: 1px solid var(--line-soft); }
   .task-mobile-card:last-child { border-bottom: 0; }
   .task-mobile-card strong, .task-mobile-card span { display: block; }
   .task-mobile-card strong { font-size: 11px; font-weight: 600; }

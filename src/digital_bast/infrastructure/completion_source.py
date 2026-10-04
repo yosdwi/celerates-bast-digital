@@ -9,7 +9,7 @@ infrastructure.local_completion_source and infrastructure.postgres_employees.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, Protocol, final, runtime_checkable
 
 from digital_bast.domain.completion import (
     EmployeeFacts,
@@ -38,12 +38,13 @@ _MONTH_KINDS = (
     EntityKind.HOLIDAY,
     EntityKind.SCHEDULE,
     EntityKind.TIMESHEET,
-    EntityKind.TASK,
 )
 
 
 class MonthlyRecordSource(Protocol):
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]: ...
+
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]: ...
 
 
 class AttendanceReader(Protocol):
@@ -54,6 +55,11 @@ class TaskEvidenceReader(Protocol):
     async def counts(self, period: DateRange) -> dict[str, int]: ...
 
 
+@runtime_checkable
+class TaskEvidenceRequirementReader(Protocol):
+    async def requirements(self) -> dict[str, bool]: ...
+
+
 @final
 class CompletionSource:
     def __init__(
@@ -62,11 +68,13 @@ class CompletionSource:
         records: MonthlyRecordSource,
         attendance: AttendanceReader | None = None,
         evidence: TaskEvidenceReader | None = None,
+        evidence_requirements: TaskEvidenceRequirementReader | None = None,
     ) -> None:
         self._employees = employees
         self._records = records
         self._attendance = attendance
         self._evidence = evidence
+        self._evidence_requirements = evidence_requirements
 
     async def load(
         self,
@@ -77,6 +85,12 @@ class CompletionSource:
         holidays, schedules, timesheets, tasks = await self._load_period(period)
         attendance = await self._attendance.load(period) if self._attendance is not None else {}
         evidence = await self._evidence.counts(period) if self._evidence is not None else {}
+        requirement_source = self._evidence_requirements
+        if requirement_source is None and isinstance(self._evidence, TaskEvidenceRequirementReader):
+            requirement_source = self._evidence
+        requirements = (
+            await requirement_source.requirements() if requirement_source is not None else {}
+        )
         holiday_by_day = {record.work_date: record for record in holidays}
         return tuple(
             EmployeeFacts(
@@ -91,6 +105,11 @@ class CompletionSource:
                         for record in schedules
                         if record.employee_id == person.id
                     },
+                    {
+                        record.work_date: record
+                        for record in timesheets
+                        if record.employee_id == person.id
+                    },
                 ),
                 attendance=tuple(
                     fact
@@ -98,7 +117,7 @@ class CompletionSource:
                     if employee_id == str(person.id)
                 ),
                 timesheets=tuple(
-                    TimesheetFact(record.work_date, record.remarks)
+                    TimesheetFact(record.work_date, record.remarks, record.is_holiday)
                     for record in timesheets
                     if record.employee_id == person.id
                 ),
@@ -108,6 +127,12 @@ class CompletionSource:
                         record.title,
                         record.status,
                         evidence.get(str(record.key), 0),
+                        record_key=str(record.key),
+                        category=record.category.value,
+                        source=record.source.value,
+                        source_id=record.source_id,
+                        issue_type=record.issue_type,
+                        evidence_required=requirements.get(record.category.value, False),
                     )
                     for record in tasks
                     if record.employee_id == person.id
@@ -130,7 +155,6 @@ class CompletionSource:
         holidays: list[Holiday] = []
         schedules: list[Schedule] = []
         timesheets: list[Timesheet] = []
-        tasks: list[Task] = []
         for year, month in period.months():
             for kind in _MONTH_KINDS:
                 for record in await self._records.list_month(kind, Month(year, month)):
@@ -143,11 +167,12 @@ class CompletionSource:
                             schedules.append(record)
                         case Timesheet():
                             timesheets.append(record)
-                        case Task():
-                            tasks.append(record)
                         case _:
                             continue
-        return tuple(holidays), tuple(schedules), tuple(timesheets), tuple(tasks)
+        # A task belongs to the period it ends in (domain.models.reported_in_period), which is not
+        # the month list_month() would return it under.
+        tasks = await self._records.list_tasks_ending(period.start, period.end)
+        return tuple(holidays), tuple(schedules), tuple(timesheets), tasks
 
 
 def _select_employees(

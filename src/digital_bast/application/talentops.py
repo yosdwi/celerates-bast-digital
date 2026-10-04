@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Protocol, final
 
 from digital_bast.domain.completion import CheckState, evaluate_completion, evaluate_employee
-from digital_bast.domain.models import EmployeeRole, EntityKind, Month, Task
+from digital_bast.domain.models import EmployeeRole, Task
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -180,6 +180,7 @@ class TimesheetDay:
 
 @dataclass(frozen=True, slots=True)
 class TalentTask:
+    record_key: str
     work_date: date
     title: str
     status: str
@@ -331,6 +332,7 @@ def _timesheet_days(
 def _talent_tasks(facts: EmployeeFacts) -> tuple[TalentTask, ...]:
     return tuple(
         TalentTask(
+            record_key=task.record_key,
             work_date=task.work_date,
             title=task.title,
             status=task.status.strip() or "Unknown",
@@ -461,15 +463,8 @@ class TalentOpsService:
         )
 
     async def _tasks(self, period: DateRange) -> tuple[Task, ...]:
-        tasks: list[Task] = []
-        for year, month in period.months():
-            records = await self._records.list_month(EntityKind.TASK, Month(year, month))
-            tasks.extend(
-                record
-                for record in records
-                if isinstance(record, Task) and period.start <= record.work_date <= period.end
-            )
-        return tuple(tasks)
+        # Tasks belong to the period they END in (domain.models.reported_in_period).
+        return await self._records.list_tasks_ending(period.start, period.end)
 
     @staticmethod
     def _teams(readiness: tuple[TalentReadiness, ...]) -> tuple[TeamReadiness, ...]:

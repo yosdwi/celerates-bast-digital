@@ -6,12 +6,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final, override
 
 from digital_bast.domain.errors import DomainError
+from digital_bast.domain.models import EmployeeRole
 from digital_bast.domain.timesheets import day_status
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from digital_bast.domain.models import EmployeeRole, Holiday, Schedule
+    from digital_bast.domain.models import Holiday, Schedule, Timesheet
 
 MONTH_NAMES: Final = (
     "Januari",
@@ -106,6 +107,10 @@ class AttendanceFact:
 class TimesheetFact:
     work_date: date
     remarks: str
+    # What the timesheet row itself says: True = marked as a day off, False = a working day,
+    # None = not known. Callers that do not know it (None) never get the two findings in
+    # `_timesheet` that compare the row with the schedule and the attendance.
+    marked_off: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +119,12 @@ class TaskFact:
     title: str
     status: str
     evidence_count: int = 0
+    record_key: str = ""
+    category: str = ""
+    source: str = ""
+    source_id: str = ""
+    issue_type: str | None = None
+    evidence_required: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,11 +160,10 @@ class EmployeeCompletion:
     # row at all" case, which a photo upload can't fix. Feeds the WhatsApp DM
     # attendance-evidence flow (bot/attendance_evidence.py).
     log_1_pama_evidence_days: tuple[date, ...] = ()
-    # The other log_1_pama failure case: no attendance row synced for this
-    # work day at all. Not upload-able (nothing to attach a photo to) -- a
-    # pipeline/data-sync gap, surfaced read-only in the DM summary
-    # (cli.py::_attendance_list_reply) so it isn't mistaken for "no issues
-    # here" just because it's missing from log_1_pama_evidence_days.
+    # Work days with no attendance row synced at all. Not treated as an issue
+    # (doesn't affect `state`/`issues`) since the sync pipeline usually
+    # catches up -- but surfaced so a talent can file Sakit/Izin/Cuti for the
+    # day themselves instead of waiting on sync.
     log_1_pama_missing_data_days: tuple[date, ...] = ()
     # Work days actually evaluated in the period (off-days excluded) --
     # mirrors total_tasks' role for the Task List summary, letting the
@@ -196,14 +206,27 @@ def resolve_off_days(
     period: DateRange,
     holidays: Mapping[date, Holiday],
     schedules: Mapping[date, Schedule],
+    timesheets: Mapping[date, Timesheet] | None = None,
 ) -> frozenset[date]:
-    return frozenset(
-        work_date
-        for work_date in period.days()
-        if day_status(role, work_date.weekday(), holidays.get(work_date), schedules.get(work_date))[
-            0
-        ]
-    )
+    off_days: set[date] = set()
+    for work_date in period.days():
+        schedule = schedules.get(work_date)
+        # IoT Operations schedule sync can fail to backfill a date entirely
+        # (no row at all, distinct from a row saying "Libur") while the
+        # timesheet/attendance sync for that same date succeeds -- day_status
+        # would then default to treating the day as OFF and hide a genuine
+        # attendance gap. The timesheet row's own is_holiday, computed from
+        # the schedule PAMA actually had *at ingest time*, is the more
+        # reliable signal in that specific case.
+        if role is EmployeeRole.IOT_OPERATIONS and schedule is None and timesheets is not None:
+            timesheet = timesheets.get(work_date)
+            if timesheet is not None:
+                if timesheet.is_holiday:
+                    off_days.add(work_date)
+                continue
+        if day_status(role, work_date.weekday(), holidays.get(work_date), schedule)[0]:
+            off_days.add(work_date)
+    return frozenset(off_days)
 
 
 def _missing_clock_label(record: AttendanceFact) -> str:
@@ -227,18 +250,19 @@ def _log_1_pama(
     invalid: set[date] = set()
     # Subset of `invalid` where an attendance row actually exists -- the only
     # case a WhatsApp evidence-photo upload can fix (there's a row to attach
-    # it to). "no row at all" (missing_data below) is a pipeline/data-sync
-    # gap, not something a talent's photo resolves, so it's tracked
-    # separately -- surfaced read-only, never offered as an upload target.
+    # it to).
     needs_evidence: set[date] = set()
+    # Days with no attendance row at all. Not added to `issues`/`invalid` --
+    # the sync pipeline usually catches up on its own, so this never blocks
+    # timesheet/task completion. Still returned so a talent can self-serve a
+    # Sakit/Izin/Cuti request for the day instead of waiting on sync (see
+    # AttendanceEvidenceService.list_missing / ensure_manual).
     missing_data: set[date] = set()
     for work_date in period.days():
         if work_date in facts.off_days:
             continue
         record = by_day.get(work_date)
         if record is None:
-            issues.append(f"{format_day(work_date)} — Data attendance belum tersedia.")
-            invalid.add(work_date)
             missing_data.add(work_date)
             continue
         if record.has_clock_in and record.has_clock_out:
@@ -266,6 +290,12 @@ def _timesheet(
     invalid_log_days: frozenset[date],
 ) -> CheckResult:
     by_day = {record.work_date: record for record in facts.timesheets}
+    # Days with a complete clock-in AND clock-out.
+    clocked = {
+        record.work_date
+        for record in facts.attendance
+        if record.has_clock_in and record.has_clock_out
+    }
     issues: list[str] = []
     for work_date in period.days():
         label = format_day(work_date)
@@ -275,12 +305,32 @@ def _timesheet(
                 issues.append(f"{label} — Timesheet untuk jadwal OFF belum tersedia.")
             elif not record.remarks.strip():
                 issues.append(f"{label} — Keterangan OFF pada Timesheet belum terisi.")
+            elif record.marked_off is False:
+                # The sheet generated this row while the day was still a shift and nothing
+                # updated it when the schedule became Libur: a working day (e.g. "SHIFT 1")
+                # with no attendance behind it. "Not empty" is not enough -- the remark has
+                # to say the day is OFF.
+                issues.append(
+                    f"{label} — Timesheet masih tercatat hari kerja ({record.remarks.strip()}), "
+                    "padahal jadwal OFF; ubah keterangannya menjadi Libur."
+                )
             continue
         if work_date in invalid_log_days:
             issues.append(f"{label} — Timesheet belum dapat lengkap karena Log 1 PAMA belum valid.")
             continue
         if record is None:
             issues.append(f"{label} — Timesheet belum tersedia.")
+            continue
+        if record.marked_off is True and work_date in clocked:
+            # The opposite of the case above: the schedule says a working day and the talent clocked
+            # in AND out, but the timesheet row says OFF. The BAST drops the hours of a day the
+            # timesheet marks as off, so real work would vanish from the document. Not auto-fixed:
+            # PMO decides whether the timesheet row or the attendance is right.
+            issues.append(
+                f"{label} — Timesheet bertanda OFF ({record.remarks.strip() or 'Libur'}) padahal "
+                "Clock In dan Clock Out terisi; jam kerjanya tidak masuk BAST. "
+                "Periksa keterangan Timesheet."
+            )
     state = CheckState.INCOMPLETE if issues else CheckState.COMPLETE
     return CheckResult(state, tuple(issues))
 
@@ -298,13 +348,16 @@ def _task_list(facts: EmployeeFacts) -> CheckResult:
 
 
 def _evidence(facts: EmployeeFacts) -> CheckResult:
-    if not facts.evidence_available:
-        return CheckResult(CheckState.NEEDS_REVIEW, (TASK_EVIDENCE_MAPPING_ISSUE,))
-    missing = tuple(
+    required = tuple(
         task
         for task in facts.tasks
-        if task.status.strip().casefold() == CLOSED_STATUS and task.evidence_count == 0
+        if task.evidence_required and task.status.strip().casefold() == CLOSED_STATUS
     )
+    if not required:
+        return CheckResult(CheckState.COMPLETE, ())
+    if not facts.evidence_available:
+        return CheckResult(CheckState.NEEDS_REVIEW, (TASK_EVIDENCE_MAPPING_ISSUE,))
+    missing = tuple(task for task in required if task.evidence_count == 0)
     if not missing:
         return CheckResult(CheckState.COMPLETE, ())
     issues = tuple(f'Task "{task.title}" belum ada evidence.' for task in missing)

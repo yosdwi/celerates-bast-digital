@@ -28,7 +28,7 @@ from digital_bast.bot.evidence import (
     sniff_content_type,
 )
 from digital_bast.domain.completion import CLOSED_STATUS
-from digital_bast.domain.models import TaskSource
+from digital_bast.domain.models import TaskSource, reported_in_period
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
@@ -48,12 +48,22 @@ class TaskEvidenceCandidate:
     work_date: date
     evidence_count: int
     staged_count: int
+    status: str
+    closed: bool
+    # Last field + default so positional construction elsewhere keeps working.
+    end_date: date | None = None
+
+    def in_period(self, period: DateRange) -> bool:
+        """A task is listed under the period it ENDS in (domain.models.reported_in_period)."""
+        return reported_in_period(self.end_date, period.start, period.end)
 
 
 class _CandidateRow:
     __slots__ = (
+        "end_date",
         "evidence_count",
         "staged_count",
+        "status",
         "task_key",
         "task_source",
         "title",
@@ -66,15 +76,19 @@ class _CandidateRow:
         task_key: str,
         title: str | None,
         work_date: date,
+        end_date: date | None,
         evidence_count: int,
         staged_count: int,
+        status: str | None,
     ) -> None:
+        self.end_date = end_date
         self.task_source = task_source
         self.task_key = task_key
         self.title = title or ""
         self.work_date = work_date
         self.evidence_count = evidence_count
         self.staged_count = staged_count
+        self.status = status or ""
 
 
 class _TaskRow:
@@ -129,6 +143,8 @@ class TaskEvidenceSubmissionService:
                            t.record_key AS task_key,
                            t.title,
                            t.work_date,
+                           t.end_date,
+                           t.status,
                            (
                                SELECT COUNT(*)
                                FROM task_evidence e
@@ -141,11 +157,10 @@ class TaskEvidenceSubmissionService:
                            ) AS staged_count
                     FROM tasks t
                     WHERE t.employee_id = %s
-                      AND lower(t.status) = %s
                       AND t.task_source IN (%s, %s)
                     ORDER BY t.work_date, t.record_key
                     """,
-                    (employee_id, CLOSED_STATUS, *TASK_EVIDENCE_SOURCES),
+                    (employee_id, *TASK_EVIDENCE_SOURCES),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
@@ -160,6 +175,9 @@ class TaskEvidenceSubmissionService:
                 row.work_date,
                 row.evidence_count,
                 row.staged_count,
+                row.status,
+                row.status.strip().casefold() == CLOSED_STATUS,
+                row.end_date,
             )
             for row in rows
         )
@@ -244,7 +262,7 @@ class TaskEvidenceSubmissionService:
                         USING tasks t
                         WHERE s.task_id = t.id
                           AND s.employee_id = %s
-                          AND s.work_date BETWEEN %s AND %s
+                          AND t.end_date BETWEEN %s AND %s
                           AND t.employee_id = %s
                           AND lower(t.status) = %s
                           AND t.task_source IN (%s, %s)
@@ -268,7 +286,9 @@ class TaskEvidenceSubmissionService:
                         caption, content_type, byte_size, sha256, image,
                         now(), %s
                     FROM moved
-                    ON CONFLICT (task_id, sha256) DO NOTHING
+                    -- No conflict target: migration 0011 dropped the (task_id, sha256)
+                    -- unique index on purpose, and a target without it is an error.
+                    ON CONFLICT DO NOTHING
                     """,
                     (
                         employee_id,

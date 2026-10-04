@@ -15,7 +15,16 @@ const DEFAULT_TOKEN_FILE = "/run/secrets/sync_ingest_token";
 const ROOT = path.resolve(__dirname, "..");
 const CLI = (process.env.BAST_CLI || "digital-bast").split(" ").filter(Boolean);
 const PYTHON = process.env.BAST_PYTHON || "python";
-const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 180000);
+// 30 min. A full developer BAST renders 245-430s and a dense IoT one up to ~660s (Oct 2026), the renderer runs one
+// render at a time so a request can also queue behind another, and the renderer call itself is capped at 20 min
+// (src/digital_bast/infrastructure/pdf_export.py). 600s killed the CLI mid-render; this must stay above 1200s.
+const CLI_TIMEOUT_MS = Number(process.env.BAST_CLI_TIMEOUT_MS || 1_800_000);
+// A request that has not finished after this long is handed back as a job (HTTP 202) instead of holding the
+// connection open: wa-session's fetch drops any response that takes more than 300s to start (undici's default
+// headers timeout), which is what produced "proses gagal saat menjalankan perintah" on every export > 5 min.
+const INLINE_WAIT_MS = Number(process.env.BAST_INLINE_WAIT_MS || 20_000);
+const JOB_TTL_MS = 60 * 60 * 1000;
+const MAX_FINISHED_JOBS = 50;
 const PORT = Number(process.env.BOT_WORKER_PORT || 8091);
 const HOST = process.env.BOT_WORKER_HOST || "0.0.0.0";
 const MAX_BODY_BYTES = 16 * 1024;
@@ -57,7 +66,24 @@ function executionFor(args) {
   if (args[0] === "bot-reply" && optionValue(args, "--channel") === "dm") {
     const text = optionValue(args, "--text");
     const jid = optionValue(args, "--jid");
+    const messageAt = optionValue(args, "--message-at");
     if (text !== null && jid) {
+      if (messageAt) {
+        return {
+          command: PYTHON,
+          args: [
+            "-m",
+            "digital_bast.bot.dm_message_entry",
+            "reply",
+            "--text",
+            text,
+            "--jid",
+            jid,
+            "--message-at",
+            messageAt,
+          ],
+        };
+      }
       return {
         command: PYTHON,
         args: ["-m", "digital_bast.bot.dm_entry", "reply", "--text", text, "--jid", jid],
@@ -103,13 +129,59 @@ function cliArgsFor(payload) {
     return ["bot-evidence", "--jid", jid, "--file", filePath, "--caption", String(caption || "")];
   }
   if (payload && payload.kind === "text") {
-    const { text, jid, channel } = payload;
+    const { text, jid, channel, message_at: messageAt } = payload;
     if (typeof text !== "string") return null;
     const args = ["bot-reply", "--text", text];
-    if (jid && channel) args.push("--jid", jid, "--channel", channel);
+    if (jid && channel) {
+      args.push("--jid", jid, "--channel", channel);
+      if (typeof messageAt === "string" && messageAt.trim()) {
+        args.push("--message-at", messageAt.trim());
+      }
+    }
     return args;
   }
   return null;
+}
+
+// In-memory on purpose: the worker is stateless by design (see the header comment). A job lost to a worker
+// restart is reported as such to the caller, who can simply ask again (a finished render is cached on disk).
+const jobs = new Map();
+
+function pruneJobs(now = Date.now()) {
+  const finished = [];
+  for (const [id, job] of jobs) {
+    if (job.state !== "done") continue;
+    if (now - job.finishedAt > JOB_TTL_MS) jobs.delete(id);
+    else finished.push([id, job]);
+  }
+  if (finished.length <= MAX_FINISHED_JOBS) return;
+  finished.sort((a, b) => a[1].finishedAt - b[1].finishedAt);
+  for (const [id] of finished.slice(0, finished.length - MAX_FINISHED_JOBS)) jobs.delete(id);
+}
+
+function startJob(running) {
+  pruneJobs();
+  const id = crypto.randomUUID();
+  const job = { state: "running", startedAt: Date.now(), finishedAt: 0, result: null };
+  jobs.set(id, job);
+  running.then((result) => {
+    job.state = "done";
+    job.finishedAt = Date.now();
+    job.result = result;
+  });
+  return id;
+}
+
+function jobStatus(id) {
+  pruneJobs();
+  const job = jobs.get(id);
+  if (!job) return null;
+  return job.state === "done" ? { state: "done", ok: job.result.ok, text: job.result.text } : { state: "running" };
+}
+
+function authorized(request) {
+  const expected = configuredToken();
+  return Boolean(expected) && safeEqual(request.headers["x-bridge-token"], expected);
 }
 
 function readJsonBody(request) {
@@ -142,10 +214,21 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  const jobMatch = /^\/internal\/v1\/jobs\/([0-9a-f-]{36})$/.exec(url.pathname);
+  if (request.method === "GET" && jobMatch) {
+    if (!authorized(request)) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: false, text: "forbidden" }));
+      return;
+    }
+    const status = jobStatus(jobMatch[1]);
+    response.writeHead(status ? 200 : 404, { "content-type": "application/json" });
+    response.end(JSON.stringify(status ?? { state: "unknown" }));
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/internal/v1/reply") {
-    const expected = configuredToken();
-    const supplied = request.headers["x-bridge-token"];
-    if (!expected || !safeEqual(supplied, expected)) {
+    if (!authorized(request)) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ ok: false, text: "forbidden" }));
       return;
@@ -164,9 +247,24 @@ const server = http.createServer(async (request, response) => {
       response.end(JSON.stringify({ ok: false, text: "invalid_reply_request" }));
       return;
     }
-    const result = await runCli(args);
+    const running = runCli(args);
+    // `async: true` (sent by the current wa-session) lets a slow command become a job; a caller that does not
+    // send it keeps the old behaviour, so the bridge and the worker can be deployed in either order.
+    let first;
+    if (payload.async === true) {
+      let timer;
+      first = await Promise.race([running, new Promise((resolve) => (timer = setTimeout(resolve, INLINE_WAIT_MS, null)))]);
+      clearTimeout(timer);
+    } else {
+      first = await running;
+    }
+    if (first === null) {
+      response.writeHead(202, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, pending: true, job_id: startJob(running) }));
+      return;
+    }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify(result));
+    response.end(JSON.stringify(first));
     return;
   }
 
@@ -180,4 +278,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { safeEqual, configuredToken, cliArgsFor, executionFor, runCli, server };
+module.exports = { safeEqual, configuredToken, cliArgsFor, executionFor, runCli, server, startJob, jobStatus, pruneJobs, jobs };
