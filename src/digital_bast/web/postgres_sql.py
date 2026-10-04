@@ -13,8 +13,8 @@ REPORT = """
     SELECT t.record_key AS external_id, t.work_date, t.title, t.status,
            t.achievement::text AS achievement
     FROM tasks t, args
-    WHERE EXTRACT(YEAR FROM t.work_date) = args.year
-      AND EXTRACT(MONTH FROM t.work_date) = args.month
+    WHERE EXTRACT(YEAR FROM t.end_date) = args.year
+      AND EXTRACT(MONTH FROM t.end_date) = args.month
       AND ((args.report_type = 'iotoperation' AND t.category = 'IoT Operations')
            OR (args.report_type = 'developer' AND t.category <> 'IoT Operations'))
     UNION ALL

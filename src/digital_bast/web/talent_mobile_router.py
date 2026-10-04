@@ -116,7 +116,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         period_tasks = tuple(
             item
             for item in await task_service.list_candidates(claims.employee_id)
-            if period.start <= item.work_date <= period.end
+            if item.in_period(period)
         )
         task_items = tuple(
             TalentMobileTask(
@@ -205,7 +205,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         candidates = tuple(
             item
             for item in await service.list_candidates(claims.employee_id)
-            if period.start <= item.work_date <= period.end
+            if item.in_period(period)
         )
         target = next((item for item in candidates if item.task_key == task_key), None)
         if target is None:
@@ -251,7 +251,7 @@ def talent_mobile_router() -> APIRouter:  # noqa: C901, PLR0915
         candidates = tuple(
             item
             for item in await service.list_candidates(claims.employee_id)
-            if period.start <= item.work_date <= period.end
+            if item.in_period(period)
         )
         if not any(item.staged_count > 0 for item in candidates):
             raise HTTPException(

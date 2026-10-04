@@ -12,8 +12,6 @@ from digital_bast.domain.models import (
     Employee,
     EmployeeId,
     EmployeeRole,
-    EntityKind,
-    Month,
     RecordKey,
     RecordOrigin,
     Task,
@@ -72,9 +70,9 @@ class FakeEmployees:
 
 
 class FakeRecords:
-    async def list_month(self, kind: EntityKind, period: Month) -> tuple[Task, ...]:
-        assert kind is EntityKind.TASK
-        assert period == Month(2026, 8)
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        # The tasklist for a period is the tasks that END in it (domain.models.reported_in_period).
+        assert (start, end) == (DAY, DAY)
         return (
             _task("task-1", "e-ready", "Closed"),
             _task("task-2", "e-blocked", "  In Progress  "),

@@ -28,7 +28,7 @@ from digital_bast.bot.evidence import (
     sniff_content_type,
 )
 from digital_bast.domain.completion import CLOSED_STATUS
-from digital_bast.domain.models import TaskSource
+from digital_bast.domain.models import TaskSource, reported_in_period
 from digital_bast.infrastructure.errors import InfrastructureError
 
 if TYPE_CHECKING:
@@ -50,10 +50,17 @@ class TaskEvidenceCandidate:
     staged_count: int
     status: str
     closed: bool
+    # Last field + default so positional construction elsewhere keeps working.
+    end_date: date | None = None
+
+    def in_period(self, period: DateRange) -> bool:
+        """A task is listed under the period it ENDS in (domain.models.reported_in_period)."""
+        return reported_in_period(self.end_date, period.start, period.end)
 
 
 class _CandidateRow:
     __slots__ = (
+        "end_date",
         "evidence_count",
         "staged_count",
         "status",
@@ -69,10 +76,12 @@ class _CandidateRow:
         task_key: str,
         title: str | None,
         work_date: date,
+        end_date: date | None,
         evidence_count: int,
         staged_count: int,
         status: str | None,
     ) -> None:
+        self.end_date = end_date
         self.task_source = task_source
         self.task_key = task_key
         self.title = title or ""
@@ -134,6 +143,7 @@ class TaskEvidenceSubmissionService:
                            t.record_key AS task_key,
                            t.title,
                            t.work_date,
+                           t.end_date,
                            t.status,
                            (
                                SELECT COUNT(*)
@@ -167,6 +177,7 @@ class TaskEvidenceSubmissionService:
                 row.staged_count,
                 row.status,
                 row.status.strip().casefold() == CLOSED_STATUS,
+                row.end_date,
             )
             for row in rows
         )
@@ -251,7 +262,7 @@ class TaskEvidenceSubmissionService:
                         USING tasks t
                         WHERE s.task_id = t.id
                           AND s.employee_id = %s
-                          AND s.work_date BETWEEN %s AND %s
+                          AND t.end_date BETWEEN %s AND %s
                           AND t.employee_id = %s
                           AND lower(t.status) = %s
                           AND t.task_source IN (%s, %s)

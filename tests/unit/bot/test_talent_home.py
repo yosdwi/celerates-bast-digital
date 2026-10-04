@@ -13,7 +13,7 @@ from digital_bast.bot.attendance_resolution import (
     ResolutionStatus,
     ResolutionType,
 )
-from digital_bast.bot.evidence import EvidenceCandidate
+from digital_bast.bot.task_evidence_submission import TaskEvidenceCandidate
 from digital_bast.domain.completion import CheckResult, CheckState, DateRange, EmployeeCompletion
 from digital_bast.domain.time import JAKARTA
 
@@ -105,21 +105,25 @@ class _ResolutionService:
 
 
 class _EvidenceService:
-    def __init__(self, items: tuple[EvidenceCandidate, ...]) -> None:
+    def __init__(self, items: tuple[TaskEvidenceCandidate, ...]) -> None:
         self.items = items
 
-    async def list_candidates(self, employee_id: str) -> tuple[EvidenceCandidate, ...]:
+    async def list_candidates(self, employee_id: str) -> tuple[TaskEvidenceCandidate, ...]:
         assert employee_id == _EMPLOYEE_ID
         return self.items
 
 
-def _task(*, evidence_count: int, day: int = 20) -> EvidenceCandidate:
-    return EvidenceCandidate(
+def _task(*, evidence_count: int, day: int = 20) -> TaskEvidenceCandidate:
+    return TaskEvidenceCandidate(
         "redmine",
         f"task-{day}",
         f"Task {day}",
         date(2026, 8, day),
         evidence_count,
+        0,
+        "Closed",
+        closed=True,
+        end_date=date(2026, 8, day),
     )
 
 
@@ -134,7 +138,7 @@ def _patch_home_services(
     employee: EmployeeCompletion,
     *,
     requests: tuple[AttendanceResolution, ...] = (),
-    tasks: tuple[EvidenceCandidate, ...] = (),
+    tasks: tuple[TaskEvidenceCandidate, ...] = (),
 ) -> None:
     async def completion(_period: DateRange) -> object:
         return SimpleNamespace(employees=(employee,))

@@ -16,7 +16,7 @@ the trigger, so no upsert touches them.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, Final, LiteralString, assert_never, final
 
 import psycopg
@@ -84,6 +84,10 @@ _MONTH_SUFFIX: Final = (
     " WHERE work_date >= make_date(%s, %s, 1)"
     "   AND work_date < make_date(%s, %s, 1) + interval '1 month'"
     " ORDER BY work_date, record_key"
+)
+_SELECT_TASKS_ENDING: Final[LiteralString] = (
+    _SELECT[EntityKind.TASK]
+    + " WHERE end_date BETWEEN %s AND %s ORDER BY end_date, work_date, record_key"
 )
 # Built once so psycopg receives LiteralString rather than a runtime f-string.
 _SELECT_BY_KEY: dict[EntityKind, LiteralString] = {
@@ -348,6 +352,14 @@ class PostgresDomainRepository:
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]:
         return await run_sync(self._list_month, kind, period)
 
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        """Tasks whose END date is in [start, end] (domain.models.reported_in_period).
+
+        Deliberately not `list_month`: that stays keyed on `work_date` because the sync and
+        reconciliation flows compare stored records against the source month by month.
+        """
+        return await run_sync(self._list_tasks_ending, start, end)
+
     def _get(self, key: RecordKey) -> DomainRecord | None:
         kind = _kind_of_key(key)
         if kind is None:
@@ -382,6 +394,25 @@ class PostgresDomainRepository:
                 service="postgres",
                 operation="upsert_domain_record",
             ) from error
+
+    def _list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        try:
+            with (
+                psycopg.connect(
+                    self._dsn,
+                    connect_timeout=self._connect_timeout_seconds,
+                ) as connection,
+                connection.cursor(row_factory=dict_row) as cursor,
+            ):
+                _ = cursor.execute(_SELECT_TASKS_ENDING, (start, end))
+                rows = cursor.fetchall()
+            return tuple(
+                record
+                for record in (_row_to_record(EntityKind.TASK, row) for row in rows)
+                if isinstance(record, Task)
+            )
+        except psycopg.Error as error:
+            raise InfrastructureError(service="postgres", operation="list_tasks_ending") from error
 
     def _list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]:
         try:

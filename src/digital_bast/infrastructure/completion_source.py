@@ -38,12 +38,13 @@ _MONTH_KINDS = (
     EntityKind.HOLIDAY,
     EntityKind.SCHEDULE,
     EntityKind.TIMESHEET,
-    EntityKind.TASK,
 )
 
 
 class MonthlyRecordSource(Protocol):
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]: ...
+
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]: ...
 
 
 class AttendanceReader(Protocol):
@@ -154,7 +155,6 @@ class CompletionSource:
         holidays: list[Holiday] = []
         schedules: list[Schedule] = []
         timesheets: list[Timesheet] = []
-        tasks: list[Task] = []
         for year, month in period.months():
             for kind in _MONTH_KINDS:
                 for record in await self._records.list_month(kind, Month(year, month)):
@@ -167,11 +167,12 @@ class CompletionSource:
                             schedules.append(record)
                         case Timesheet():
                             timesheets.append(record)
-                        case Task():
-                            tasks.append(record)
                         case _:
                             continue
-        return tuple(holidays), tuple(schedules), tuple(timesheets), tuple(tasks)
+        # A task belongs to the period it ends in (domain.models.reported_in_period), which is not
+        # the month list_month() would return it under.
+        tasks = await self._records.list_tasks_ending(period.start, period.end)
+        return tuple(holidays), tuple(schedules), tuple(timesheets), tasks
 
 
 def _select_employees(

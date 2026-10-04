@@ -225,9 +225,7 @@ class _PayrollAudience:
         return tuple(
             item.task_key
             for item in await self._tasks.list_candidates(employee_id)
-            if month.start <= item.work_date <= month.end
-            and item.closed
-            and item.evidence_count == 0
+            if item.in_period(month) and item.closed and item.evidence_count == 0
         )
 
     async def _timesheet_actionable_dates(self, month: DateRange) -> dict[str, tuple[date, ...]]:
@@ -998,9 +996,7 @@ def celerates_router(  # noqa: C901, PLR0915
     ) -> tuple[TaskEvidenceCandidate, ...]:
         # Talent Mobile rule: required-category Closed tasks in the calendar month.
         return tuple(
-            item
-            for item in await svc.tasks.list_candidates(employee_id)
-            if period.start <= item.work_date <= period.end
+            item for item in await svc.tasks.list_candidates(employee_id) if item.in_period(period)
         )
 
     @endpoint

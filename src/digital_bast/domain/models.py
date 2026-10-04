@@ -76,6 +76,18 @@ class Attendance:
     origin: RecordOrigin
 
 
+def reported_in_period(end_date: date | None, start: date, end: date) -> bool:
+    """The one rule for which period a task belongs to: the period it ENDS in.
+
+    User feedback (Oct 2026): "September's tasklist" is the tasks whose end date falls in
+    September, not the ones that started then. A task that began in August and ended on
+    September 3rd is in September's tasklist and BAST. A task with no end date yet is in no
+    period. Every period filter on tasks (tasklist, BAST, readiness, evidence review) must
+    use this -- or the SQL equivalent, `end_date BETWEEN` -- so the views never disagree.
+    """
+    return end_date is not None and start <= end_date <= end
+
+
 @dataclass(frozen=True, slots=True)
 class Task:
     key: RecordKey

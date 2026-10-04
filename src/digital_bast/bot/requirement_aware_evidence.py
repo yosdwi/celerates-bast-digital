@@ -231,7 +231,7 @@ class RequirementAwareTaskEvidenceSubmissionService:
                           AND r.task_category = t.category
                           AND r.evidence_required = true
                           AND s.employee_id = %s
-                          AND s.work_date BETWEEN %s AND %s
+                          AND t.end_date BETWEEN %s AND %s
                           AND t.employee_id = %s
                           AND lower(t.status) = %s
                           AND t.task_source IN (%s, %s)

@@ -166,7 +166,7 @@ class PostgresTaskEvidenceReader:
                     SELECT t.record_key AS task_key, COUNT(*) AS total
                     FROM task_evidence e
                     JOIN tasks t ON t.id = e.task_id
-                    WHERE e.work_date BETWEEN %s AND %s
+                    WHERE t.end_date BETWEEN %s AND %s
                     GROUP BY t.record_key
                     """,
                     (period.start, period.end),

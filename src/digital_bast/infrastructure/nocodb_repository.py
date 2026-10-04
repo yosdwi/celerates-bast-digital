@@ -226,6 +226,14 @@ class NocoDBDomainRepository:
     async def list_month(self, kind: EntityKind, period: Month) -> tuple[DomainRecord, ...]:
         return await run_sync(self._list_month, kind, period)
 
+    async def list_tasks_ending(self, start: date, end: date) -> tuple[Task, ...]:
+        # The legacy NocoDB source is not wired into any runtime (production reads PostgreSQL) and
+        # cannot answer "ends in this period" without scanning every month. Fail loudly rather than
+        # return a wrong tasklist.
+        del start, end
+        message = "the legacy NocoDB repository does not support list_tasks_ending"
+        raise NotImplementedError(message)
+
     def _connect(self) -> psycopg.Connection[SqlRow]:
         return psycopg.connect(
             self._dsn,

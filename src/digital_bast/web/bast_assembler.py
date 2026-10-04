@@ -1240,7 +1240,7 @@ def _load_tasks(
                    start_at, response_at, close_at,
                    version, updated_at
             FROM tasks
-            WHERE work_date BETWEEN %s AND %s
+            WHERE end_date BETWEEN %s AND %s
             ORDER BY work_date, record_key
             """,
             (start, end),
@@ -1360,7 +1360,7 @@ def _load_evidence(
                    e.work_date, e.caption, e.content_type, e.image
             FROM task_evidence e
             JOIN tasks t ON t.id = e.task_id
-            WHERE e.work_date BETWEEN %s AND %s
+            WHERE t.end_date BETWEEN %s AND %s
             ORDER BY t.task_source, t.record_key, e.uploaded_at DESC
             """,
             (start, end),
@@ -1398,8 +1398,9 @@ def _load_evidence_scope(
 ) -> tuple[tuple[str, str], ...]:
     with connection.cursor(row_factory=class_row(_EvidenceScopeRow)) as cursor:
         _ = cursor.execute(
-            "SELECT id::text AS evidence_id, sha256 FROM task_evidence"
-            " WHERE work_date BETWEEN %s AND %s",
+            "SELECT e.id::text AS evidence_id, e.sha256 FROM task_evidence e"
+            " JOIN tasks t ON t.id = e.task_id"
+            " WHERE t.end_date BETWEEN %s AND %s",
             (start, end),
         )
         return tuple((row.evidence_id, row.sha256) for row in cursor.fetchall())
